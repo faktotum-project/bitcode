@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  body{margin:0;background:#f7f7f4;color:#26251e;font-family:Inter,system-ui,"Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:-0.015em}
+  ::selection{background:#f7931a;color:#fff}
+</style>
+</helmet>
+
+<div style="background:#f7f7f4;width:100%;min-height:100vh">
+
+  <!-- TOP NAV -->
+  <div style="position:sticky;top:0;z-index:50;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:rgba(247,247,244,0.86);backdrop-filter:blur(10px);border-bottom:1px solid #e6e5e0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:28px;height:28px;border-radius:9999px;background:#f7931a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;font-family:Inter">₿</div>
+      <span style="font-size:16px;font-weight:600;letter-spacing:-0.02em">Bitcoin</span>
+      <span style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#807d72;padding:3px 8px;border:1px solid #cfcdc4;border-radius:9999px;margin-left:6px">Design System</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:28px">
+      <span style="font-size:14px;font-weight:500;color:#5a5852">Foundations</span>
+      <span style="font-size:14px;font-weight:500;color:#5a5852">Components</span>
+      <span style="font-size:14px;font-weight:500;color:#5a5852">Patterns</span>
+      <div style="display:flex;align-items:center;gap:8px;background:#f7931a;color:#fff;height:40px;padding:0 18px;border-radius:8px;font-size:14px;font-weight:500">Get Bitcoin</div>
+    </div>
+  </div>
+
+  <!-- HERO / OVERVIEW -->
+  <div style="max-width:1180px;margin:0 auto;padding:80px 40px 56px">
+    <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:24px">Overview</div>
+    <h1 style="font-size:72px;font-weight:400;line-height:1.06;letter-spacing:-0.03em;margin:0 0 28px;max-width:14ch">A calm system for sound money.</h1>
+    <p style="font-size:18px;font-weight:400;line-height:1.55;color:#5a5852;max-width:62ch;margin:0 0 40px">The Bitcoin design language pairs the network's original orange with an editorial, magazine-quiet surface — warm cream canvas, hairline depth, and JetBrains Mono on every numeric and code surface. Confident, never loud.</p>
+    <div style="display:flex;gap:14px;align-items:center">
+      <div style="display:flex;align-items:center;gap:8px;background:#26251e;color:#f7f7f4;height:44px;padding:0 22px;border-radius:8px;font-size:14px;font-weight:500">Download wallet</div>
+      <div style="font-size:14px;font-weight:500;color:#26251e;text-decoration:underline;text-underline-offset:3px">Read the whitepaper →</div>
+    </div>
+  </div>
+
+  <!-- principle chips -->
+  <div style="max-width:1180px;margin:0 auto;padding:0 40px 80px">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#e6e5e0;border:1px solid #e6e5e0;border-radius:12px;overflow:hidden">
+      <sc-for list="{{ principles }}" as="p" hint-placeholder-count="6">
+        <div style="background:#fff;padding:24px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#f7931a;margin-bottom:10px">{{ p.k }}</div>
+          <div style="font-size:15px;line-height:1.5;color:#5a5852">{{ p.v }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ============ COLORS ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Foundations · 01</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px">Color</h2>
+      <p style="font-size:16px;line-height:1.55;color:#5a5852;max-width:60ch;margin:0 0 44px">Bitcoin Orange is the single brand voltage — reserved for the mark and primary actions, used scarcely. Everything else is warm neutral.</p>
+
+      <!-- Brand -->
+      <div style="font-size:16px;font-weight:600;margin:0 0 16px">Brand &amp; accent</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:48px">
+        <sc-for list="{{ brandColors }}" as="c" hint-placeholder-count="2">
+          <div style="border:1px solid #e6e5e0;border-radius:12px;overflow:hidden;background:#fff">
+            <div style="height:120px;background:{{ c.hex }}"></div>
+            <div style="padding:16px 18px">
+              <div style="font-size:16px;font-weight:600;margin-bottom:4px">{{ c.name }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#807d72">{{ c.hex }}</div>
+              <div style="font-size:13px;color:#5a5852;margin-top:8px">{{ c.use }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- Surface + hairline + text grids -->
+      <div style="font-size:16px;font-weight:600;margin:0 0 16px">Surface, hairline &amp; text</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#e6e5e0;border:1px solid #e6e5e0;border-radius:12px;overflow:hidden;margin-bottom:48px">
+        <sc-for list="{{ neutrals }}" as="c" hint-placeholder-count="12">
+          <div style="background:#fff;padding:16px">
+            <div style="height:52px;border-radius:8px;background:{{ c.hex }};border:1px solid #e6e5e0;margin-bottom:12px"></div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:2px">{{ c.name }}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">{{ c.hex }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- Transaction signature -->
+      <div style="font-size:16px;font-weight:600;margin:0 0 4px">Transaction lifecycle <span style="color:#807d72;font-weight:400">— signature palette</span></div>
+      <p style="font-size:14px;color:#5a5852;max-width:58ch;margin:8px 0 18px">Five pastel pills mark a transaction's path from mempool to confirmation. Scoped to in-product transaction visualizations only — never used as system or action colors.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+        <sc-for list="{{ txStages }}" as="c" hint-placeholder-count="5">
+          <div style="display:inline-flex;align-items:center;gap:8px;background:{{ c.hex }};color:{{ c.fg }};padding:5px 14px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase">{{ c.name }}</div>
+        </sc-for>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:48px">
+        <sc-for list="{{ txStages }}" as="c" hint-placeholder-count="5">
+          <div style="text-align:center">
+            <div style="height:48px;border-radius:8px;background:{{ c.hex }};margin-bottom:8px"></div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">{{ c.hex }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- Semantic -->
+      <div style="font-size:16px;font-weight:600;margin:0 0 16px">Semantic</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <sc-for list="{{ semantic }}" as="c" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:12px;border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:14px 18px">
+            <div style="width:32px;height:32px;border-radius:8px;background:{{ c.hex }}"></div>
+            <div>
+              <div style="font-size:14px;font-weight:600">{{ c.name }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72">{{ c.hex }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TYPOGRAPHY ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Foundations · 02</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px">Typography</h2>
+      <p style="font-size:16px;line-height:1.55;color:#5a5852;max-width:60ch;margin:0 0 44px">Inter carries display and body — display stays at weight 400 with negative tracking for an editorial voice, never bold. JetBrains Mono renders every code, address and numeric surface.</p>
+
+      <div style="border:1px solid #e6e5e0;border-radius:12px;overflow:hidden;background:#fff">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:28px 28px;border-bottom:1px solid #efeee8">
+          <div style="font-size:72px;font-weight:400;line-height:1.05;letter-spacing:-0.03em">21 million</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;white-space:nowrap;text-align:right">display-mega<br>72 / 400 / -2.16</div>
+        </div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:24px 28px;border-bottom:1px solid #efeee8">
+          <div style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em">Peer-to-peer electronic cash</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;white-space:nowrap;text-align:right">display-lg<br>36 / 400 / -0.72</div>
+        </div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:22px 28px;border-bottom:1px solid #efeee8">
+          <div style="font-size:26px;font-weight:400;line-height:1.25;letter-spacing:-0.0125em">No trusted third party</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;white-space:nowrap;text-align:right">display-md<br>26 / 400 / -0.325</div>
+        </div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:20px 28px;border-bottom:1px solid #efeee8">
+          <div style="font-size:18px;font-weight:600;line-height:1.4">Component title</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;white-space:nowrap;text-align:right">title-md<br>18 / 600</div>
+        </div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:20px 28px;border-bottom:1px solid #efeee8">
+          <div style="font-size:16px;font-weight:400;line-height:1.5;color:#5a5852;max-width:52ch">Default body — a chain of digital signatures where each owner transfers the coin to the next by signing a hash of the previous transaction.</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;white-space:nowrap;text-align:right">body-md<br>16 / 400</div>
+        </div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:20px 28px;border-bottom:1px solid #efeee8">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#26251e">Section label · uppercase</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;white-space:nowrap;text-align:right">caption-uppercase<br>11 / 600 / 0.88</div>
+        </div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:20px 28px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#26251e">bc1q · OP_CHECKSIG · 0.00021000 BTC</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;white-space:nowrap;text-align:right">code<br>JetBrains Mono 13 / 400</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SPACING + SHAPES ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px;display:grid;grid-template-columns:1fr 1fr;gap:64px">
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Foundations · 03</div>
+        <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px">Spacing</h2>
+        <p style="font-size:16px;line-height:1.55;color:#5a5852;margin:0 0 32px">4px base unit. Sections breathe on an 80px rhythm.</p>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <sc-for list="{{ spacing }}" as="s" hint-placeholder-count="7">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="width:96px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#5a5852">{{ s.token }}</div>
+              <div style="height:16px;background:#f7931a;border-radius:3px;width:{{ s.px }}"></div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72">{{ s.px }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Foundations · 04</div>
+        <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px">Shape &amp; depth</h2>
+        <p style="font-size:16px;line-height:1.55;color:#5a5852;margin:0 0 32px">Hairline-only depth — no drop shadows. Compact 8px on actions, 12px on cards.</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">
+          <sc-for list="{{ radii }}" as="r" hint-placeholder-count="6">
+            <div style="text-align:center">
+              <div style="height:64px;background:#fff;border:1px solid #cfcdc4;border-radius:{{ r.px }}"></div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72;margin-top:8px">{{ r.token }} · {{ r.px }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:18px;font-size:13px;line-height:1.55;color:#5a5852">Cards float above the cream canvas on a 1px hairline and the slight white-on-cream contrast alone. No elevation tiers.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COMPONENTS: BUTTONS ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Components · 05</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px">Buttons</h2>
+      <p style="font-size:16px;line-height:1.55;color:#5a5852;max-width:60ch;margin:0 0 36px">One brand action — Bitcoin Orange — kept scarce. Everything else is ink or hairline.</p>
+      <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:40px;display:flex;flex-wrap:wrap;gap:20px;align-items:center">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="background:#f7931a;color:#fff;height:40px;padding:0 18px;display:flex;align-items:center;border-radius:8px;font-size:14px;font-weight:500">Send Bitcoin</div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">primary</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="background:#d97b0f;color:#fff;height:40px;padding:0 18px;display:flex;align-items:center;border-radius:8px;font-size:14px;font-weight:500">Send Bitcoin</div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">primary · active</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="background:#fff;color:#26251e;height:40px;padding:0 18px;display:flex;align-items:center;border-radius:8px;font-size:14px;font-weight:500;border:1px solid #cfcdc4">Receive</div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">secondary</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="background:#26251e;color:#f7f7f4;height:44px;padding:0 22px;display:flex;align-items:center;border-radius:8px;font-size:14px;font-weight:500">Download wallet</div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">download</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="color:#26251e;height:40px;display:flex;align-items:center;font-size:14px;font-weight:500;text-decoration:underline;text-underline-offset:3px">View on explorer →</div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">tertiary · text</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COMPONENTS: WALLET MOCKUP + TX TIMELINE ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Components · 06</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px">Wallet surface &amp; transaction timeline</h2>
+      <p style="font-size:16px;line-height:1.55;color:#5a5852;max-width:60ch;margin:0 0 36px">The one elevated element — a white multi-pane mockup mirroring an actual wallet. The pastel transaction timeline gives chromatic depth without surface elevation.</p>
+
+      <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;overflow:hidden;display:grid;grid-template-columns:240px 1fr">
+        <!-- sidebar -->
+        <div style="background:#fafaf7;border-right:1px solid #efeee8;padding:20px 16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:24px">
+            <div style="width:22px;height:22px;border-radius:9999px;background:#f7931a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">₿</div>
+            <span style="font-size:14px;font-weight:600">Core Wallet</span>
+          </div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#a09c92;margin-bottom:10px">Balance</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:24px;color:#26251e;margin-bottom:2px">2.41805 ₿</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;margin-bottom:24px">$162,418.20</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="font-size:13px;color:#26251e;background:#f7f7f4;border-radius:6px;padding:8px 10px;font-weight:500">Transactions</div>
+            <div style="font-size:13px;color:#5a5852;padding:8px 10px">Addresses</div>
+            <div style="font-size:13px;color:#5a5852;padding:8px 10px">Channels</div>
+          </div>
+        </div>
+        <!-- main -->
+        <div style="padding:24px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+            <div style="font-size:18px;font-weight:600">Outgoing transfer</div>
+            <div style="background:#f7931a;color:#fff;height:36px;padding:0 16px;display:flex;align-items:center;border-radius:8px;font-size:13px;font-weight:500">Broadcast</div>
+          </div>
+          <!-- code/pane -->
+          <div style="background:#fafaf7;border:1px solid #efeee8;border-radius:8px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.6;color:#5a5852;margin-bottom:20px">
+            <div><span style="color:#807d72">to&nbsp;&nbsp;&nbsp;</span> <span style="color:#26251e">bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq</span></div>
+            <div><span style="color:#807d72">amount</span> <span style="color:#26251e">0.05000000 BTC</span></div>
+            <div><span style="color:#807d72">fee&nbsp;&nbsp;&nbsp;</span> <span style="color:#26251e">142 sat/vB</span> <span style="color:#1f8a65">· economy</span></div>
+            <div><span style="color:#807d72">txid&nbsp;&nbsp;</span> <span style="color:#26251e">4a5e1e4baab8…f3a2c0e9</span></div>
+          </div>
+          <!-- timeline -->
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#a09c92;margin-bottom:14px">Lifecycle</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <sc-for list="{{ txStages }}" as="c" hint-placeholder-count="5">
+              <div style="display:inline-flex;align-items:center;gap:8px;background:{{ c.hex }};color:{{ c.fg }};padding:5px 13px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase">{{ c.name }}</div>
+              <span style="color:#cfcdc4;font-size:13px">{{ c.sep }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COMPONENTS: CARDS ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Components · 07</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 36px">Cards</h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+        <!-- feature -->
+        <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:24px">
+          <div style="width:36px;height:36px;border-radius:8px;background:#f7931a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;margin-bottom:16px">₿</div>
+          <div style="font-size:18px;font-weight:600;margin-bottom:8px">Self-custody</div>
+          <div style="font-size:15px;line-height:1.55;color:#5a5852">Your keys, your coins. No intermediary holds your funds at any point.</div>
+        </div>
+        <!-- comparison -->
+        <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;overflow:hidden;display:grid;grid-template-columns:1fr 1fr">
+          <div style="padding:24px;border-right:1px solid #efeee8">
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#f7931a;margin-bottom:12px">Bitcoin</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.9;color:#26251e">21M cap<br>Final<br>Permissionless<br>10 min</div>
+          </div>
+          <div style="padding:24px;background:#fafaf7">
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:12px">Fiat</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.9;color:#807d72">Unbounded<br>Reversible<br>Gated<br>Days</div>
+          </div>
+        </div>
+        <!-- testimonial -->
+        <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:24px;display:flex;flex-direction:column;justify-content:space-between">
+          <div style="font-size:17px;line-height:1.5;color:#26251e;letter-spacing:-0.01em">"A purely peer-to-peer version of electronic cash."</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:20px">
+            <div style="width:32px;height:32px;border-radius:9999px;background:#e6e5e0"></div>
+            <div>
+              <div style="font-size:13px;font-weight:600">Satoshi Nakamoto</div>
+              <div style="font-size:12px;color:#807d72">Whitepaper, 2008</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COMPONENTS: PRICING ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Components · 08</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 36px">Pricing tiers</h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+        <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:32px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:16px">Lite node</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:34px;margin-bottom:4px">Free</div>
+          <div style="font-size:14px;color:#5a5852;margin-bottom:24px">SPV verification</div>
+          <div style="background:#fff;border:1px solid #cfcdc4;height:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:14px;font-weight:500">Install</div>
+        </div>
+        <!-- featured (ink inversion) -->
+        <div style="border:1px solid #26251e;border-radius:12px;background:#26251e;color:#f7f7f4;padding:32px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#dfa88f;margin-bottom:16px">Full node</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:34px;margin-bottom:4px">~600 GB</div>
+          <div style="font-size:14px;color:#a09c92;margin-bottom:24px">Validate the entire chain</div>
+          <div style="background:#f7931a;color:#fff;height:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:14px;font-weight:500">Run a node</div>
+        </div>
+        <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:32px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:16px">Lightning</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:34px;margin-bottom:4px">~1 sat</div>
+          <div style="font-size:14px;color:#5a5852;margin-bottom:24px">Instant L2 payments</div>
+          <div style="background:#fff;border:1px solid #cfcdc4;height:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:14px;font-weight:500">Open channel</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COMPONENTS: FORMS + TAGS ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px;display:grid;grid-template-columns:1fr 1fr;gap:64px">
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Components · 09</div>
+        <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 32px">Forms</h2>
+        <div style="display:flex;flex-direction:column;gap:16px;max-width:380px">
+          <div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px">Recipient address</div>
+            <div style="background:#fff;border:1px solid #cfcdc4;border-radius:8px;height:44px;display:flex;align-items:center;padding:0 16px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#807d72">bc1q…</div>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px">Amount <span style="color:#807d72;font-weight:400">— focused</span></div>
+            <div style="background:#fff;border:2px solid #f7931a;border-radius:8px;height:44px;display:flex;align-items:center;padding:0 15px;font-family:'JetBrains Mono',monospace;font-size:14px;color:#26251e">0.05000000 BTC</div>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px">Memo <span style="color:#cf2d56;font-weight:400">— error</span></div>
+            <div style="background:#fff;border:1px solid #cf2d56;border-radius:8px;height:44px;display:flex;align-items:center;padding:0 16px;font-size:14px;color:#26251e">Field exceeds 80 bytes</div>
+            <div style="font-size:12px;color:#cf2d56;margin-top:6px">OP_RETURN limited to 80 bytes.</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Components · 10</div>
+        <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 32px">Badges &amp; tags</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+          <div style="background:#e6e5e0;color:#26251e;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase">Mainnet</div>
+          <div style="background:#e6e5e0;color:#26251e;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase">SegWit</div>
+          <div style="background:#e6e5e0;color:#26251e;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase">Taproot</div>
+          <div style="background:#fff;border:1px solid #cfcdc4;color:#26251e;padding:4px 12px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px">BIP-340</div>
+          <div style="background:#fff;border:1px solid #cfcdc4;color:#26251e;padding:4px 12px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px">BIP-341</div>
+        </div>
+        <div style="margin-top:28px;border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:20px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.6;color:#26251e">
+          <span style="color:#807d72"># inline code surface</span><br>$ bitcoin-cli getblockcount<br><span style="color:#1f8a65">901420</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DO / DON'T ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Principles · 11</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 36px">Do &amp; don't</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:28px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#1f8a65;margin-bottom:18px">Do</div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <sc-for list="{{ dos }}" as="d" hint-placeholder-count="4">
+              <div style="display:flex;gap:12px;font-size:15px;line-height:1.5;color:#26251e"><span style="color:#1f8a65">✓</span><span>{{ d }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="border:1px solid #e6e5e0;border-radius:12px;background:#fff;padding:28px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#cf2d56;margin-bottom:18px">Don't</div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <sc-for list="{{ donts }}" as="d" hint-placeholder-count="4">
+              <div style="display:flex;gap:12px;font-size:15px;line-height:1.5;color:#26251e"><span style="color:#cf2d56">✕</span><span>{{ d }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CTA BAND ============ -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:96px 40px;text-align:center">
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 24px">Build on sound money.</h2>
+      <div style="display:inline-flex;align-items:center;gap:8px;background:#f7931a;color:#fff;height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:500">Get started ₿</div>
+    </div>
+  </div>
+
+  <!-- ============ FOOTER ============ -->
+  <div style="border-top:1px solid #e6e5e0;background:#f7f7f4">
+    <div style="max-width:1180px;margin:0 auto;padding:48px 40px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <div style="width:24px;height:24px;border-radius:9999px;background:#f7931a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">₿</div>
+          <span style="font-size:15px;font-weight:600">Bitcoin Design System</span>
+        </div>
+        <div style="font-size:14px;color:#807d72;max-width:36ch">Inter + JetBrains Mono. Bitcoin Orange #f7931a, used scarcely. Hairline depth, warm cream canvas.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#a09c92;margin-bottom:4px">Foundations</div>
+        <span style="font-size:14px;color:#5a5852">Color</span>
+        <span style="font-size:14px;color:#5a5852">Typography</span>
+        <span style="font-size:14px;color:#5a5852">Spacing</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#a09c92;margin-bottom:4px">Components</div>
+        <span style="font-size:14px;color:#5a5852">Buttons</span>
+        <span style="font-size:14px;color:#5a5852">Wallet</span>
+        <span style="font-size:14px;color:#5a5852">Timeline</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#a09c92;margin-bottom:4px">Resources</div>
+        <span style="font-size:14px;color:#5a5852">Whitepaper</span>
+        <span style="font-size:14px;color:#5a5852">BIPs</span>
+        <span style="font-size:14px;color:#5a5852">Explorer</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      principles: [
+        { k: "Brand voltage", v: "Bitcoin Orange #f7931a is the only brand action — reserved for the mark and primary CTAs." },
+        { k: "Warm canvas", v: "A cream #f7f7f4 floor with warm near-black ink. Never pure white, never pure black." },
+        { k: "Editorial display", v: "Display weight stays at 400 with negative tracking. A magazine voice, never tech-bombastic." },
+        { k: "Mono on numbers", v: "JetBrains Mono renders every address, amount, txid and code surface." },
+        { k: "Hairline depth", v: "1px hairlines and white-on-cream contrast carry depth. No drop shadows." },
+        { k: "80px rhythm", v: "Generous editorial pacing on an 80px section rhythm." }
+      ],
+      brandColors: [
+        { name: "Bitcoin Orange", hex: "#f7931a", use: "Primary CTA pills, wordmark, hero accent. Used scarcely." },
+        { name: "Orange Active", hex: "#d97b0f", use: "Press state for the primary action." }
+      ],
+      neutrals: [
+        { name: "Canvas", hex: "#f7f7f4" },
+        { name: "Canvas Soft", hex: "#fafaf7" },
+        { name: "Surface Card", hex: "#ffffff" },
+        { name: "Surface Strong", hex: "#e6e5e0" },
+        { name: "Hairline", hex: "#e6e5e0" },
+        { name: "Hairline Soft", hex: "#efeee8" },
+        { name: "Hairline Strong", hex: "#cfcdc4" },
+        { name: "On Primary", hex: "#ffffff" },
+        { name: "Ink", hex: "#26251e" },
+        { name: "Body", hex: "#5a5852" },
+        { name: "Muted", hex: "#807d72" },
+        { name: "Muted Soft", hex: "#a09c92" }
+      ],
+      txStages: [
+        { name: "Pending", hex: "#dfa88f", fg: "#26251e", sep: "→" },
+        { name: "Relayed", hex: "#9fc9a2", fg: "#26251e", sep: "→" },
+        { name: "Mempool", hex: "#9fbbe0", fg: "#26251e", sep: "→" },
+        { name: "Confirming", hex: "#c0a8dd", fg: "#26251e", sep: "→" },
+        { name: "Confirmed", hex: "#c08532", fg: "#ffffff", sep: "" }
+      ],
+      semantic: [
+        { name: "Success", hex: "#1f8a65" },
+        { name: "Error", hex: "#cf2d56" }
+      ],
+      spacing: [
+        { token: "xxs", px: "4px" },
+        { token: "xs", px: "8px" },
+        { token: "sm", px: "12px" },
+        { token: "base", px: "16px" },
+        { token: "lg", px: "24px" },
+        { token: "xl", px: "32px" },
+        { token: "xxl", px: "48px" }
+      ],
+      radii: [
+        { token: "xs", px: "4px" },
+        { token: "sm", px: "6px" },
+        { token: "md", px: "8px" },
+        { token: "lg", px: "12px" },
+        { token: "xl", px: "16px" },
+        { token: "pill", px: "9999px" }
+      ],
+      dos: [
+        "Reserve Bitcoin Orange for primary CTAs and the wordmark.",
+        "Keep display weight at 400 — the editorial voice depends on it.",
+        "Use the cream canvas floor; never pure white.",
+        "Render every address, amount and code surface in JetBrains Mono."
+      ],
+      donts: [
+        "Don't introduce a second brand action color. Orange is the only one.",
+        "Don't drop display to bold weights (700+).",
+        "Don't add drop shadows — hairlines carry the depth.",
+        "Don't use the transaction pastels on non-timeline UI."
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

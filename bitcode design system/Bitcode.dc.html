@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  body{margin:0;background:#f7f7f4;color:#26251e;font-family:Inter,system-ui,"Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:-0.015em}
+  ::selection{background:#f7931a;color:#fff}
+  @keyframes bc-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+  @keyframes bc-pulse{0%,100%{opacity:1}50%{opacity:0.35}}
+</style>
+</helmet>
+
+<div style="background:#f7f7f4;width:100%;min-height:100vh">
+
+  <!-- TOP NAV -->
+  <div style="position:sticky;top:0;z-index:50;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:rgba(247,247,244,0.85);backdrop-filter:blur(10px);border-bottom:1px solid #e6e5e0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 32 32" width="100%" height="100%" style="display:block"><path d="M18.5 3 8 18h7l-2 11 11-16h-7z" fill="#f7931a"/></svg></div>
+      <span style="font-size:16px;font-weight:600;letter-spacing:-0.02em">bitcode</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#807d72;padding:3px 8px;border:1px solid #cfcdc4;border-radius:9999px;margin-left:4px">agent · {{ network }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:28px">
+      <span style="font-size:14px;font-weight:500;color:#5a5852">Capabilities</span>
+      <span style="font-size:14px;font-weight:500;color:#5a5852">Reasoning</span>
+      <span style="font-size:14px;font-weight:500;color:#5a5852">Docs</span>
+      <div style="display:flex;align-items:center;gap:8px;background:{{ accent }};color:#fff;height:40px;padding:0 18px;border-radius:8px;font-size:14px;font-weight:500;font-family:'JetBrains Mono',monospace">run agent</div>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <div style="max-width:1180px;margin:0 auto;padding:84px 40px 24px;text-align:center">
+    <div style="display:inline-flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;border:1px solid #e6e5e0;background:#fff;border-radius:9999px;padding:5px 14px;margin-bottom:28px">
+      <span style="width:7px;height:7px;border-radius:9999px;background:#1f8a65;display:inline-block;animation:bc-pulse 1.8s infinite"></span>
+      synced to block 901,420 · {{ network }}
+    </div>
+    <h1 style="font-size:72px;font-weight:400;line-height:1.04;letter-spacing:-0.03em;margin:0 auto 24px;max-width:15ch">An AI agent that reads the chain.</h1>
+    <p style="font-size:18px;font-weight:400;line-height:1.55;color:#5a5852;max-width:58ch;margin:0 auto 36px">bitcode traces transactions, reads the mempool, drafts and broadcasts, and answers in plain terms — showing every step of its reasoning as it works.</p>
+    <div style="display:flex;gap:14px;align-items:center;justify-content:center">
+      <div style="display:flex;align-items:center;gap:8px;background:#26251e;color:#f7f7f4;height:44px;padding:0 22px;border-radius:8px;font-size:14px;font-weight:500;font-family:'JetBrains Mono',monospace">$ npx bitcode</div>
+      <div style="font-size:14px;font-weight:500;color:#26251e;text-decoration:underline;text-underline-offset:3px">Watch it think →</div>
+    </div>
+  </div>
+
+  <!-- AGENT CHAT MOCKUP (centerpiece) -->
+  <div style="max-width:940px;margin:0 auto;padding:40px 40px 80px">
+    <div style="border:1px solid #cfcdc4;border-radius:12px;background:#fff;overflow:hidden">
+      <!-- terminal header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 16px;background:#fafaf7;border-bottom:1px solid #efeee8">
+        <div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72">
+          <span style="width:9px;height:9px;border-radius:9999px;background:#dfa88f"></span>
+          <span style="width:9px;height:9px;border-radius:9999px;background:#9fc9a2"></span>
+          <span style="width:9px;height:9px;border-radius:9999px;background:#9fbbe0"></span>
+          <span style="margin-left:8px">bitcode — agent session</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#1f8a65">
+          <span style="width:7px;height:7px;border-radius:9999px;background:#1f8a65;display:inline-block"></span>connected · {{ network }}
+        </div>
+      </div>
+
+      <!-- chat body -->
+      <div style="padding:24px">
+        <!-- user prompt -->
+        <div style="display:flex;gap:12px;margin-bottom:24px">
+          <div style="width:26px;height:26px;border-radius:7px;background:#e6e5e0;flex:none;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:#5a5852">u</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:14px;line-height:1.6;color:#26251e;padding-top:2px">Trace where the funds from <span style="color:{{ accent }}">4a5e1e4baab8…f3a2c0e9</span> went after the last confirmation.</div>
+        </div>
+
+        <!-- agent turn -->
+        <div style="display:flex;gap:12px">
+          <div style="width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 32 32" width="100%" height="100%" style="display:block"><path d="M18.5 3 8 18h7l-2 11 11-16h-7z" fill="#f7931a"/></svg></div>
+          <div style="flex:1;min-width:0">
+
+            <!-- reasoning timeline (the signature) -->
+            <div style="border:1px solid #efeee8;border-radius:10px;background:#fafaf7;padding:16px;margin-bottom:18px">
+              <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#a09c92;margin-bottom:14px">Reasoning</div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+                <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+                  <div style="display:inline-flex;align-items:center;gap:7px;background:{{ s.bg }};color:{{ s.fg }};padding:5px 13px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;opacity:{{ s.op }}">{{ s.name }}</div>
+                  <span style="color:#cfcdc4;font-size:12px;font-family:'JetBrains Mono',monospace">{{ s.sep }}</span>
+                </sc-for>
+              </div>
+              <sc-if value="{{ showLogs }}" hint-placeholder-val="{{ true }}">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.85;color:#5a5852;border-top:1px solid #efeee8;padding-top:14px">
+                  <sc-for list="{{ logs }}" as="l" hint-placeholder-count="4">
+                    <div style="display:flex;gap:10px"><span style="color:{{ l.mc }};flex:none">{{ l.mark }}</span><span style="color:#807d72;width:96px;flex:none">{{ l.tag }}</span><span style="color:#26251e">{{ l.msg }}</span></div>
+                  </sc-for>
+                  <div style="display:flex;gap:10px"><span style="color:#c0a8dd;flex:none">●</span><span style="color:#807d72;width:96px;flex:none">drafting</span><span style="color:#26251e">composing summary<span style="display:inline-block;width:8px;height:14px;background:#26251e;margin-left:2px;vertical-align:-2px;animation:bc-blink 1.1s step-end infinite"></span></span></div>
+                </div>
+              </sc-if>
+            </div>
+
+            <!-- agent answer -->
+            <div style="font-size:15px;line-height:1.6;color:#26251e;margin-bottom:16px">Funds split across <strong style="font-weight:600">3 outputs</strong> within two hops. The largest (0.0412 BTC) consolidated into a known exchange deposit cluster; the rest stayed self-custodial.</div>
+
+            <!-- result data block -->
+            <div style="border:1px solid #efeee8;border-radius:10px;background:#fff;overflow:hidden">
+              <sc-for list="{{ flows }}" as="f" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-bottom:1px solid #efeee8">
+                  <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                    <span style="background:{{ f.tagbg }};color:{{ f.tagfg }};font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;padding:3px 8px;border-radius:9999px;flex:none">{{ f.label }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#5a5852;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.addr }}</span>
+                  </div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#26251e;flex:none">{{ f.amt }}</span>
+                </div>
+              </sc-for>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px">
+                <span style="font-size:13px;color:#807d72">Open the full graph in the explorer</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:{{ accent }};font-weight:500">view →</span>
+              </div>
+            </div>
+
+            <!-- action chips -->
+            <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#26251e;background:#fff;border:1px solid #cfcdc4;border-radius:8px;padding:7px 13px">label cluster</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#26251e;background:#fff;border:1px solid #cfcdc4;border-radius:8px;padding:7px 13px">set alert on address</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#26251e;background:#fff;border:1px solid #cfcdc4;border-radius:8px;padding:7px 13px">export CSV</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- composer -->
+      <div style="border-top:1px solid #efeee8;padding:14px 16px;display:flex;align-items:center;gap:12px;background:#fafaf7">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:{{ accent }}">›</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#a09c92;flex:1">ask about an address, tx, fee, or market…</span>
+        <div style="background:{{ accent }};color:#fff;height:34px;width:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:15px;flex:none">↑</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CAPABILITIES -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Capabilities</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px;max-width:20ch">One agent across the whole Bitcoin stack.</h2>
+      <p style="font-size:16px;line-height:1.55;color:#5a5852;max-width:58ch;margin:0 0 44px">From raw chain data to a broadcast transaction — bitcode works the surface a builder, trader, or treasury would touch.</p>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#e6e5e0;border:1px solid #e6e5e0;border-radius:12px;overflow:hidden">
+        <sc-for list="{{ caps }}" as="c" hint-placeholder-count="6">
+          <div style="background:#fff;padding:28px 26px">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:{{ accent }};margin-bottom:18px">{{ c.cmd }}</div>
+            <div style="font-size:18px;font-weight:600;margin-bottom:8px">{{ c.title }}</div>
+            <div style="font-size:14px;line-height:1.55;color:#5a5852">{{ c.body }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- REASONING (signature explained) -->
+  <div style="border-top:1px solid #e6e5e0;background:#26251e;color:#f7f7f4">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#dfa88f;margin-bottom:14px">Reasoning, in the open</div>
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px;max-width:22ch">Every answer shows its work.</h2>
+      <p style="font-size:16px;line-height:1.55;color:#a09c92;max-width:58ch;margin:0 0 48px">Five colour-coded stages trace the agent from intent to result. You can stop, inspect, or override at any step — nothing happens to your keys without confirmation.</p>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden">
+        <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+          <div style="background:#26251e;padding:24px 20px">
+            <div style="width:28px;height:28px;border-radius:8px;background:{{ s.bg }};margin-bottom:16px"></div>
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#f7f7f4;margin-bottom:8px">{{ s.name }}</div>
+            <div style="font-size:13px;line-height:1.5;color:#a09c92">{{ s.desc }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- TERMINAL STRIP -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:80px 40px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center">
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Runs where you do</div>
+        <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 16px;max-width:18ch">CLI, API, or chat — same agent.</h2>
+        <p style="font-size:16px;line-height:1.55;color:#5a5852;max-width:46ch;margin:0 0 28px">Pipe it into a script, call it over HTTP, or talk to it. Connect your own node or use ours.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div style="background:#e6e5e0;color:#26251e;padding:5px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">REST + WS</div>
+          <div style="background:#e6e5e0;color:#26251e;padding:5px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Self-host</div>
+          <div style="background:#e6e5e0;color:#26251e;padding:5px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Read-only mode</div>
+        </div>
+      </div>
+      <div style="border:1px solid #cfcdc4;border-radius:12px;background:#fff;overflow:hidden">
+        <div style="height:36px;background:#fafaf7;border-bottom:1px solid #efeee8;display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">~/treasury — zsh</div>
+        <div style="padding:18px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.85;color:#5a5852">
+          <div><span style="color:{{ accent }}">$</span> bitcode fees --target 3</div>
+          <div style="color:#26251e">→ recommended 142 sat/vB <span style="color:#1f8a65">· economy</span></div>
+          <div style="margin-top:8px"><span style="color:{{ accent }}">$</span> bitcode watch addr bc1qar0…mdq</div>
+          <div style="color:#26251e">→ alert armed · 0 pending<span style="display:inline-block;width:8px;height:13px;background:#26251e;margin-left:3px;vertical-align:-2px;animation:bc-blink 1.1s step-end infinite"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA BAND -->
+  <div style="border-top:1px solid #e6e5e0">
+    <div style="max-width:1180px;margin:0 auto;padding:96px 40px;text-align:center">
+      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 14px">Point an agent at the chain.</h2>
+      <p style="font-size:16px;color:#5a5852;margin:0 0 28px">Free read-only tier. No key custody, ever.</p>
+      <div style="display:inline-flex;align-items:center;gap:10px;background:{{ accent }};color:#fff;height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:500;font-family:'JetBrains Mono',monospace">$ npx bitcode</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div style="border-top:1px solid #e6e5e0;background:#f7f7f4">
+    <div style="max-width:1180px;margin:0 auto;padding:48px 40px;display:flex;align-items:center;justify-content:space-between;gap:32px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 32 32" width="100%" height="100%" style="display:block"><path d="M18.5 3 8 18h7l-2 11 11-16h-7z" fill="#f7931a"/></svg></div>
+        <span style="font-size:15px;font-weight:600">bitcode</span>
+        <span style="font-size:13px;color:#807d72;margin-left:6px">A vertical AI agent for Bitcoin.</span>
+      </div>
+      <div style="display:flex;gap:24px;font-size:14px;color:#5a5852">
+        <span>Docs</span><span>API</span><span>Pricing</span><span>Status</span><span>GitHub</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:900},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#f7931a&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#f7931a&quot;,&quot;#d97b0f&quot;,&quot;#26251e&quot;]},&quot;network&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;mainnet&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;mainnet&quot;,&quot;testnet&quot;,&quot;signet&quot;]},&quot;showLogs&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const accent = this.props.accent ?? "#f7931a";
+    const network = this.props.network ?? "mainnet";
+    const showLogs = this.props.showLogs ?? true;
+    return {
+      accent, network, showLogs,
+      steps: [
+        { name: "Thinking", bg: "#dfa88f", fg: "#26251e", op: "1", sep: "→", desc: "Parses your intent and plans which sources to touch." },
+        { name: "Querying chain", bg: "#9fc9a2", fg: "#26251e", op: "1", sep: "→", desc: "Walks outputs and hops across the UTXO graph." },
+        { name: "Reading mempool", bg: "#9fbbe0", fg: "#26251e", op: "1", sep: "→", desc: "Checks pending transactions and live fee pressure." },
+        { name: "Drafting", bg: "#c0a8dd", fg: "#26251e", op: "1", sep: "→", desc: "Composes the answer or a transaction for your review." },
+        { name: "Done", bg: "#c08532", fg: "#ffffff", op: "0.5", sep: "", desc: "Returns the result — nothing signed without confirmation." }
+      ],
+      logs: [
+        { mark: "✓", mc: "#1f8a65", tag: "thinking", msg: "parsed intent · trace outbound flow" },
+        { mark: "✓", mc: "#1f8a65", tag: "querying", msg: "walked 3 hops · 28 outputs scanned" },
+        { mark: "✓", mc: "#1f8a65", tag: "reading", msg: "mempool · 0 pending for this txid" }
+      ],
+      flows: [
+        { label: "exchange", tagbg: "#9fbbe0", tagfg: "#26251e", addr: "bc1qxy2k…0wlh", amt: "0.04120 ₿" },
+        { label: "self", tagbg: "#9fc9a2", tagfg: "#26251e", addr: "bc1qar0s…5mdq", amt: "0.00680 ₿" },
+        { label: "change", tagbg: "#e6e5e0", tagfg: "#26251e", addr: "bc1qf3a2…c0e9", amt: "0.00200 ₿" }
+      ],
+      caps: [
+        { cmd: "trace · cluster", title: "On-chain analysis", body: "Trace addresses, transactions and wallets across hops; label clusters and surface flows." },
+        { cmd: "price · sentiment", title: "Market insight", body: "Price, dominance and sentiment context — pulled and summarised in plain terms." },
+        { cmd: "explain", title: "Bitcoin & Lightning Q&A", body: "Ask anything from UTXOs to channel liquidity; answers grounded in live data." },
+        { cmd: "send · fees", title: "Wallet assistance", body: "Estimate fees, build sends and receives, and pick a confirmation target." },
+        { cmd: "watch · alert", title: "Monitoring & alerts", body: "Watch addresses, mempool congestion and fee swings; get notified on movement." },
+        { cmd: "broadcast · channel", title: "Action execution", body: "Draft, sign-on-confirm and broadcast transactions; open Lightning channels." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
