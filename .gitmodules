@@ -1,0 +1,3 @@
+[submodule "deps/cdk"]
+	path = deps/cdk
+	url = https://github.com/cashubtc/cdk.git
