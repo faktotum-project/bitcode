@@ -10,11 +10,8 @@
 import { bech32 } from "@scure/base";
 
 const NETWORK_BY_PREFIX = { lnbc: "mainnet", lntb: "testnet", lntbs: "signet", lnbcrt: "regtest" };
-// 1 "bitcoin" HRP unit = 1e11 millisatoshi. Multiplied out per BOLT11 letter
-// (m/u/n) as exact integer BigInt factors to avoid float rounding on money;
-// "p" (pico) is handled separately below since 1e11 * 1e-12 = 0.1 isn't a
-// whole msat multiplier.
-const MSAT_FACTOR = { "": 100_000_000_000n, m: 100_000_000n, u: 100_000n, n: 100n };
+const MSAT_PER_UNIT = 1e11; // 1 "bitcoin" unit (the HRP amount) = 1e11 millisatoshi
+const MULTIPLIER = { m: 1e-3, u: 1e-6, n: 1e-9, p: 1e-12 };
 
 // BOLT11 tagged-field type numbers (the letter and the number are NOT the
 // same value — e.g. features is letter "9" but type number 5; fallback
@@ -97,13 +94,8 @@ export function decodeBolt11(invoice) {
 
   let amountMsat = null;
   if (m[2]) {
-    const amount = BigInt(m[2]);
-    if (m[3] === "p") {
-      if (amount % 10n !== 0n) throw new Error("invalid amount: pico-bitcoin multiplier requires a trailing 0 (sub-millisatoshi)");
-      amountMsat = Number(amount / 10n);
-    } else {
-      amountMsat = Number(amount * MSAT_FACTOR[m[3] || ""]);
-    }
+    const factor = m[3] ? MULTIPLIER[m[3]] : 1;
+    amountMsat = Number(m[2]) * factor * MSAT_PER_UNIT;
   }
 
   const SIG_WORDS = 104; // 520 bits / 5

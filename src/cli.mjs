@@ -7,12 +7,9 @@ import { runAgent, systemPrompt } from "./agent.mjs";
 import { buildTools } from "./tools.mjs";
 import { resolveNetwork } from "./bitcoin/network.mjs";
 import { wallet } from "./bitcoin/wallet.mjs";
-import { resolveLightning } from "./lightning/network.mjs";
 import { loadCommands, expandCommand } from "./commands.mjs";
 import { loadAgents, findAgent, agentsDir } from "./agents.mjs";
 import { expandMentions } from "./mentions.mjs";
-import { newSessionId, listSessions, latestSession, loadSession, saveSession } from "./session.mjs";
-import { savePlan } from "./plans.mjs";
 import * as t from "./theme.mjs";
 
 function out(s = "") {
@@ -35,11 +32,6 @@ Options:
                                      BITCODE_MODEL, config "model", or a built-in.
   -p, --print <prompt>               one-shot mode (auto-approves tools)
       --yolo                         skip approval prompts for mutating tools
-  -c, --continue                     resume the most recent session for this
-                                     directory (interactive mode only)
-  -r, --resume                       pick a past session for this directory
-                                     from a list (interactive mode only)
-      --no-session                   don't save this session to disk
   -h, --help                         show this help
   -v, --version                      show version
 
@@ -50,11 +42,6 @@ Interactive slash commands:
   /subagent [name] [prompt]
                        list personas (~/.bitcode/agents/*.md), or delegate
                        a sub-task to one and print just its final answer
-  /plan <task>         investigate read-only and write an implementation
-                       plan (no bash/write/edit/wallet_send/... available);
-                       saved under ~/.bitcode/plans/
-  /build [notes]       execute the plan from /plan with full tools (normal
-                       approval prompts apply unless --yolo)
   /tools               list available tools
   /reset               clear conversation history
   /exit, /quit         leave
@@ -65,26 +52,13 @@ Config: ${configPath()}
 `;
 
 function parseArgs(argv) {
-  const opts = {
-    yolo: false,
-    print: false,
-    model: null,
-    prompt: null,
-    command: null,
-    walletSub: null,
-    continueSession: false,
-    resumeSession: false,
-    noSession: false,
-  };
+  const opts = { yolo: false, print: false, model: null, prompt: null, command: null, walletSub: null };
   const positionals = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") return { help: true };
     if (a === "-v" || a === "--version") return { version: true };
     if (a === "--yolo") opts.yolo = true;
-    else if (a === "-c" || a === "--continue") opts.continueSession = true;
-    else if (a === "-r" || a === "--resume") opts.resumeSession = true;
-    else if (a === "--no-session") opts.noSession = true;
     else if (a === "-m" || a === "--model") opts.model = argv[++i];
     else if (a === "-p" || a === "--print") {
       opts.print = true;
@@ -96,18 +70,11 @@ function parseArgs(argv) {
     } else positionals.push(a);
   }
   if (!opts.prompt && positionals.length) opts.prompt = positionals.join(" ");
-  if (opts.continueSession && opts.resumeSession) {
-    return { error: "cannot use --continue and --resume together" };
-  }
   return opts;
 }
 
 export async function main(argv) {
   const opts = parseArgs(argv);
-  if (opts.error) {
-    out(t.danger(opts.error));
-    process.exit(1);
-  }
   if (opts.help) return out(HELP);
   if (opts.version) return out(`${t.accent("⚡")} bitcode 0.1.0`);
 
@@ -126,85 +93,17 @@ export async function main(argv) {
   }
 
   const ctx = resolveNetwork(config);
-  let lightningCfg = null;
-  try {
-    lightningCfg = resolveLightning(config);
-  } catch (err) {
-    out(t.danger(`config error: ${err.message}`));
-    process.exit(1);
-  }
-  const system = systemPrompt({ network: ctx.name, lightning: !!lightningCfg });
+  const system = systemPrompt({ network: ctx.name });
   const agents = loadAgents();
   const modelRef = { current: target };
-  const tools = buildTools(config, { modelRef, agents, system, lightning: lightningCfg });
+  const tools = buildTools(config, { modelRef, agents, system });
 
   if (opts.prompt) {
     await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt });
     return;
   }
   const commands = loadCommands();
-  const session = await resolveSession(opts, process.cwd());
-  await interactive({
-    target,
-    system,
-    tools,
-    network: ctx.name,
-    config,
-    yolo: opts.yolo,
-    agents,
-    commands,
-    modelRef,
-    cwd: process.cwd(),
-    noSession: opts.noSession,
-    sessionId: session.sessionId,
-    initialMessages: session.initialMessages,
-    sessionName: session.sessionName,
-  });
-}
-
-// ---- session resolution (--continue / --resume) ----
-
-async function resolveSession(opts, cwd) {
-  const fresh = { sessionId: newSessionId(), initialMessages: [], sessionName: null };
-  if (opts.continueSession) {
-    const latest = latestSession(cwd);
-    if (!latest) {
-      out(t.faint("no previous session found for this directory — starting fresh"));
-      return fresh;
-    }
-    const loaded = loadSession(cwd, latest.id);
-    return { sessionId: loaded.id, initialMessages: loaded.messages, sessionName: loaded.name };
-  }
-  if (opts.resumeSession) {
-    const sessions = listSessions(cwd);
-    if (!sessions.length) {
-      out(t.faint("no previous sessions found for this directory — starting fresh"));
-      return fresh;
-    }
-    sessions.forEach((s, i) => {
-      const label = s.name || t.faint("(untitled)");
-      out(`  ${t.faint(String(i + 1).padStart(2))}  ${label}  ${t.faint(`${s.messageCount} msgs · ${s.updatedAt}`)}`);
-    });
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const ans = (await new Promise((resolve) => rl.question(t.faint("select # to resume (enter for new): "), resolve))).trim();
-    rl.close();
-    if (!ans) return fresh;
-    const pick = sessions[Number(ans) - 1];
-    if (!pick) {
-      out(t.danger(`no such entry: ${ans}`));
-      return fresh;
-    }
-    const loaded = loadSession(cwd, pick.id);
-    return { sessionId: loaded.id, initialMessages: loaded.messages, sessionName: loaded.name };
-  }
-  return fresh;
-}
-
-function deriveSessionName(messages) {
-  const first = messages.find((m) => m.role === "user");
-  if (!first || typeof first.content !== "string") return null;
-  const oneLine = first.content.replace(/\s+/g, " ").trim();
-  return oneLine.length > 40 ? oneLine.slice(0, 40) + "…" : oneLine;
+  await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef });
 }
 
 // ---- wallet command (human-only; never exposed as an agent tool) ----
@@ -318,43 +217,15 @@ async function oneShot({ target, system, tools, network, prompt }) {
 
 // ---- interactive REPL ----
 
-async function interactive({
-  target,
-  system,
-  tools,
-  network,
-  config,
-  yolo,
-  agents,
-  commands,
-  modelRef,
-  cwd,
-  noSession,
-  sessionId,
-  initialMessages,
-  sessionName,
-}) {
-  const messages = initialMessages ? [...initialMessages] : [];
+async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef }) {
+  const messages = [];
   let active = target;
-  let name = sessionName || null;
-
-  const persist = () => {
-    if (noSession) return;
-    if (!name) name = deriveSessionName(messages);
-    saveSession(cwd, { id: sessionId, model: active.spec, network, messages, name });
-  };
-  const forgetName = () => {
-    name = null;
-  };
 
   out("");
   out(t.wordmark(active.spec, network));
-  out("  " + t.faint(cwd));
+  out("  " + t.faint(process.cwd()));
   out("  " + t.stageLegend());
   out("");
-  if (messages.length) {
-    out(t.faint(`resumed session${name ? ` "${name}"` : ""} (${messages.length} messages)`));
-  }
   out(t.faint("type a request, or /help for commands. Ctrl+C to quit."));
   out("");
 
@@ -398,10 +269,6 @@ async function interactive({
           ask,
           system,
           tools,
-          persist,
-          forgetName,
-          cwd,
-          approve,
           getActive: () => active,
           setActive: (x) => {
             active = x;
@@ -420,7 +287,6 @@ async function interactive({
     } catch (err) {
       out(t.danger(`error: ${err.message}`));
     }
-    persist();
     rl.prompt();
   }
 
@@ -437,62 +303,11 @@ async function handleSlash(input, ctx) {
       return "exit";
     case "reset":
       ctx.messages.length = 0;
-      ctx.forgetName();
-      ctx.persist();
       out(t.faint("history cleared"));
       return;
     case "tools":
       out(t.faint(ctx.tools.map((x) => x.name).join(", ")));
       return;
-    case "plan": {
-      if (!arg) {
-        out(t.danger("usage: /plan <task>"));
-        return;
-      }
-      const readOnlyTools = ctx.tools.filter((tl) => !tl.mutating);
-      const planSystem =
-        `${ctx.system}\n\n` +
-        "You are in PLAN MODE: only read-only tools are available right now " +
-        "(no bash, write_file, edit_file, wallet_send, btc_broadcast, bitcoin_rpc, subagent, ...). " +
-        "Investigate as needed with the tools you do have, then respond with a clear, " +
-        "structured implementation plan (numbered steps, files to touch, risks) for the " +
-        "task below. You cannot make changes in this mode — don't claim to have.";
-      ctx.messages.push({ role: "user", content: expandMentions(arg) });
-      let text;
-      try {
-        text = await runAgent({
-          target: ctx.getActive(),
-          system: planSystem,
-          messages: ctx.messages,
-          tools: readOnlyTools,
-          hooks: buildHooks(),
-        });
-      } catch (err) {
-        out(t.danger(`error: ${err.message}`));
-        return;
-      }
-      const file = savePlan(ctx.cwd, { task: arg, text });
-      ctx.persist();
-      out(t.faint(`plan saved to ${file} — run /build to execute it`));
-      return;
-    }
-    case "build": {
-      const instruction = arg ? `Implement the plan above. Additional guidance: ${arg}` : "Implement the plan above.";
-      ctx.messages.push({ role: "user", content: instruction });
-      try {
-        await runAgent({
-          target: ctx.getActive(),
-          system: ctx.system,
-          messages: ctx.messages,
-          tools: ctx.tools,
-          hooks: buildHooks({ approve: ctx.approve }),
-        });
-      } catch (err) {
-        out(t.danger(`error: ${err.message}`));
-      }
-      ctx.persist();
-      return;
-    }
     case "model":
       if (!arg) {
         out(t.faint(`active model: `) + t.body(ctx.getActive().spec));
@@ -557,7 +372,7 @@ async function handleSlash(input, ctx) {
       return;
     }
     case "help":
-      out(t.faint("/model [spec]  /models  /subagent [name] [prompt]  /plan <task>  /build [notes]  /tools  /reset  /exit"));
+      out(t.faint("/model [spec]  /models  /subagent [name] [prompt]  /tools  /reset  /exit"));
       if (ctx.commands.length) out(t.faint(`custom: ${ctx.commands.map((c) => "/" + c.name).join("  ")}`));
       return;
     default:

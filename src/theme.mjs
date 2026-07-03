@@ -80,29 +80,15 @@ export function label(text) {
 // design system's tx-lifecycle palette.
 export function stageForTool(name) {
   // chain queries → "querying" (relayed/green)
-  if (
-    name === "bash" ||
-    name === "btc_tx" || name === "btc_address" || name === "btc_block" || name === "bitcoin_rpc" ||
-    name === "liquid_tx" || name === "liquid_address" || name === "liquid_block" || name === "liquid_asset" ||
-    name === "ln_channels"
-  ) {
+  if (name === "bash" || name === "btc_tx" || name === "btc_address" || name === "btc_block" || name === "bitcoin_rpc") {
     return { hex: STAGE.relayed, name: name === "bash" ? "running" : "querying" };
   }
   // state reads → "reading" (mempool/blue)
-  if (
-    name === "read_file" || name === "list_dir" ||
-    name === "btc_fees" || name === "btc_mempool" || name === "wallet_info" || name === "wallet_new_address" || name === "wallet_descriptor" ||
-    name === "liquid_fees" || name === "liquid_mempool" ||
-    name === "ln_decode_invoice" || name === "ln_info" || name === "ln_balance" || name === "ln_invoice_create" || name === "taproot_asset_balance"
-  ) {
+  if (name === "read_file" || name === "list_dir" || name === "btc_fees" || name === "btc_mempool" || name === "wallet_info" || name === "wallet_new_address" || name === "wallet_descriptor") {
     return { hex: STAGE.mempool, name: "reading" };
   }
   // mutations / signing → "drafting" (confirming/purple)
-  if (
-    name === "write_file" || name === "edit_file" ||
-    name === "wallet_create" || name === "wallet_send" || name === "btc_broadcast" ||
-    name === "ln_invoice_pay" || name === "taproot_asset_send"
-  ) {
+  if (name === "write_file" || name === "edit_file" || name === "wallet_create" || name === "wallet_send" || name === "btc_broadcast") {
     return { hex: STAGE.confirming, name: "drafting" };
   }
   return { hex: STAGE.pending, name: "thinking" };

@@ -8,24 +8,6 @@ style of claude code / codex / opencode. Pure Node ESM: no build step, no
 node bitcode.mjs
 ```
 
-## Principles
-
-- **Not your key, not your BTC.** No seed, macaroon, or credential ever
-  leaves your machine toward a third party. Signing happens locally
-  (`src/bitcoin/wallet.mjs`); remote calls only ever go to nodes you
-  configure yourself, or to public endpoints for chain data that carries no
-  secrets either way.
-- **Full privacy.** No telemetry, no analytics, no network calls beyond
-  what a tool you invoked actually needs.
-- **Decentralized, like Bitcoin.** Prefer running your own infrastructure
-  over depending on someone else's API — see `/btc:node-install` and
-  `/ln:node-install` for guided, signature-verified setup of your own
-  Bitcoin Core / LND nodes.
-- **Minimal dependencies.** A handful of audited crypto libraries
-  (`@scure/*`, `@noble/*`) for signing and encoding — everything else
-  (HTTP client, ANSI colors, frontmatter parsing, BOLT11 decoding) is
-  hand-rolled rather than pulled in as a package.
-
 ## Requirements
 
 - Node.js >= 22 (uses built-in `fetch`-free `node:http` streaming, `readline`, `crypto`).
@@ -60,21 +42,10 @@ bitcode models                            # list providers + default models
 /subagent [name] [prompt]
                 list personas (~/.bitcode/agents/*.md), or delegate a
                 sub-task to one and print just its final answer
-/plan <task>    investigate read-only (no bash/write/edit/wallet_send/...)
-                and write a structured implementation plan; saved under
-                ~/.bitcode/plans/
-/build [notes]  execute the plan from /plan with the full tool set — same
-                approval prompts as normal chat, unless --yolo
 /tools          list tools
 /reset          clear conversation history
 /exit           quit
 ```
-
-`/plan` then `/build` mirrors a plan/execute workflow: `/plan` can only read
-(mutating tools, including `subagent`, are hidden from the model for that
-turn), so it can't accidentally act — it can only investigate and propose.
-`/build` replays with every tool available, so review the plan before
-running it.
 
 Custom commands: drop a markdown file at `~/.bitcode/commands/<name>.md`
 and it becomes its own `/<name>` command. The body is a prompt template —
@@ -86,11 +57,9 @@ Bundled Bitcoin commands (`commands/btc/*.md`, shipped with bitcode) cover
 common vertical workflows out of the box: `/btc:fees`, `/btc:mempool`,
 `/btc:block [height|hash]`, `/btc:tx <txid>`, `/btc:address <addr>`,
 `/btc:balance`, `/btc:receive`, `/btc:descriptor` (public output
-descriptor, safe to share), `/btc:send <address> <amount>` (checks fee
+descriptor, safe to share), and `/btc:send <address> <amount>` (checks fee
 rates and asks for explicit confirmation before broadcasting — same
-approval gate as calling `wallet_send` directly), and `/btc:node-install`
-(guided, signature-verified Bitcoin Core setup). `/ln:node-install` does
-the same for LND + Taproot Assets. Add your own commands at
+approval gate as calling `wallet_send` directly). Add your own commands at
 `~/.bitcode/commands/` — they merge with the bundled set and win on name
 collisions.
 
@@ -141,52 +110,11 @@ Any OpenAI-compatible endpoint works. Add custom providers in
 
 ## Tools
 
-Coding: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`. All
-paths resolve against the current working directory.
+The agent can call: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`.
+All paths resolve against the current working directory.
 
-Bitcoin: chain/mempool/fees (`btc_fees`, `btc_mempool`, `btc_tx`,
-`btc_address`, `btc_block`), a full-node RPC bridge (`bitcoin_rpc`), and an
-HD wallet (`wallet_create`, `wallet_info`, `wallet_new_address`,
-`wallet_descriptor`, `wallet_send`, `btc_broadcast`).
-
-Liquid: read-only chain/mempool/asset tools (`liquid_fees`,
-`liquid_mempool`, `liquid_tx`, `liquid_address`, `liquid_block`,
-`liquid_asset`) against Blockstream's public Esplora. No wallet — Liquid
-uses confidential Elements transactions, which the Bitcoin-only signing
-library here can't produce; adding that would mean a new dependency, so
-it's out of scope by design.
-
-Lightning: `ln_decode_invoice` (BOLT11 decoding, pure JS, no node needed —
-`src/lightning/bolt11.mjs`) always works. With `lightning.lndRestUrl` set
-in config (see below): `ln_info`, `ln_balance`, `ln_channels`,
-`ln_invoice_create`, `ln_invoice_pay`, and — if `tapdRestUrl` is also set —
-`taproot_asset_balance`/`taproot_asset_send` for Taproot Assets (the
-protocol Tether's USD₮ runs on over Lightning).
-
-Mutating tools (`bash`, `write_file`, `edit_file`, `wallet_send`,
-`ln_invoice_pay`, `taproot_asset_send`, ...) prompt for approval in
-interactive mode. Skip prompts with `--yolo`. One-shot mode (`-p`)
-auto-approves.
-
-### Lightning / Taproot Assets config
-
-Entirely optional — omit `lightning` from config and only
-`ln_decode_invoice` is available. To connect a node you control:
-
-```json
-{
-  "lightning": {
-    "lndRestUrl": "https://127.0.0.1:8080",
-    "lndMacaroonPath": "~/.lnd/data/chain/bitcoin/signet/admin.macaroon",
-    "tlsCertPath": "~/.lnd/tls.cert",
-    "tapdRestUrl": "https://127.0.0.1:8089",
-    "tapdMacaroonPath": "~/.tapd/data/signet/admin.macaroon"
-  }
-}
-```
-
-`tlsCertPath` pins the node's own certificate rather than disabling TLS
-verification. See `/ln:node-install` for a guided setup.
+Mutating tools (`bash`, `write_file`, `edit_file`) prompt for approval in
+interactive mode. Skip prompts with `--yolo`. One-shot mode (`-p`) auto-approves.
 
 ## Design system
 
@@ -218,7 +146,6 @@ or `NO_COLOR` is set.
 bitcode.mjs        entry point
 src/config.mjs     provider registry + model resolution
 src/providers.mjs  Anthropic + OpenAI-compatible adapters (SSE streaming over node:http)
-src/http.mjs       shared zero-dependency HTTP(S) client (Esplora, RPC, LND, tapd)
 src/tools.mjs      tool definitions + runners
 src/agent.mjs      the tool-calling loop
 src/theme.mjs      design-system tokens → terminal theme (banner, pills, timeline)
@@ -227,11 +154,7 @@ src/markdown-config.mjs  shared *.md + frontmatter loader
 src/commands.mjs   custom /commands (bundled commands/ + ~/.bitcode/commands/)
 src/agents.mjs     subagent personas (~/.bitcode/agents/*.md)
 src/mentions.mjs   @path file-reference expansion
-src/bitcoin/       chain/mempool/RPC/wallet (BIP84, PSBT)
-src/liquid/        read-only Liquid sidechain tools (reuses bitcoin/esplora.mjs)
-src/lightning/     BOLT11 decoder, LND + Taproot Assets REST clients
 commands/btc/      bundled Bitcoin-vertical commands (/btc:fees, /btc:send, ...)
-commands/ln/       bundled Lightning-vertical commands (/ln:node-install)
 ```
 
 The loop: send messages → if the model returns tool calls, run them and feed

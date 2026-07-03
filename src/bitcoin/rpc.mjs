@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { httpPost } from "../http.mjs";
+import { httpPost } from "./http.mjs";
 
 function cookiePath(ctx) {
   return ctx.rpc?.cookieFile || path.join(homedir(), ".bitcoin", ctx.cookieDir, ".cookie");
