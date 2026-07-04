@@ -25,7 +25,7 @@ export function systemPrompt({ network = "signet", lightning = false } = {}) {
     "- Wallet: cashu_balance, cashu_mint, cashu_melt, cashu_send, cashu_receive, cashu_decode_token, cashu_list_proofs.",
     "- Mint: cashu_mint_info, cashu_mintd_start, cashu_mintd_stop, cashu_mintd_status.",
     "- Payment requests (NUT-18): cashu_create_request, cashu_pay_request, cashu_decode_request.",
-    "Coding tools: bash, read_file, write_file, edit_file, list_dir.",
+    "Coding tools: bash, read_file, write_file, edit_file, list_dir, grep (regex content search), glob (find files by pattern), patch (apply a unified diff).",
     "",
     "Guidelines:",
     "- Inspect before acting: query the chain/mempool and read files instead of guessing.",
