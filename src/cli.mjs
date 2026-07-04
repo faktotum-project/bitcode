@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { loadConfig, resolveModel, allProviders, configPath, configGet, configSet, saveConfig } from "./config.mjs";
 import { providerRows, providerAdd } from "./settings.mjs";
-import { runAgent, systemPrompt } from "./agent.mjs";
+import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { buildTools } from "./tools.mjs";
 import { resolveNetwork } from "./bitcoin/network.mjs";
 import { wallet } from "./bitcoin/wallet.mjs";
@@ -183,12 +183,14 @@ export async function main(argv) {
   const modelRef = { current: target };
   const tools = buildTools(config, { modelRef, agents, system });
 
+  const limits = agentLimits(config);
+
   if (opts.prompt) {
-    await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt });
+    await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits });
     return;
   }
   const commands = loadCommands();
-  await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume });
+  await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits });
 }
 
 // ---- wallet command (human-only; never exposed as an agent tool) ----
@@ -293,16 +295,16 @@ function buildHooks({ approve } = {}) {
 
 // ---- one-shot ----
 
-async function oneShot({ target, system, tools, network, prompt }) {
+async function oneShot({ target, system, tools, network, prompt, limits }) {
   out(t.wordmark(target.spec, network));
   out("");
   const messages = [{ role: "user", content: expandMentions(prompt) }];
-  await runAgent({ target, system, messages, tools, hooks: buildHooks() });
+  await runAgent({ target, system, messages, tools, hooks: buildHooks(), limits });
 }
 
 // ---- interactive REPL ----
 
-async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume }) {
+async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits }) {
   const cwd = process.cwd();
   const messages = [];
   let active = target;
@@ -392,7 +394,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
 
     messages.push({ role: "user", content: expandMentions(input) });
     try {
-      await runAgent({ target: active, system, messages, tools, hooks: buildHooks({ approve }) });
+      await runAgent({ target: active, system, messages, tools, hooks: buildHooks({ approve }), limits });
     } catch (err) {
       out(t.danger(`error: ${err.message}`));
     }

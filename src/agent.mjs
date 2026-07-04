@@ -38,63 +38,130 @@ export function systemPrompt({ network = "signet", lightning = false } = {}) {
   ].join("\n");
 }
 
+// Per-run limits. Defaults preserve historical behaviour (50 steps, unbounded
+// tool calls, no retries). Override via config.agent.* → agentLimits().
+export const DEFAULT_LIMITS = {
+  maxSteps: MAX_STEPS,
+  maxToolCallsPerTurn: Infinity,
+  maxTotalToolCalls: Infinity,
+  toolRetryAttempts: 0,
+  toolRetryDelay: 500,
+};
+
+export function agentLimits(config = {}) {
+  const a = config.agent || {};
+  const pick = (v, d) => (typeof v === "number" && v >= 0 ? v : d);
+  return {
+    maxSteps: pick(a.maxSteps, DEFAULT_LIMITS.maxSteps),
+    maxToolCallsPerTurn: pick(a.maxToolCallsPerTurn, DEFAULT_LIMITS.maxToolCallsPerTurn),
+    maxTotalToolCalls: pick(a.maxTotalToolCalls, DEFAULT_LIMITS.maxTotalToolCalls),
+    toolRetryAttempts: pick(a.toolRetryAttempts, DEFAULT_LIMITS.toolRetryAttempts),
+    toolRetryDelay: pick(a.toolRetryDelay, DEFAULT_LIMITS.toolRetryDelay),
+  };
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 // Drives one turn (one user request) to completion.
 //   target  : resolved model from config.resolveModel()
 //   messages: canonical message array (mutated in place; carries history)
 //   system  : system prompt string
-//   hooks   : { onAssistantText, onToolStart, onToolEnd, approve }
+//   hooks   : { onDelta, onAssistantEnd, onToolStart, onToolEnd, approve }
+//   limits  : from agentLimits(config)
+//   fallbacks: optional [target, …] tried in order if the model call fails
 // Returns the final assistant text.
-export async function runAgent({ target, messages, system, tools, hooks = {} }) {
+export async function runAgent({ target, messages, system, tools, hooks = {}, limits = DEFAULT_LIMITS, fallbacks = [] }) {
   const schemas = tools.map((t) => ({
     name: t.name,
     description: t.description,
     parameters: t.parameters,
   }));
 
-  for (let step = 0; step < MAX_STEPS; step++) {
-    const { text, toolCalls } = await callModel({
-      provider: target.provider,
-      model: target.model,
-      apiKey: target.apiKey,
-      system,
-      messages,
-      tools: schemas,
-      onDelta: hooks.onDelta,
-    });
+  let totalToolCalls = 0;
+
+  for (let step = 0; step < limits.maxSteps; step++) {
+    const { text, toolCalls } = await callWithFallback(
+      [target, ...fallbacks],
+      { system, messages, tools: schemas, onDelta: hooks.onDelta },
+      hooks,
+    );
 
     messages.push({ role: "assistant", content: text || "", toolCalls });
     hooks.onAssistantEnd?.(text);
 
     if (!toolCalls || toolCalls.length === 0) return text;
 
-    for (const tc of toolCalls) {
-      hooks.onToolStart?.(tc);
-      const result = await executeTool(tc, tools, hooks);
-      hooks.onToolEnd?.(tc, result);
-      messages.push({
-        role: "tool",
-        toolCallId: tc.id,
-        name: tc.name,
-        content: result,
-      });
+    // Phase 1 — resolve each call: budget check, then interactive approval
+    // (sequential, so two prompts never race for stdin).
+    const decisions = [];
+    for (let k = 0; k < toolCalls.length; k++) {
+      const tc = toolCalls[k];
+      const overBudget = k >= limits.maxToolCallsPerTurn || totalToolCalls >= limits.maxTotalToolCalls;
+      const tool = overBudget ? null : tools.find((t) => t.name === tc.name);
+      let approved = true;
+      if (!overBudget) {
+        totalToolCalls++;
+        if (tool?.mutating && hooks.approve) approved = await hooks.approve(tc, tool);
+      }
+      decisions.push({ tc, tool, approved, overBudget });
     }
+
+    // Phase 2 — announce all (ordered), so the reasoning log stays readable.
+    for (const d of decisions) hooks.onToolStart?.(d.tc);
+
+    // Phase 3 — run independent calls concurrently.
+    const results = await Promise.all(
+      decisions.map((d) => {
+        if (d.overBudget) return Promise.resolve("ERROR: tool budget exceeded for this turn");
+        if (!d.approved) return Promise.resolve("Tool call denied by the user.");
+        return runToolWithRetry(d.tool, d.tc, limits);
+      }),
+    );
+
+    // Phase 4 — report + append results in original order (tool_result must
+    // pair with each tool_use the model emitted).
+    decisions.forEach((d, i) => {
+      hooks.onToolEnd?.(d.tc, results[i]);
+      messages.push({ role: "tool", toolCallId: d.tc.id, name: d.tc.name, content: results[i] });
+    });
   }
 
-  return `[stopped: reached ${MAX_STEPS} steps without a final answer]`;
+  return `[stopped: reached ${limits.maxSteps} steps without a final answer]`;
 }
 
-async function executeTool(tc, tools, hooks) {
-  const tool = tools.find((t) => t.name === tc.name);
+// Try each target in turn; the first that returns wins. A failure falls through
+// to the next (e.g. cloud provider down → local model). Throws the last error
+// if every target fails.
+async function callWithFallback(targets, req, hooks) {
+  let lastErr;
+  for (let i = 0; i < targets.length; i++) {
+    const target = targets[i];
+    try {
+      return await callModel({
+        provider: target.provider,
+        model: target.model,
+        apiKey: target.apiKey,
+        ...req,
+      });
+    } catch (err) {
+      lastErr = err;
+      if (i < targets.length - 1) hooks.onFallback?.(target, targets[i + 1], err);
+    }
+  }
+  throw lastErr;
+}
+
+async function runToolWithRetry(tool, tc, limits) {
   if (!tool) return `ERROR: unknown tool "${tc.name}"`;
-
-  if (tool.mutating && hooks.approve) {
-    const ok = await hooks.approve(tc, tool);
-    if (!ok) return "Tool call denied by the user.";
+  const attempts = Math.max(0, Number(limits.toolRetryAttempts) || 0);
+  let lastErr;
+  for (let a = 0; a <= attempts; a++) {
+    try {
+      return String(await tool.run(tc.args || {}));
+    } catch (err) {
+      lastErr = err;
+      if (a < attempts) await sleep(limits.toolRetryDelay * Math.pow(2, a));
+    }
   }
-
-  try {
-    return String(await tool.run(tc.args || {}));
-  } catch (err) {
-    return `ERROR: ${err?.message || String(err)}`;
-  }
+  return `ERROR: ${lastErr?.message || String(lastErr)}`;
 }
