@@ -140,19 +140,35 @@ function withRaw(handler) {
   };
 }
 
-function fallbackLine(prompt) {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: stdin, output: stdout });
-    let answered = false;
-    rl.question(prompt, (ans) => {
-      answered = true;
-      rl.close();
-      resolve(ans);
-    });
-    rl.on("close", () => {
-      if (!answered) resolve(null);
-    });
+// Non-TTY fallback (pipes, scripts, CI). A single persistent readline interface
+// serves every readLine/question/readSecret call, so multi-line piped input is
+// consumed line by line without losing buffered data between calls. Resolves to
+// null once stdin closes (EOF).
+let sharedRL = null;
+let rlClosed = false;
+const lineBuffer = [];
+const lineWaiters = [];
+
+function ensureRL() {
+  if (sharedRL || rlClosed) return;
+  sharedRL = readline.createInterface({ input: stdin });
+  sharedRL.on("line", (line) => {
+    const w = lineWaiters.shift();
+    if (w) w(line);
+    else lineBuffer.push(line);
   });
+  sharedRL.on("close", () => {
+    rlClosed = true;
+    while (lineWaiters.length) lineWaiters.shift()(null);
+  });
+}
+
+function fallbackLine(prompt) {
+  if (prompt) stdout.write(prompt);
+  ensureRL();
+  if (lineBuffer.length) return Promise.resolve(lineBuffer.shift());
+  if (rlClosed) return Promise.resolve(null);
+  return new Promise((resolve) => lineWaiters.push(resolve));
 }
 
 // ---- interactive line editor with dropdown ----

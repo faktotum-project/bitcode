@@ -2,7 +2,7 @@
 // closing the terminal (or the power going out) doesn't lose the history.
 // One-shot mode (-p) never touches this module — it stays ephemeral.
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -78,5 +78,35 @@ export function saveSession(cwd, { id, model, network, messages, name }) {
     name: name || null,
     messages,
   };
-  writeFileSync(sessionFile(cwd, id), JSON.stringify(payload, null, 2));
+  // Atomic write: a Ctrl+C mid-write must not corrupt an existing session.
+  const file = sessionFile(cwd, id);
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(payload, null, 2));
+  renameSync(tmp, file);
+}
+
+// Serialize a saved session to a portable transcript. format: "md" | "json".
+export function exportSession(cwd, id, format = "md") {
+  const s = loadSession(cwd, id);
+  if (format === "json") return JSON.stringify(s, null, 2);
+
+  const lines = [`# bitcode session — ${s.id}`, ""];
+  if (s.name) lines.push(`**${s.name}**`, "");
+  if (s.model) lines.push(`- model: \`${s.model}\``);
+  if (s.network) lines.push(`- network: ${s.network}`);
+  lines.push("", "---", "");
+  for (const m of s.messages) {
+    if (m.role === "user") {
+      lines.push("## user", "", m.content || "", "");
+    } else if (m.role === "assistant") {
+      lines.push("## assistant", "");
+      if (m.content) lines.push(m.content, "");
+      for (const tc of m.toolCalls || []) {
+        lines.push("```", `→ ${tc.name}(${JSON.stringify(tc.args ?? {})})`, "```", "");
+      }
+    } else if (m.role === "tool") {
+      lines.push(`> **${m.name}**`, "", "```", String(m.content ?? "").slice(0, 4000), "```", "");
+    }
+  }
+  return lines.join("\n");
 }

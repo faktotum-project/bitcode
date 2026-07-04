@@ -8,7 +8,7 @@
 //   3. config file "model" field (~/.bitcode/config.json)
 //   4. built-in fallback
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -64,10 +64,47 @@ export function loadConfig() {
   }
 }
 
-// Merge built-in providers with any user-defined ones. User entries override
-// or extend built-ins by key.
+// Atomic write of the whole config object, restricted to the owner (0600)
+// because it may hold API keys. Returns the path written.
+export function saveConfig(config) {
+  const file = configPath();
+  mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(config, null, 2));
+  try {
+    chmodSync(tmp, 0o600);
+  } catch {
+    // best-effort on platforms without POSIX perms
+  }
+  renameSync(tmp, file);
+  return file;
+}
+
+// Read/write a nested value by dot-path, e.g. "providers.anthropic.apiKey".
+export function configGet(config, key) {
+  return key.split(".").reduce((o, k) => (o == null ? undefined : o[k]), config);
+}
+
+export function configSet(config, key, value) {
+  const parts = key.split(".");
+  let o = config;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (o[parts[i]] == null || typeof o[parts[i]] !== "object") o[parts[i]] = {};
+    o = o[parts[i]];
+  }
+  o[parts[parts.length - 1]] = value;
+  return config;
+}
+
+// Merge built-in providers with any user-defined ones. Merge is per-provider
+// (deep by one level) so a user entry that only sets, say, `apiKey` layers on
+// top of a built-in without discarding its api/baseURL/keyEnv/defaultModel.
 export function allProviders(config) {
-  return { ...BUILTIN_PROVIDERS, ...(config.providers || {}) };
+  const merged = { ...BUILTIN_PROVIDERS };
+  for (const [name, p] of Object.entries(config.providers || {})) {
+    merged[name] = { ...(merged[name] || {}), ...p };
+  }
+  return merged;
 }
 
 // Resolve a model spec into a concrete target the providers module can call.
@@ -91,7 +128,8 @@ export function resolveModel({ cliModel, config }) {
     throw new Error(`no model given and provider "${providerName}" has no defaultModel`);
   }
 
-  const apiKey = provider.keyEnv ? process.env[provider.keyEnv] : undefined;
+  // Prefer an env var (never persisted); fall back to a key saved in config.
+  const apiKey = (provider.keyEnv ? process.env[provider.keyEnv] : undefined) || provider.apiKey;
 
   return {
     spec: `${providerName}/${model}`,
