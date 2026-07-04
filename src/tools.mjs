@@ -11,6 +11,7 @@ import { bitcoinTools } from "./bitcoin/tools.mjs";
 import { liquidTools } from "./liquid/tools.mjs";
 import { lightningTools, bolt11Tool } from "./lightning/tools.mjs";
 import { cashuTools } from "./cashu/tools.mjs";
+import { coinjoinTools } from "./coinjoin/tools.mjs";
 import { runAgent } from "./agent.mjs";
 import { findAgent } from "./agents.mjs";
 
@@ -193,8 +194,9 @@ function subagentTool({ modelRef, agents, system, realTools }) {
 // to the network resolved from config, Liquid tools (always available,
 // read-only, public infra), Lightning tools (only if config.lightning is
 // set — no sensible public default exists for a node you don't control),
-// Cashu ecash tools (when mint URL is available), and (given a modelRef +
-// agents) the subagent delegation tool.
+// Cashu ecash tools (when mint URL is available), CoinJoin temp-wallet tools
+// (isolated wallet lifecycle for /btc:coinjoin, always available), and
+// (given a modelRef + agents) the subagent delegation tool.
 export function buildTools(config = {}, { modelRef, agents = [], system = "", lightning = null } = {}) {
   const realTools = [
     ...GENERIC_TOOLS,
@@ -203,6 +205,7 @@ export function buildTools(config = {}, { modelRef, agents = [], system = "", li
     bolt11Tool,
     ...(lightning ? lightningTools(lightning) : []),
     ...cashuTools(config),
+    ...coinjoinTools(config),
   ];
   if (!modelRef) return realTools;
   return [...realTools, subagentTool({ modelRef, agents, system, realTools })];

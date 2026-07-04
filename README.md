@@ -57,11 +57,13 @@ Bundled Bitcoin commands (`commands/btc/*.md`, shipped with bitcode) cover
 common vertical workflows out of the box: `/btc:fees`, `/btc:mempool`,
 `/btc:block [height|hash]`, `/btc:tx <txid>`, `/btc:address <addr>`,
 `/btc:balance`, `/btc:receive`, `/btc:descriptor` (public output
-descriptor, safe to share), and `/btc:send <address> <amount>` (checks fee
+descriptor, safe to share), `/btc:send <address> <amount>` (checks fee
 rates and asks for explicit confirmation before broadcasting — same
-approval gate as calling `wallet_send` directly). Add your own commands at
-`~/.bitcode/commands/` — they merge with the bundled set and win on name
-collisions.
+approval gate as calling `wallet_send` directly), and `/btc:coinjoin
+<address> <amount-btc>` (isolated temp wallet, mandatory risk disclosure —
+see `update_cj.md`; actual JoinMarket round execution is not implemented
+yet). Add your own commands at `~/.bitcode/commands/` — they merge with the
+bundled set and win on name collisions.
 
 `@path` in a message is expanded when you hit enter: if it resolves to a
 real file, its content is appended to your message before it's sent to the

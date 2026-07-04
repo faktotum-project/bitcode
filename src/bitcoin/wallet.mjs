@@ -125,6 +125,38 @@ export function wallet(ctx) {
     };
   }
 
+  // Coin selection for a full sweep: every UTXO in, one output out, no
+  // change (used by e.g. the CoinJoin temp wallet, which must never leave
+  // residual UTXOs behind).
+  async function planSweep({ to, feeRate, gap }) {
+    const rate = Number(feeRate);
+    const utxos = await scanUtxos(gap);
+    if (!utxos.length) throw new Error("no funds to sweep");
+    const inSum = utxos.reduce((s, u) => s + u.value, 0n);
+    const fee = BigInt(Math.ceil(vbytes(utxos.length, 1) * rate));
+    if (inSum <= fee) {
+      throw new Error(`insufficient funds to sweep: have ${inSum} sats, fee ${fee} sats`);
+    }
+    const amount = inSum - fee;
+    const tx = new btc.Transaction();
+    for (const u of utxos) {
+      tx.addInput({ txid: hexToBytes(u.txid), index: u.vout, witnessUtxo: { script: u.script, amount: u.value } });
+    }
+    tx.addOutputAddress(to, amount, ctx.net);
+    return {
+      tx,
+      summary: {
+        network: ctx.name,
+        to,
+        amountSats: Number(amount),
+        feeSats: Number(fee),
+        feeRate: rate,
+        inputs: utxos.length,
+        changeSats: 0,
+      },
+    };
+  }
+
   return {
     file,
     exists: () => existsSync(file),
@@ -212,6 +244,20 @@ export function wallet(ctx) {
     // Convenience: plan → sign → optionally broadcast in one call.
     async send({ to, amountSats, feeRate, broadcast = false, gap = 20 }) {
       const built = await this.createPsbt({ to, amountSats, feeRate, gap });
+      const signed = await this.signPsbt({ psbt: built.psbt, broadcast, gap });
+      return { ...built, ...signed, psbt: undefined };
+    },
+
+    // Build an UNSIGNED sweep transaction: every UTXO in, `to` gets it all
+    // minus fee, no change output.
+    async createSweepPsbt({ to, feeRate, gap = 20 }) {
+      const { tx, summary } = await planSweep({ to, feeRate, gap });
+      return { psbt: b64(tx.toPSBT()), ...summary };
+    },
+
+    // Convenience: sweep-plan → sign → optionally broadcast in one call.
+    async sweep({ to, feeRate, broadcast = false, gap = 20 }) {
+      const built = await this.createSweepPsbt({ to, feeRate, gap });
       const signed = await this.signPsbt({ psbt: built.psbt, broadcast, gap });
       return { ...built, ...signed, psbt: undefined };
     },
