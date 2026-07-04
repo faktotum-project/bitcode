@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { loadConfig, resolveModel, allProviders, configPath, configGet, configSet, saveConfig } from "./config.mjs";
 import { providerRows, providerAdd } from "./settings.mjs";
+import { providerHealth } from "./providers.mjs";
 import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { buildTools } from "./tools.mjs";
 import { resolveNetwork } from "./bitcoin/network.mjs";
@@ -118,7 +119,7 @@ Interactive slash commands:
   /models              pick a model interactively from a numbered list
   /setting             provider key status + active model + config path
   /config <sub>        get [key] · set <key> <value>  (persisted, chmod 600)
-  /provider <sub>      add <name> (masked key entry) · list
+  /provider <sub>      add <name> (masked key entry) · list · health
   /session <sub>       save [name] · load <id> · list · export [md|json]
   /subagent [name] [prompt]
                        list personas (~/.bitcode/agents/*.md), or delegate
@@ -184,13 +185,14 @@ export async function main(argv) {
   const tools = buildTools(config, { modelRef, agents, system });
 
   const limits = agentLimits(config);
+  const fallbacks = resolveFallbacks(config);
 
   if (opts.prompt) {
-    await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits });
+    await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits, fallbacks });
     return;
   }
   const commands = loadCommands();
-  await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits });
+  await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks });
 }
 
 // ---- wallet command (human-only; never exposed as an agent tool) ----
@@ -244,6 +246,22 @@ function providerLines(config) {
   });
 }
 
+// config.agent.fallback = ["ollama/gpt-oss:20b", …] → resolved targets tried
+// in order when the active model's call fails. Unknown specs are skipped.
+function resolveFallbacks(config) {
+  const specs = config.agent?.fallback;
+  if (!Array.isArray(specs)) return [];
+  const out = [];
+  for (const s of specs) {
+    try {
+      out.push(resolveModel({ cliModel: s, config }));
+    } catch {
+      // skip an unresolvable fallback rather than failing startup
+    }
+  }
+  return out;
+}
+
 function printModels(config) {
   out(t.label("Providers"));
   for (const { line } of providerLines(config)) out(`  ${line}`);
@@ -295,16 +313,16 @@ function buildHooks({ approve } = {}) {
 
 // ---- one-shot ----
 
-async function oneShot({ target, system, tools, network, prompt, limits }) {
+async function oneShot({ target, system, tools, network, prompt, limits, fallbacks }) {
   out(t.wordmark(target.spec, network));
   out("");
   const messages = [{ role: "user", content: expandMentions(prompt) }];
-  await runAgent({ target, system, messages, tools, hooks: buildHooks(), limits });
+  await runAgent({ target, system, messages, tools, hooks: buildHooks(), limits, fallbacks });
 }
 
 // ---- interactive REPL ----
 
-async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits }) {
+async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks }) {
   const cwd = process.cwd();
   const messages = [];
   let active = target;
@@ -394,7 +412,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
 
     messages.push({ role: "user", content: expandMentions(input) });
     try {
-      await runAgent({ target: active, system, messages, tools, hooks: buildHooks({ approve }), limits });
+      await runAgent({ target: active, system, messages, tools, hooks: buildHooks({ approve }), limits, fallbacks });
     } catch (err) {
       out(t.danger(`error: ${err.message}`));
     }
@@ -552,11 +570,20 @@ async function handleSlash(input, ctx) {
         }
         return;
       }
+      if (sub === "health") {
+        const providers = allProviders(ctx.config);
+        for (const [name, p] of Object.entries(providers)) {
+          const apiKey = (p.keyEnv ? process.env[p.keyEnv] : undefined) || p.apiKey;
+          const { ok, detail } = await providerHealth(p, apiKey);
+          out(`  ${t.accent(name.padEnd(12))} ${ok ? t.ok("● " + detail) : t.danger("● " + detail)}`);
+        }
+        return;
+      }
       if (!sub || sub === "list") {
         for (const { line } of providerRows(ctx.config)) out("  " + line);
         return;
       }
-      out(t.danger("usage: /provider add <name> | /provider list"));
+      out(t.danger("usage: /provider add <name> | list | health"));
       return;
     }
     case "session": {

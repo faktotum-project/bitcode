@@ -109,8 +109,11 @@ export function allProviders(config) {
 
 // Resolve a model spec into a concrete target the providers module can call.
 export function resolveModel({ cliModel, config }) {
-  const spec =
-    cliModel || process.env.BITCODE_MODEL || config.model || FALLBACK_MODEL;
+  let spec = cliModel || process.env.BITCODE_MODEL || config.model || FALLBACK_MODEL;
+
+  // Model aliases: config.aliases = { sonnet: "anthropic/claude-sonnet-4-6" }.
+  const aliases = config.aliases || {};
+  if (aliases[spec]) spec = aliases[spec];
 
   const slash = spec.indexOf("/");
   const providerName = slash === -1 ? spec : spec.slice(0, slash);

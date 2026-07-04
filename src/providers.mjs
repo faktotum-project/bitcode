@@ -62,20 +62,85 @@ function openStream(urlString, headers, body) {
         if (res.statusCode < 200 || res.statusCode >= 300) {
           let errBody = "";
           for await (const c of res) errBody += c;
-          reject(new Error(`${urlString} -> HTTP ${res.statusCode}: ${errBody.slice(0, 800)}`));
+          const err = new Error(`${urlString} -> HTTP ${res.statusCode}: ${errBody.slice(0, 800)}`);
+          err.statusCode = res.statusCode;
+          const ra = res.headers["retry-after"];
+          if (ra) {
+            const ms = /^\d+$/.test(ra) ? Number(ra) * 1000 : Date.parse(ra) - Date.now();
+            if (ms > 0) err.retryAfter = ms;
+          }
+          reject(err);
           return;
         }
         resolve(res);
       },
     );
-    req.on("error", (err) =>
-      reject(new Error(`network error calling ${urlString}: ${err.code || err.message}`)),
-    );
+    req.on("error", (err) => {
+      const e = new Error(`network error calling ${urlString}: ${err.code || err.message}`);
+      e.code = err.code;
+      reject(e);
+    });
     // Allow slow local model loads; guard only against a fully dead socket.
     req.setTimeout(REQUEST_TIMEOUT_MS, () =>
       req.destroy(new Error(`request timed out after ${REQUEST_TIMEOUT_MS}ms`)),
     );
     req.write(payload);
+    req.end();
+  });
+}
+
+// Retry openStream on transient failures (rate limits, gateway/5xx, dropped
+// sockets) with exponential backoff, honouring a Retry-After header when the
+// server sends one. Non-retryable errors (4xx other than 429, bad key) throw
+// immediately.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const RETRYABLE_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "EPIPE"]);
+const MAX_HTTP_RETRIES = 3;
+
+async function openStreamRetry(urlString, headers, body) {
+  let lastErr;
+  for (let a = 0; a <= MAX_HTTP_RETRIES; a++) {
+    try {
+      return await openStream(urlString, headers, body);
+    } catch (err) {
+      lastErr = err;
+      const retryable = RETRYABLE_STATUS.has(err.statusCode) || RETRYABLE_CODES.has(err.code);
+      if (!retryable || a === MAX_HTTP_RETRIES) throw err;
+      const wait = err.retryAfter && err.retryAfter > 0 ? err.retryAfter : Math.min(500 * 2 ** a, 8000);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
+}
+
+// Lightweight, token-free reachability probe for /provider health.
+export function providerHealth(provider, apiKey, timeoutMs = 5000) {
+  const target =
+    provider.api === "openai" ? `${provider.baseURL}/models` : provider.baseURL;
+  return new Promise((resolve) => {
+    let u;
+    try {
+      u = new URL(target);
+    } catch {
+      return resolve({ ok: false, detail: "bad baseURL" });
+    }
+    const lib = u.protocol === "https:" ? https : http;
+    const headers = {};
+    if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+    if (provider.api === "anthropic" && apiKey) {
+      headers["x-api-key"] = apiKey;
+      headers["anthropic-version"] = ANTHROPIC_VERSION;
+    }
+    const req = lib.request(
+      { method: "GET", hostname: u.hostname, port: u.port || (u.protocol === "https:" ? 443 : 80), path: u.pathname + u.search, headers },
+      (res) => {
+        res.resume();
+        const ok = res.statusCode < 500;
+        resolve({ ok, detail: `HTTP ${res.statusCode}${apiKey ? "" : " (no key)"}` });
+      },
+    );
+    req.on("error", (err) => resolve({ ok: false, detail: err.code || err.message }));
+    req.setTimeout(timeoutMs, () => req.destroy(Object.assign(new Error("timeout"), { code: "ETIMEDOUT" })));
     req.end();
   });
 }
@@ -136,7 +201,7 @@ async function callOpenAI({ provider, model, apiKey, system, messages, tools, on
     body.tool_choice = "auto";
   }
 
-  const res = await openStream(`${provider.baseURL}/chat/completions`, headers, body);
+  const res = await openStreamRetry(`${provider.baseURL}/chat/completions`, headers, body);
 
   let text = "";
   const calls = []; // accumulated by streamed tool_call index
@@ -230,7 +295,7 @@ async function callAnthropic({ provider, model, apiKey, system, messages, tools,
     }));
   }
 
-  const res = await openStream(`${provider.baseURL}/v1/messages`, headers, body);
+  const res = await openStreamRetry(`${provider.baseURL}/v1/messages`, headers, body);
 
   let text = "";
   const blocks = []; // by content-block index
