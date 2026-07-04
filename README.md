@@ -44,6 +44,17 @@ bitcode models                            # list providers + default models
                 sub-task to one and print just its final answer
 /tools          list tools
 /reset          clear conversation history
+/session list|save|load|export
+                manage conversation sessions (list saved, save current,
+                load a checkpoint, export as markdown/JSON)
+/config get|set [path] [value]
+                read or set configuration (dot-path, e.g.
+                /config get agent.maxToolCallsPerTurn)
+/setting add|list
+                configure providers and API keys
+/provider add|list|health
+                manage providers and check their health
+/doctor         diagnose the agent (version, node, config, tools, plugins)
 /exit           quit
 ```
 
@@ -106,9 +117,24 @@ Any OpenAI-compatible endpoint works. Add custom providers in
       "keyEnv": "MY_KEY",
       "defaultModel": "some-model"
     }
+  },
+  "aliases": {
+    "claude": "anthropic/claude-sonnet-4-6",
+    "gpt": "openai/gpt-5.5"
+  },
+  "agent": {
+    "fallback": ["anthropic", "openai", "openrouter"]
   }
 }
 ```
+
+**Fallback chain**: set `agent.fallback` to an ordered list of provider names.
+If the primary model (from `-m`, env, or config) fails with a retryable error
+(429, 5xx), the agent tries the next provider in the chain. Check provider
+health with `/provider health` or `bitcode provider health`.
+
+**Provider health probes**: each provider endpoint is tested with a timeout of
+5s. Probes are non-blocking (they run in the background) and surface via `/doctor`.
 
 ## Tools
 
@@ -117,6 +143,95 @@ All paths resolve against the current working directory.
 
 Mutating tools (`bash`, `write_file`, `edit_file`) prompt for approval in
 interactive mode. Skip prompts with `--yolo`. One-shot mode (`-p`) auto-approves.
+
+**Parallel execution & budgets**: tool calls within a single turn are executed
+in parallel. Configure budget limits in `~/.bitcode/config.json`:
+
+```json
+{
+  "agent": {
+    "maxToolCallsPerTurn": 10,
+    "maxTotalToolCalls": 50,
+    "maxRetries": 3
+  }
+}
+```
+
+- `maxToolCallsPerTurn`: max tool calls in a single model response (default 10).
+- `maxTotalToolCalls`: max tool calls across the entire session (default 50).
+- `maxRetries`: retry failed tool calls with exponential backoff (default 0).
+
+A tool call exceeding budget is rejected without being executed; the agent
+receives the rejection and can decide to stop or continue with other tasks.
+
+## Session Management
+
+Conversations are auto-saved to `~/.bitcode/sessions/` after each turn. Use
+slash commands to manage them:
+
+```bash
+/session list          # show all saved sessions
+/session save my-task  # save current session as "my-task"
+/session load my-task  # load a checkpoint
+/session export md     # export current session as markdown transcript
+/session export json   # export current session as JSON
+```
+
+Sessions include full message history, tool calls, and results — resume where
+you left off without losing context.
+
+## Extensibility
+
+### Plugins
+
+Drop `.mjs` files in `~/.bitcode/plugins/` to extend the agent:
+
+```javascript
+// ~/.bitcode/plugins/hello.mjs
+export default function ({ registerTool, on, EVENTS }) {
+  registerTool({
+    name: "greet",
+    description: "Say hello to someone",
+    parameters: {
+      type: "object",
+      properties: { name: { type: "string" } }
+    },
+    run: async ({ name }) => `Hello, ${name}!`
+  });
+
+  on("toolEnd", ({ tc, result }) => {
+    console.log(`Tool ${tc.name} returned: ${result}`);
+  });
+}
+```
+
+Plugins are loaded at startup. A plugin that throws is reported but doesn't
+halt the agent. The plugin API provides `registerTool`, `unregisterTool`,
+event listeners (`on`/`off`), and the full event list (`EVENTS`).
+
+### MCP (Model Context Protocol) Servers
+
+Connect to MCP servers (tool-bearing protocol servers) by configuring them in
+`~/.bitcode/config.json`:
+
+```json
+{
+  "mcp": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+    },
+    "postgres": {
+      "command": "node",
+      "args": ["/path/to/postgres-mcp-server.mjs"]
+    }
+  }
+}
+```
+
+Tools from each server are wrapped as `mcp_<server>_<tool>` and available to
+the agent just like built-in tools. MCP servers are spawned on demand and kept
+alive only while the agent is using them (so one-shot mode exits cleanly).
 
 ## Design system
 
@@ -146,21 +261,46 @@ or `NO_COLOR` is set.
 
 ```
 bitcode.mjs        entry point
-src/config.mjs     provider registry + model resolution
-src/providers.mjs  Anthropic + OpenAI-compatible adapters (SSE streaming over node:http)
-src/tools.mjs      tool definitions + runners
-src/agent.mjs      the tool-calling loop
+src/config.mjs     provider registry + model resolution + config I/O (atomic saves)
+src/providers.mjs  Anthropic + OpenAI-compatible adapters (SSE over node:http)
+                   + exponential backoff retry (429/5xx) + health probes
+src/tools.mjs      tool definitions + runners + registry (grep, glob, patch + builtins)
+src/agent.mjs      the tool-calling loop (parallel execution, budgets, retries)
 src/theme.mjs      design-system tokens → terminal theme (banner, pills, timeline)
 src/cli.mjs        arg parsing, REPL, one-shot, approval prompts
+src/session.mjs    conversation checkpoints (save/load/export)
+src/settings.mjs   provider configuration UI (password-masked input)
+src/hooks.mjs      event bus (toolStart, toolEnd, modelResponse, error, etc.)
+src/plugins.mjs    plugin loader (~/.bitcode/plugins/*.mjs)
+src/mcp.mjs        MCP (Model Context Protocol) stdio client + tool wrapper
 src/markdown-config.mjs  shared *.md + frontmatter loader
 src/commands.mjs   custom /commands (bundled commands/ + ~/.bitcode/commands/)
 src/agents.mjs     subagent personas (~/.bitcode/agents/*.md)
 src/mentions.mjs   @path file-reference expansion
 commands/btc/      bundled Bitcoin-vertical commands (/btc:fees, /btc:send, ...)
+tests/             node:test suite (27 tests covering all major modules)
 ```
 
-The loop: send messages → if the model returns tool calls, run them and feed
-results back → repeat until it returns a final text answer.
+The loop: send messages → if the model returns tool calls, run them in
+parallel and feed results back → repeat until it returns a final text answer.
+Each turn is gated by a user approval prompt (or auto-approved in one-shot mode)
+before any tool runs. Tools that fail are retried with exponential backoff
+(configurable); budget overages are rejected without execution.
+
+## Development
+
+Run tests with Node's built-in test runner:
+
+```bash
+npm test              # run all tests in tests/
+npm run lint          # syntax check all .mjs files (no external linter)
+```
+
+The test suite covers config merging, tool registry, session I/O, agent loop
+(parallel, budget, retry, fallback), provider retry logic, health probes, hooks,
+plugins, and MCP client. All tests use in-process mocks and are deterministic.
+
+GitHub Actions CI runs on every push: install (--ignore-scripts), lint, and test.
 
 ## Notes
 
@@ -169,3 +309,6 @@ results back → repeat until it returns a final text answer.
 - Local CPU-only models (e.g. a 20B on Ollama without a GPU) are slow on first
   load (minutes). Once warm they respond quickly. Use a smaller model or a
   cloud provider for snappier sessions.
+- Tool calls are executed in parallel, so I/O-bound operations (file reads,
+  network requests) can run concurrently. Approval gates are sequential
+  (user confirms once per turn), but tool execution is not.
