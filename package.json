@@ -11,6 +11,8 @@
   },
   "scripts": {
     "start": "node bitcode.mjs",
+    "test": "node --test",
+    "lint": "node scripts/lint.mjs",
     "build:cdk": "bash scripts/build-cdk.sh",
     "postinstall": "bash scripts/build-cdk.sh"
   },
