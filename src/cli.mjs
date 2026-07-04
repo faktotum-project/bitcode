@@ -8,8 +8,11 @@ import path from "node:path";
 import { loadConfig, resolveModel, allProviders, configPath, configGet, configSet, saveConfig } from "./config.mjs";
 import { providerRows, providerAdd } from "./settings.mjs";
 import { providerHealth } from "./providers.mjs";
+import { loadPlugins } from "./plugins.mjs";
+import { mcpTools } from "./mcp.mjs";
+import { emit } from "./hooks.mjs";
 import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
-import { buildTools } from "./tools.mjs";
+import { buildTools, registerTool } from "./tools.mjs";
 import { resolveNetwork } from "./bitcoin/network.mjs";
 import { wallet } from "./bitcoin/wallet.mjs";
 import { loadCommands, expandCommand } from "./commands.mjs";
@@ -63,6 +66,7 @@ const SLASH_COMMANDS = [
   { name: "setting", hint: "provider status & active model" },
   { name: "config", hint: "get · set config values", args: true },
   { name: "provider", hint: "add an API key · list providers", args: true },
+  { name: "doctor", hint: "config, provider, tools & plugin diagnostics" },
   { name: "session", hint: "save · load · list · export", args: true },
   { name: "subagent", hint: "delegate a sub-task to a persona", args: true },
   { name: "tools", hint: "list available tools" },
@@ -100,6 +104,7 @@ Usage:
   bitcode -p "<prompt>"              same as above (explicit)
   bitcode models                     list known providers and default models
   bitcode config                     print the config file path
+  bitcode doctor                     print a diagnostics report
   bitcode wallet seed                reveal the wallet's mnemonic (human only)
 
 Options:
@@ -149,7 +154,7 @@ function parseArgs(argv) {
     else if (a === "-p" || a === "--print") {
       opts.print = true;
       opts.prompt = argv[++i];
-    } else if (a === "models" || a === "config") opts.command = a;
+    } else if (a === "models" || a === "config" || a === "doctor") opts.command = a;
     else if (a === "wallet" && opts.command == null) {
       opts.command = "wallet";
       opts.walletSub = argv[++i] || null;
@@ -169,6 +174,11 @@ export async function main(argv) {
   if (opts.command === "config") return out(configPath());
   if (opts.command === "models") return printModels(config);
   if (opts.command === "wallet") return walletCommand(opts.walletSub, config);
+  if (opts.command === "doctor") {
+    const ext = await loadExtensions(config);
+    for (const line of doctorLines(config, { toolCount: buildTools(config, {}).length, ...ext })) out(line);
+    return;
+  }
 
   let target;
   try {
@@ -182,6 +192,7 @@ export async function main(argv) {
   const system = systemPrompt({ network: ctx.name });
   const agents = loadAgents();
   const modelRef = { current: target };
+  const ext = await loadExtensions(config); // plugins + MCP register their tools first
   const tools = buildTools(config, { modelRef, agents, system });
 
   const limits = agentLimits(config);
@@ -192,7 +203,7 @@ export async function main(argv) {
     return;
   }
   const commands = loadCommands();
-  await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks });
+  await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext });
 }
 
 // ---- wallet command (human-only; never exposed as an agent tool) ----
@@ -246,6 +257,37 @@ function providerLines(config) {
   });
 }
 
+// Load user extensions: plugins (~/.bitcode/plugins/*.mjs) and MCP servers
+// (config.mcp). Both register their tools into the shared registry so a later
+// buildTools() picks them up. Returns diagnostics for /doctor.
+async function loadExtensions(config) {
+  const plugins = await loadPlugins();
+  const { tools: mcp, servers: mcpServers } = await mcpTools(config);
+  for (const tool of mcp) registerTool(tool);
+  return { plugins, mcpServers };
+}
+
+// Render the /doctor and `bitcode doctor` diagnostic report as lines.
+function doctorLines(config, { toolCount, plugins = [], mcpServers = [] } = {}) {
+  const lines = [];
+  lines.push(t.label("bitcode doctor"));
+  lines.push(`  version   ${t.body("0.1.0")}`);
+  lines.push(`  node      ${t.body(process.version)}`);
+  lines.push(`  network   ${t.body(resolveNetwork(config).name)}`);
+  lines.push(`  config    ${t.faint(configPath())}`);
+  lines.push(t.label("Providers"));
+  for (const { line } of providerRows(config)) lines.push("  " + line);
+  lines.push(t.label("Tools"));
+  lines.push("  " + t.body(`${toolCount ?? "?"} available`));
+  lines.push(t.label("Plugins"));
+  if (!plugins.length) lines.push("  " + t.faint("none"));
+  else for (const p of plugins) lines.push("  " + (p.ok ? t.ok(p.name) : t.danger(`${p.name} — ${p.error}`)));
+  lines.push(t.label("MCP servers"));
+  if (!mcpServers.length) lines.push("  " + t.faint("none"));
+  else for (const s of mcpServers) lines.push("  " + (s.ok ? t.ok(`${s.name} (${s.tools} tools)`) : t.danger(`${s.name} — ${s.error}`)));
+  return lines;
+}
+
 // config.agent.fallback = ["ollama/gpt-oss:20b", …] → resolved targets tried
 // in order when the active model's call fails. Unknown specs are skipped.
 function resolveFallbacks(config) {
@@ -290,6 +332,7 @@ function buildHooks({ approve } = {}) {
     onDelta: (piece) => process.stdout.write(piece),
     onAssistantEnd: (text) => {
       if (text) out("");
+      emit("modelResponse", { text });
     },
     onToolStart: (tc) => {
       if (!reasoningOpen) {
@@ -298,14 +341,16 @@ function buildHooks({ approve } = {}) {
       }
       const st = t.stageForTool(tc.name);
       out("  " + t.pill(st.hex, st.name) + "  " + t.faint(previewArgs(tc)));
+      emit("toolStart", { tc });
     },
-    onToolEnd: (_tc, result) => {
+    onToolEnd: (tc, result) => {
       const isErr = result.startsWith("ERROR");
       const mark = isErr ? t.danger("✗") : t.ok("✓");
       const lines = result.split("\n");
       out("    " + mark + " " + t.body(clip(lines[0] ?? "", 100)));
       for (const l of lines.slice(1, 5)) out("      " + t.faint(clip(l, 100)));
       if (lines.length > 5) out("      " + t.faint("…"));
+      emit("toolEnd", { tc, result });
     },
     approve,
   };
@@ -322,7 +367,7 @@ async function oneShot({ target, system, tools, network, prompt, limits, fallbac
 
 // ---- interactive REPL ----
 
-async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks }) {
+async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks, ext = {} }) {
   const cwd = process.cwd();
   const messages = [];
   let active = target;
@@ -399,6 +444,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
           cwd,
           network,
           session,
+          ext,
           getActive: () => active,
           setActive: (x) => {
             active = x;
@@ -498,6 +544,17 @@ async function handleSlash(input, ctx) {
         out(t.danger(`error: ${err.message}`));
       }
       out(t.faint("— done —"));
+      return;
+    }
+    case "doctor": {
+      const ext = ctx.ext || {};
+      for (const line of doctorLines(ctx.config, {
+        toolCount: ctx.tools.length,
+        plugins: ext.plugins,
+        mcpServers: ext.mcpServers,
+      })) {
+        out(line);
+      }
       return;
     }
     case "setting":
@@ -667,7 +724,7 @@ async function handleSlash(input, ctx) {
       return;
     }
     case "help":
-      out(t.faint("/model [spec]  /models  /setting  /config <sub>  /provider <sub>  /session <sub>"));
+      out(t.faint("/model [spec]  /models  /setting  /config <sub>  /provider <sub>  /doctor  /session <sub>"));
       out(t.faint("/subagent [name] [prompt]  /tools  /reset  /exit"));
       if (ctx.commands.length) out(t.faint(`custom: ${ctx.commands.map((c) => "/" + c.name).join("  ")}`));
       return;
