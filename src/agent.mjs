@@ -21,6 +21,7 @@ export function systemPrompt({ network = "signet", lightning = false } = {}) {
       (lightning
         ? " Node connected: ln_info, ln_balance, ln_channels, ln_invoice_create, ln_invoice_pay, and (if tapd configured) taproot_asset_balance, taproot_asset_send."
         : " No Lightning node configured — ln_info/ln_balance/ln_invoice_* etc. are unavailable until config.lightning.lndRestUrl is set."),
+    "- Wavelength (Lightning Labs' self-custodial Bitcoin/Lightning/Ark wallet, no node needed; registered only when config.wavelength is set): wl_info, wl_balance.",
     "Cashu ecash tools:",
     "- Wallet: cashu_balance, cashu_mint, cashu_melt, cashu_send, cashu_receive, cashu_decode_token, cashu_list_proofs.",
     "- Mint: cashu_mint_info, cashu_mintd_start, cashu_mintd_stop, cashu_mintd_status.",
