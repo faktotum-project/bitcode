@@ -1,0 +1,4 @@
+# The deployed site is the single self-contained index.html; everything
+# else in the repo (agent source, docs, slides) stays out of the deployment.
+*
+!index.html
