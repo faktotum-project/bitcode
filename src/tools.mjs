@@ -10,6 +10,7 @@ import path from "node:path";
 import { bitcoinTools } from "./bitcoin/tools.mjs";
 import { liquidTools } from "./liquid/tools.mjs";
 import { lightningTools, bolt11Tool } from "./lightning/tools.mjs";
+import { wavelengthTools } from "./wavelength/tools.mjs";
 import { cashuTools } from "./cashu/tools.mjs";
 import { coinjoinTools } from "./coinjoin/tools.mjs";
 import { runAgent } from "./agent.mjs";
@@ -466,7 +467,9 @@ function subagentTool({ modelRef, agents, system, realTools }) {
 // to the network resolved from config, Liquid tools (always available,
 // read-only, public infra), Lightning tools (only if config.lightning is
 // set — no sensible public default exists for a node you don't control),
-// Cashu ecash tools (when mint URL is available), CoinJoin temp-wallet tools
+// Wavelength self-custodial wallet tools (only if config.wavelength is set —
+// opt-in because the engine holds keys on this machine), Cashu ecash tools
+// (when mint URL is available), CoinJoin temp-wallet tools
 // (isolated wallet lifecycle for /btc:coinjoin, always available), and
 // (given a modelRef + agents) the subagent delegation tool.
 export function buildTools(config = {}, { modelRef, agents = [], system = "", lightning = null } = {}) {
@@ -476,6 +479,7 @@ export function buildTools(config = {}, { modelRef, agents = [], system = "", li
     ...liquidTools(config),
     bolt11Tool,
     ...(lightning ? lightningTools(lightning) : []),
+    ...wavelengthTools(config),
     ...cashuTools(config),
     ...coinjoinTools(config),
     ...registeredTools(),
