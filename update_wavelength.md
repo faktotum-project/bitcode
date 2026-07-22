@@ -52,7 +52,7 @@ proxy). Prima di scrivere codice va confermato:
 
 | # | Da verificare | Impatto |
 |---|---|---|
-| V1 | Nome esatto e licenza del pacchetto SDK npm (non ancora indicizzato su registry.npmjs.org alla data odierna) | Sceglie tra opzione vendored SDK e client REST (Sezione 4) |
+| V1 | ~~Nome esatto e licenza del pacchetto SDK npm~~ **Verificato (2026-07-22):** monorepo `github.com/lightninglabs/wavelength-sdk`, licenza MIT, pacchetti `@lightninglabs/wavelength-core` / `-web` (WASM) / `-react` / `-react-native`, tutti v0.1.0 pubblicati il 2026-07-21 | Sceglie tra opzione vendored SDK e client REST (Sezione 4) |
 | V2 | Esiste un'API REST/gRPC documentata sotto l'SDK, o l'SDK è l'unica superficie? | Il client "zero-dependency" è possibile solo con un'API di rete documentata |
 | V3 | Modello di autenticazione (API key? macaroon? firma con chiave locale?) | Gestione segreti in config |
 | V4 | Reti supportate al lancio (solo signet? mainnet?) | Default di sicurezza |
@@ -176,9 +176,37 @@ N non ha test verdi (`node --test tests/`).
 
 ---
 
-## 7. Fonti
+## 7. Fonti ufficiali
+
+### Wavelength
 
 - https://wavelength.lightning.engineering/ — sito e documentazione ufficiale
-- https://lightning.engineering/blog/ — annuncio Lightning Labs
-- Copertura del lancio: [Bitcoin News](https://x.com/BitcoinNewsCom/status/2079654926548951487), [bitcoin++ insider](https://x.com/btcinsider__/status/2079627295573061692)
+  (quickstart, guide, indice `llms.txt` per agenti; non raggiungibile dal
+  proxy di questo ambiente, da consultare in Fase 0)
+- https://github.com/lightninglabs/wavelength-sdk — monorepo ufficiale
+  dell'SDK (MIT): `packages/core`, `packages/web`, `packages/react`,
+  `packages/react-native`
+- Pacchetti npm (tutti v0.1.0, 2026-07-21; maintainer Lightning Labs —
+  roasbeef et al.):
+  - [`@lightninglabs/wavelength-core`](https://www.npmjs.com/package/@lightninglabs/wavelength-core) — contratto transport/framework-agnostic
+  - [`@lightninglabs/wavelength-web`](https://www.npmjs.com/package/@lightninglabs/wavelength-web) — transport browser (WebAssembly)
+  - [`@lightninglabs/wavelength-react`](https://www.npmjs.com/package/@lightninglabs/wavelength-react) — provider e hook React
+  - [`@lightninglabs/wavelength-react-native`](https://www.npmjs.com/package/@lightninglabs/wavelength-react-native) — transport React Native
+
+### Contorno Lightning Labs (utile per L402/MCP e riferimenti API)
+
+- https://lightning.engineering/api-docs/ — API reference generata (LND,
+  Loop, Pool, Faraday, Taproot Assets)
+- https://docs.lightning.engineering/ — Builder's Guide
+- [`@lightninglabs/lightning-mcp-server`](https://www.npmjs.com/package/@lightninglabs/lightning-mcp-server)
+  (repo [lightning-agent-tools](https://github.com/lightninglabs/lightning-agent-tools)) —
+  MCP server ufficiale con pagamenti L402
+- [`@lightninglabs/l402`](https://www.npmjs.com/package/@lightninglabs/l402) /
+  [`@lightninglabs/l402-ai`](https://www.npmjs.com/package/@lightninglabs/l402-ai)
+  (repo [L402sdk](https://github.com/lightninglabs/L402sdk)) — client L402
+- https://lightning.engineering/blog/ — annuncio del lancio
+
+### Copertura del lancio e precedenti interni
+
+- [Bitcoin News](https://x.com/BitcoinNewsCom/status/2079654926548951487), [bitcoin++ insider](https://x.com/btcinsider__/status/2079627295573061692)
 - Precedenti interni: `src/lightning/` (pattern client REST opt-in), `deps/cdk` + `scripts/build-cdk.sh` (pattern SDK vendored), `update_cj.md` (pattern disclosure custodia)
