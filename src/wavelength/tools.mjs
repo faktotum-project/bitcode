@@ -1,46 +1,127 @@
 // Wavelength agent tools — self-custodial Bitcoin/Lightning/Ark wallet via
-// Lightning Labs' wavewalletdk engine. Registered only when
-// config.wavelength is set (same opt-in contract as the LND tools), but
-// unlike LND this needs no node of your own: the engine holds its own keys
-// locally and talks to Lightning Labs' public signet/testnet operators.
-// Phase 1 of update_wavelength.md: read-only tools only.
+// Lightning Labs' `waved` daemon. Registered only when config.wavelength is
+// set (same opt-in contract as the LND tools), but unlike LND this needs no
+// node of your own: the engine holds its own keys locally and talks to
+// Lightning Labs' public signet/testnet operators.
+//
+// Transport: bitcode vendors and runs `waved` itself (./daemon.mjs), then
+// talks to it through Lightning Labs' own `wavecli mcp serve` — a native MCP
+// server built into the CLI (confirmed against a live v0.1.1 binary: `wavecli
+// schema --all --json` runs fully offline and tags each method
+// mcp_tool/side_effect) — reusing bitcode's existing MCP client (../mcp.mjs)
+// instead of hand-rolling a gRPC/REST client and a bespoke tool surface.
+//
+// Phase 1 of update_wavelength.md: read-only only. `wavecli schema` classifies
+// each MCP-exposed method as side_effect true/false; only false ones are
+// registered here. Mutating ones (send, recv, exit, vtxo management) arrive
+// in a later phase behind bitcode's own guardrails (G3 per-payment sats cap,
+// G4 seed disclosure) — those aren't Lightning Labs' to enforce, so passing
+// their tools through unguarded here would skip them.
+import { execFileSync } from "node:child_process";
+import net from "node:net";
+import { setTimeout as sleep } from "node:timers/promises";
 import { resolveWavelength } from "./network.mjs";
-import { wavelengthEngine } from "./engine.mjs";
+import { wavelengthDaemon, wavecliBinPath } from "./daemon.mjs";
+import { mcpConnect } from "../mcp.mjs";
 
-export function wavelengthTools(config, { transport = null } = {}) {
+// The TLS cert file appears slightly before the gRPC listener actually
+// accepts connections (confirmed against a live daemon: a file-existence
+// check alone still raced wavecli into "connection refused"), so this polls
+// the real thing wavecli is about to dial instead of a proxy signal.
+function canConnect(addr) {
+  return new Promise((resolve) => {
+    const [host, port] = addr.split(":");
+    const socket = net.connect({ host, port: Number(port), timeout: 500 });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => resolve(false));
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function waitForRpcReady(ctx, { timeoutMs = 10_000, intervalMs = 150 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await canConnect(ctx.rpcListenAddr))) {
+    if (Date.now() > deadline) throw new Error(`waved did not become ready within ${timeoutMs}ms`);
+    await sleep(intervalMs);
+  }
+}
+
+// Pure filter over a `wavecli schema --all --json` dump: only methods that
+// are both MCP-exposed and read-only are safe to register before phase 2/3
+// guardrails exist.
+export function filterReadOnlyMcpMethods(schema) {
+  return new Set(schema.filter((m) => m.mcp_tool && !m.side_effect).map((m) => m.method));
+}
+
+// Runs `wavecli schema --all --json` — no daemon connection needed, it's a
+// static dump of the compiled-in command tree.
+export function readOnlyMcpMethods(wavecliPath = wavecliBinPath()) {
+  const raw = execFileSync(wavecliPath, ["schema", "--all", "--json"], { encoding: "utf8" });
+  return filterReadOnlyMcpMethods(JSON.parse(raw));
+}
+
+export function mcpServeArgs(ctx) {
+  return [
+    "mcp",
+    "serve",
+    "--network",
+    ctx.network,
+    "--rpcserver",
+    ctx.rpcListenAddr,
+    "--macaroonpath",
+    ctx.rpcMacaroonPath,
+    "--tlscertpath",
+    ctx.rpcTlsCertPath,
+  ];
+}
+
+export async function wavelengthTools(config = {}) {
   const ctx = resolveWavelength(config);
   if (!ctx) return [];
-  const engine = wavelengthEngine(ctx, transport);
 
-  return [
-    {
-      name: "wl_info",
-      mutating: false,
-      description:
-        "Wavelength wallet engine status: network, daemon version, operator connection, wallet state. Self-custodial Bitcoin/Lightning/Ark wallet — no Lightning node required.",
-      parameters: { type: "object", properties: {} },
-      run: async () => {
-        const i = await engine.getInfo();
-        return (
-          `wavelength ${i.network} · daemon ${i.version || "(unknown)"} · block ${i.blockHeight}\n` +
-          `operator ${ctx.arkServerAddress} · connected ${i.serverConnected}\n` +
-          `wallet ${i.walletState}${i.identityPubKey ? ` · identity ${i.identityPubKey.slice(0, 16)}…` : ""}`
-        );
-      },
-    },
-    {
-      name: "wl_balance",
-      mutating: false,
-      description: "Wavelength self-custodial wallet balance: confirmed, pending in/out, and credit, in sats.",
-      parameters: { type: "object", properties: {} },
-      run: async () => {
-        const b = await engine.balance();
-        return (
-          `confirmed ${b.confirmedSat} sats\n` +
-          `pending in ${b.pendingInSat} · pending out ${b.pendingOutSat}\n` +
-          `credit available ${b.creditAvailableSat} · reserved ${b.creditReservedSat}`
-        );
-      },
-    },
-  ];
+  let daemon;
+  let client;
+  try {
+    const allowed = readOnlyMcpMethods();
+
+    daemon = wavelengthDaemon(ctx);
+    daemon.start();
+    process.on("exit", () => daemon.stop());
+    await waitForRpcReady(ctx);
+
+    client = mcpConnect({ command: wavecliBinPath(), args: mcpServeArgs(ctx) });
+    await client.initialize();
+    const list = await client.listTools();
+
+    return list
+      .filter((def) => allowed.has(def.name))
+      .map((def) => ({
+        name: `wl_${def.name.replace(/\./g, "_")}`,
+        mutating: false,
+        description: `${def.description} (Wavelength, ${ctx.network}).`,
+        parameters: def.inputSchema || { type: "object", properties: {} },
+        run: async (args) => {
+          const res = await client.callTool(def.name, args);
+          if (res?.content) return res.content.map((c) => c.text ?? JSON.stringify(c)).join("\n");
+          return JSON.stringify(res ?? {});
+        },
+      }));
+  } catch (err) {
+    // Best-effort, same contract as config.mcp servers (mcp.mjs): a
+    // Wavelength setup that fails to start or handshake (binaries not
+    // vendored yet, daemon crash, ...) yields no wl_* tools rather than
+    // breaking the whole session — but not silently: config.wavelength was
+    // set on purpose, so a one-line reason goes to stderr.
+    const tail = daemon?.logTail();
+    process.stderr.write(`wavelength: disabled — ${err.message}${tail ? `\n${tail}` : ""}\n`);
+    client?.close();
+    daemon?.stop();
+    return [];
+  }
 }

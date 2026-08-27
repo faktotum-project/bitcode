@@ -14,7 +14,8 @@
     "test": "node --test",
     "lint": "node scripts/lint.mjs",
     "build:cdk": "bash scripts/build-cdk.sh",
-    "postinstall": "bash scripts/build-cdk.sh"
+    "build:wavelength": "bash scripts/build-wavelength.sh",
+    "postinstall": "bash scripts/build-cdk.sh && bash scripts/build-wavelength.sh"
   },
   "license": "MIT",
   "dependencies": {

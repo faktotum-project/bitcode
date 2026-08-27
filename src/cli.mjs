@@ -10,6 +10,7 @@ import { providerRows, providerAdd } from "./settings.mjs";
 import { providerHealth } from "./providers.mjs";
 import { loadPlugins } from "./plugins.mjs";
 import { mcpTools } from "./mcp.mjs";
+import { wavelengthTools } from "./wavelength/tools.mjs";
 import { emit } from "./hooks.mjs";
 import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { buildTools, registerTool } from "./tools.mjs";
@@ -264,6 +265,8 @@ async function loadExtensions(config) {
   const plugins = await loadPlugins();
   const { tools: mcp, servers: mcpServers } = await mcpTools(config);
   for (const tool of mcp) registerTool(tool);
+  const wavelength = await wavelengthTools(config);
+  for (const tool of wavelength) registerTool(tool);
   return { plugins, mcpServers };
 }
 
