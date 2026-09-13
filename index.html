@@ -96,12 +96,15 @@
     .release { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 25px; font-family: var(--mono); font-size: .75rem; color: var(--body); text-decoration: none; }
     .release-tag { border: 1px solid var(--hairline); background: var(--surface); padding: 3px 8px; border-radius: 4px; color: var(--ink); }
     .release:hover .release-copy { text-decoration: underline; }
-    .hero-logo-build { display: block; width: 72px; height: 90px; margin: 0 0 25px; }
+    .hero-logo-lockup { display: flex; align-items: center; gap: 19px; margin: 0 0 25px; }
+    .hero-logo-build { display: block; width: 72px; height: 90px; flex: none; }
+    .hero-logo-wordmark { opacity: 0; color: var(--ink); font-size: clamp(2.75rem, 4.3vw, 3.75rem); font-weight: 600; line-height: 1; letter-spacing: -.06em; animation: hero-wordmark-in .55s cubic-bezier(.2,.8,.25,1) 2.65s forwards; }
     .hero-logo-piece { transform-box: fill-box; transform-origin: center; animation: hero-logo-drop .54s steps(6, end) calc(.08s + var(--piece) * .18s) both, hero-logo-orange-cycle .32s step-end 1.72s 3; }
     .hero-logo-piece--ink { animation-name: hero-logo-drop, hero-logo-ink-cycle; }
     @keyframes hero-logo-drop { from { transform: translateY(-18px); } to { transform: translateY(0); } }
     @keyframes hero-logo-orange-cycle { 0%, 100% { fill: #F7931A; } 50% { fill: #0F0F0F; } }
     @keyframes hero-logo-ink-cycle { 0%, 100% { fill: #0F0F0F; } 50% { fill: #F7931A; } }
+    @keyframes hero-wordmark-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
     .hero h1 { font-size: clamp(3.2rem, 5.25vw, 4.5rem); font-weight: 400; line-height: 1.06; letter-spacing: -.055em; margin-bottom: 25px; }
     .hero h1 span { display: block; }
     .hero h1 .accent-line { text-decoration: underline; text-decoration-color: var(--orange); text-decoration-thickness: 4px; text-underline-offset: 10px; }
@@ -362,7 +365,7 @@
     .fact-label { font-size: .8125rem; }
     .copy-button { min-width: 44px; min-height: 44px; }
     .snippet { padding-right: 55px; }
-    .stage:nth-child(5) h3 { color: var(--canvas); }
+      .stage:nth-child(5) h3 { color: var(--canvas); }
     @media (max-width: 800px) {
       .demo-story { grid-template-columns: 1fr; gap: 22px; padding-block: 30px; }
       .demo-story:nth-of-type(2) .demo-story-media { order: 0; }
@@ -372,6 +375,9 @@
     }
     @media (max-width: 480px) {
       .hero-cli-body { min-height: 282px; padding: 17px 18px; font-size: .6875rem; }
+      .hero-logo-lockup { gap: 15px; }
+      .hero-logo-build { width: 60px; height: 75px; }
+      .hero-logo-wordmark { font-size: 2.875rem; }
       .hero-recording-copy { padding: 18px; }
       .terminal-title { font-size: .6875rem; }
       .demo-caption { font-size: .6875rem; }
@@ -389,6 +395,7 @@
       html { scroll-behavior: auto; }
       *, *::before, *::after { animation: none !important; transition: none !important; }
       .hero-logo-piece { transform: none; }
+      .hero-logo-wordmark { opacity: 1; transform: none; }
     }
   </style>
 </head>
@@ -439,14 +446,17 @@
       <div class="hero-grid">
         <div class="hero-copy">
           <a class="release" href="https://github.com/faktotum-project/bitcode#readme"><span class="release-tag">v0.2</span><span class="release-copy">Coding + Bitcoin + MCP</span><span aria-hidden="true">↗</span></a>
-          <svg class="hero-logo-build" viewBox="0 0 4 5" shape-rendering="crispEdges" role="img" aria-label="Bitcode logo">
-            <rect class="hero-logo-piece hero-logo-piece--ink" style="--piece:0" x="0" y="4" width="2" height="1" fill="#0F0F0F"/>
-            <rect class="hero-logo-piece" style="--piece:1" x="0" y="0" width="1" height="4" fill="#F7931A"/>
-            <rect class="hero-logo-piece" style="--piece:2" x="3" y="2" width="1" height="2" fill="#F7931A"/>
-            <rect class="hero-logo-piece" style="--piece:3" x="1" y="2" width="1" height="1" fill="#F7931A"/>
-            <rect class="hero-logo-piece" style="--piece:4" x="2" y="1" width="1" height="1" fill="#F7931A"/>
-            <rect class="hero-logo-piece" style="--piece:5" x="1" y="0" width="2" height="1" fill="#F7931A"/>
-          </svg>
+          <div class="hero-logo-lockup" aria-label="bitcode">
+            <svg class="hero-logo-build" viewBox="0 0 4 5" shape-rendering="crispEdges" aria-hidden="true">
+              <rect class="hero-logo-piece hero-logo-piece--ink" style="--piece:0" x="0" y="4" width="2" height="1" fill="#0F0F0F"/>
+              <rect class="hero-logo-piece" style="--piece:1" x="0" y="0" width="1" height="4" fill="#F7931A"/>
+              <rect class="hero-logo-piece" style="--piece:2" x="3" y="2" width="1" height="2" fill="#F7931A"/>
+              <rect class="hero-logo-piece" style="--piece:3" x="1" y="2" width="1" height="1" fill="#F7931A"/>
+              <rect class="hero-logo-piece" style="--piece:4" x="2" y="1" width="1" height="1" fill="#F7931A"/>
+              <rect class="hero-logo-piece" style="--piece:5" x="1" y="0" width="2" height="1" fill="#F7931A"/>
+            </svg>
+            <span class="hero-logo-wordmark">bitcode</span>
+          </div>
           <h1 id="hero-title"><span>Your code.</span><span>Your Bitcoin.</span><span class="accent-line">One agent.</span></h1>
           <p class="hero-description">Work on your repository. Read the chain. Put your tools to work — from one terminal, with the model you choose.</p>
           <div class="hero-actions">
