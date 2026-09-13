@@ -53,7 +53,7 @@ try {
   for(const width of [360,390,768,1280,1440]) {
     await page.setViewportSize({width,height:1000});await page.goto(url);await page.evaluate(()=>document.fonts.ready);
     assert.equal(await page.locator('.demo-story').count(),3);
-    assert.equal(await page.locator('a[download]').count(),3);
+    assert.equal(await page.locator('a[download]').count(),0);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`Overflow at ${width}px`);
     results.browser.push({width,overflow:false});
     if(width===390||width===1440)await page.screenshot({path:path.join(qa,`page-${width}.png`),fullPage:true});
@@ -69,9 +69,6 @@ try {
     await page.locator(selector).evaluate(v=>v.pause());
   }
   await page.waitForFunction(()=>document.querySelector('#hero-cli-output').textContent.includes('/btc:fees'));
-  const downloadEvent=page.waitForEvent('download');
-  await page.locator('a[download]').first().click();
-  assert.equal((await downloadEvent).suggestedFilename(),'installation-9x16.mp4');
   await page.setViewportSize({width:390,height:844});await page.goto(url);
   await page.locator('.menu-toggle').click();assert.equal(await page.locator('.menu-toggle').getAttribute('aria-expanded'),'true');
   await page.keyboard.press('Escape');assert.equal(await page.locator('.menu-toggle').getAttribute('aria-expanded'),'false');
@@ -81,12 +78,11 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   const noJS=await browser.newPage({javaScriptEnabled:false,viewport:{width:390,height:844}});await noJS.goto(url);
   assert.equal(await noJS.locator('video[controls]').count(),3);
-  assert.equal(await noJS.locator('a[download]').count(),3);
   await noJS.close();
   await page.route('**/features-16x9.mp4',route=>route.fulfill({status:404,body:'missing'}));await page.goto(url);
   await page.locator('#recording-features').locator('..').locator('.video-start').click();
   await page.waitForFunction(()=>document.querySelector('#recording-features').parentElement.querySelector('.video-message').textContent.includes('unavailable'));
-  results.browser.push({playback:true,onePlayerAtATime:true,captions:true,download:true,menuEscape:true,reducedMotion:true,zoom200:true,noJavaScript:true,video404:true,initialMP4Requests:0,consoleErrors:errors});
+  results.browser.push({playback:true,onePlayerAtATime:true,captions:true,menuEscape:true,reducedMotion:true,zoom200:true,noJavaScript:true,video404:true,initialMP4Requests:0,consoleErrors:errors});
   await writeFile(path.join(qa,'report.json'),JSON.stringify(results,null,2));
   console.log(JSON.stringify(results,null,2));console.log('QA screenshots:',qa);
 } finally {await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
