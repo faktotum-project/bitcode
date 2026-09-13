@@ -1,13 +1,13 @@
+import { bitcodeHome } from "./paths.mjs";
 // Subagent personas: markdown files in ~/.bitcode/agents/*.md. Each becomes
 // a named persona usable both from the REPL (/subagent <name> <prompt>) and
 // by the model itself (the "subagent" tool, see tools.mjs), to delegate a
 // focused sub-task under an extended system prompt.
-import { homedir } from "node:os";
 import path from "node:path";
 import { loadMarkdownDir } from "./markdown-config.mjs";
 
 export function agentsDir() {
-  return path.join(homedir(), ".bitcode", "agents");
+  return path.join(bitcodeHome(), "agents");
 }
 
 export function loadAgents() {

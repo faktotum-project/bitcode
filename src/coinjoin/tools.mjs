@@ -1,8 +1,8 @@
+import { bitcodeHome } from "../paths.mjs";
 // CoinJoin agent tools — Fase 1 (update_cj.md): risk consent, temp wallet
 // lifecycle. JoinMarket round execution itself is Fase 2 and not wired up
 // yet; these tools only manage the isolated temp wallet described in G1/G9.
 import { appendFileSync, mkdirSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { resolveNetwork } from "../bitcoin/network.mjs";
@@ -12,11 +12,11 @@ import { coinjoinWallet } from "./wallet.mjs";
 const MIN_AMOUNT_SATS = 1_000_000; // 0.01 BTC (G2)
 
 function consentLogPath() {
-  return path.join(homedir(), ".bitcode", "cj-consent.log");
+  return path.join(bitcodeHome(), "cj-consent.log");
 }
 
 function logConsent(line) {
-  const dir = path.join(homedir(), ".bitcode");
+  const dir = bitcodeHome();
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   appendFileSync(consentLogPath(), line + "\n");
 }
@@ -36,7 +36,7 @@ export function coinjoinTools(config) {
         type: "object",
         properties: {
           accepted_text: { type: "string", description: 'Must be exactly "I ACCEPT".' },
-          amount_sats: { type: "number" },
+          amount_sats: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
           to_address: { type: "string" },
         },
         required: ["accepted_text", "amount_sats", "to_address"],
@@ -57,7 +57,7 @@ export function coinjoinTools(config) {
         `Create the temporary CoinJoin wallet (isolated from the main bitcode wallet — G1/G9). Refuses amount_sats below ${MIN_AMOUNT_SATS} (0.01 BTC, G2). Call cj_risk_consent first.`,
       parameters: {
         type: "object",
-        properties: { amount_sats: { type: "number" } },
+        properties: { amount_sats: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER } },
         required: ["amount_sats"],
       },
       run: ({ amount_sats }) => {
@@ -91,7 +91,7 @@ export function coinjoinTools(config) {
         type: "object",
         properties: {
           to: { type: "string" },
-          fee_rate: { type: "number" },
+          fee_rate: { type: "number", exclusiveMinimum: 0 },
           broadcast: { type: "boolean" },
         },
         required: ["to"],

@@ -136,7 +136,7 @@ export function bitcoinTools(config) {
       description: "Show the wallet's network, first receive address, and balance.",
       parameters: {
         type: "object",
-        properties: { gap: { type: "number" } },
+        properties: { gap: { type: "integer", minimum: 1, maximum: 1000 } },
       },
       run: async ({ gap = 10 }) => {
         const b = await w.balance({ gap });
@@ -160,7 +160,7 @@ export function bitcoinTools(config) {
       description: "Return a receive address for the wallet at the given index (default 0).",
       parameters: {
         type: "object",
-        properties: { index: { type: "number" } },
+        properties: { index: { type: "integer", minimum: 0, maximum: 2147483647 } },
       },
       run: ({ index = 0 }) => `receive[${index}] (${ctx.name}): ${w.receiveAddress(index)}`,
     },
@@ -173,8 +173,8 @@ export function bitcoinTools(config) {
         type: "object",
         properties: {
           to: { type: "string" },
-          amount_sats: { type: "number" },
-          fee_rate: { type: "number" },
+          amount_sats: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+          fee_rate: { type: "number", exclusiveMinimum: 0 },
           broadcast: { type: "boolean" },
         },
         required: ["to", "amount_sats"],

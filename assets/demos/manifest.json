@@ -1,0 +1,94 @@
+{
+  "version": 2,
+  "generatedAt": "2026-09-13T10:45:39.255Z",
+  "method": "Three CLI walkthroughs with animated typing and captured ANSI output. Installation includes instructional clone/cd commands. Configuration uses a fake example key. The feature demo runs a real local model against public mainnet data. Waits shortened; paths normalized.",
+  "demos": [
+    {
+      "id": "installation",
+      "title": "Install. Open your terminal.",
+      "subtitle": "Node.js 22+ · Git · Bash",
+      "model": null,
+      "recordedAt": "2026-09-11T11:15:24.264Z",
+      "sourceCommit": "277207d8b79862a8ae0c25db319a5e941249c392",
+      "workingTreeModified": true,
+      "provenance": "Clone and cd are instructional command animations. npm ci, doctor and --version output were captured from the current working-tree snapshot in a temporary directory. No remote clone is claimed. --ignore-scripts skips optional wallet builds.",
+      "transcript": "installation-transcript.txt",
+      "poster": "installation-poster.webp",
+      "captions": "installation.en.vtt",
+      "exports": {
+        "16x9": {
+          "file": "installation-16x9.mp4",
+          "width": 1920,
+          "height": 1080,
+          "duration": 30,
+          "bytes": 988482
+        },
+        "9x16": {
+          "file": "installation-9x16.mp4",
+          "width": 1080,
+          "height": 1920,
+          "duration": 27,
+          "bytes": 1187389
+        }
+      }
+    },
+    {
+      "id": "configuration",
+      "title": "Choose a model. Make it yours.",
+      "subtitle": "API key setup · masked input",
+      "model": null,
+      "recordedAt": "2026-09-11T11:15:24.264Z",
+      "sourceCommit": "277207d8b79862a8ae0c25db319a5e941249c392",
+      "workingTreeModified": true,
+      "provenance": "Actual login and /setting output, using an explicitly fake example key in disposable BITCODE_HOME. No provider request, authentication validation or GPT model execution occurred. Home paths are normalized. Login stores a key; -m selects the model for this session.",
+      "transcript": "configuration-transcript.txt",
+      "poster": "configuration-poster.webp",
+      "captions": "configuration.en.vtt",
+      "exports": {
+        "16x9": {
+          "file": "configuration-16x9.mp4",
+          "width": 1920,
+          "height": 1080,
+          "duration": 17,
+          "bytes": 718713
+        },
+        "9x16": {
+          "file": "configuration-9x16.mp4",
+          "width": 1080,
+          "height": 1920,
+          "duration": 15,
+          "bytes": 675192
+        }
+      }
+    },
+    {
+      "id": "features",
+      "title": "One command. A useful answer.",
+      "subtitle": "Bitcoin fees · read-only",
+      "model": "ollama/qwen3.8:27b",
+      "recordedAt": "2026-09-11T11:34:04.297Z",
+      "sourceCommit": "277207d8b79862a8ae0c25db319a5e941249c392",
+      "workingTreeModified": true,
+      "provenance": "Actual bitcode interactive CLI /btc:fees with ollama/qwen3.8:27b, mainnet and --read-only. Provider ID is the configured local tag, not independent model attestation. Tool output and assistant text are unmodified except normalized home paths. Waits shortened in the video.",
+      "transcript": "features-transcript.txt",
+      "poster": "features-poster.webp",
+      "captions": "features.en.vtt",
+      "exports": {
+        "16x9": {
+          "file": "features-16x9.mp4",
+          "width": 1920,
+          "height": 1080,
+          "duration": 39,
+          "bytes": 1091072
+        },
+        "9x16": {
+          "file": "features-9x16.mp4",
+          "width": 1080,
+          "height": 1920,
+          "duration": 35,
+          "bytes": 1363916
+        }
+      }
+    }
+  ]
+}

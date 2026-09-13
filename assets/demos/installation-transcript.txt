@@ -1,0 +1,54 @@
+Install. Open your terminal.
+
+bitcode 0.2.0 · 2026-09-11T11:15:24.264Z
+
+Clone and cd are instructional command animations. npm ci, doctor and --version output were captured from the current working-tree snapshot in a temporary directory. No remote clone is claimed. --ignore-scripts skips optional wallet builds.
+
+Presentation: animated command entry, original ANSI CLI output, shortened waits. Example login key is fake. Paths normalized.
+
+
+
+$ git clone https://github.com/faktotum-project/bitcode.git
+[Instructional command animation; not a captured remote clone.]
+
+
+
+$ cd bitcode
+[Instructional command animation; not a captured remote clone.]
+
+
+
+$ npm ci --ignore-scripts --no-audit --no-fund
+
+
+added 25 packages in 370ms
+
+$ node bitcode.mjs doctor
+
+B I T C O D E   D O C T O R
+  version   0.2.0
+  node      v24.18.0
+  network   signet
+  config    ~/.bitcode/config.json
+P R O V I D E R S
+  anthropic    ANTHROPIC_API_KEY (unset)
+  openai       OPENAI_API_KEY (unset)
+  openrouter   OPENROUTER_API_KEY (unset)
+  groq         GROQ_API_KEY (unset)
+  ollama       local
+T O O L S
+  61 available
+P L U G I N S
+  none
+D E P E N D E N C I E S
+  git — /usr/bin/git
+  bash — /bin/bash
+  cdk-cli unavailable — Cashu wallet; npm run build:cdk
+  wavecli unavailable — Wavelength MCP; npm run build:wavelength
+  waved unavailable — Wavelength daemon; npm run build:wavelength
+M C P   S E R V E R S
+  none
+
+$ node bitcode.mjs --version
+
+⚡ bitcode 0.2.0

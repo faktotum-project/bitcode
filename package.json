@@ -1,7 +1,7 @@
 {
   "name": "bitcode",
-  "version": "0.1.0",
-  "description": "bitcode — minimal, zero-dependency multi-provider terminal coding agent",
+  "version": "0.2.0",
+  "description": "Multi-provider terminal coding and Bitcoin agent with Responses, MCP, managed processes and local skills",
   "type": "module",
   "bin": {
     "bitcode": "bitcode.mjs"
@@ -11,17 +11,23 @@
   },
   "scripts": {
     "start": "node bitcode.mjs",
-    "test": "node --test",
+    "test": "node --test --test-timeout=30000 tests/*.test.mjs",
     "lint": "node scripts/lint.mjs",
     "build:cdk": "bash scripts/build-cdk.sh",
     "build:wavelength": "bash scripts/build-wavelength.sh",
-    "postinstall": "bash scripts/build-cdk.sh && bash scripts/build-wavelength.sh"
+    "postinstall": "bash scripts/build-cdk.sh && bash scripts/build-wavelength.sh",
+    "check": "npm run lint && npm test",
+    "doctor": "node bitcode.mjs doctor",
+    "tools": "node bitcode.mjs tools",
+    "commands": "node bitcode.mjs commands"
   },
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
     "@noble/hashes": "^1.8.0",
     "@scure/bip32": "^1.7.0",
     "@scure/bip39": "^1.6.0",
-    "@scure/btc-signer": "^1.8.1"
+    "@scure/btc-signer": "^1.8.1",
+    "ajv": "^8.20.0"
   }
 }

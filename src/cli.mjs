@@ -1,16 +1,23 @@
+import { bitcodeHome } from "./paths.mjs";
 // Command-line interface: argument parsing, interactive REPL, and one-shot mode.
 // Visual styling comes from the bitcode design system via ./theme.mjs.
 
 import readline from "node:readline";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { loadConfig, resolveModel, allProviders, configPath, configGet, configSet, saveConfig } from "./config.mjs";
-import { providerRows, providerAdd } from "./settings.mjs";
+import { providerRows, providerAdd, providerLogin } from "./settings.mjs";
 import { providerHealth } from "./providers.mjs";
 import { loadPlugins } from "./plugins.mjs";
-import { mcpTools } from "./mcp.mjs";
-import { wavelengthTools } from "./wavelength/tools.mjs";
+import { dependencyReport } from "./diagnostics.mjs";
+import { VERSION } from "./version.mjs";
+import { closeCashuDaemons } from "./cashu/mint.mjs";
+import { closeProcesses } from "./processes.mjs";
+import { loadSkills, contextPrompt, contextStats, compactContext } from "./context.mjs";
+import { savePlan, latestPlan } from "./plans.mjs";
+import { isMutating } from "./runtime.mjs";
+import { closeMcpConnections, mcpTools } from "./mcp.mjs";
+import { closeWavelength, wavelengthTools } from "./wavelength/tools.mjs";
 import { emit } from "./hooks.mjs";
 import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { buildTools, registerTool } from "./tools.mjs";
@@ -37,7 +44,7 @@ function out(s = "") {
 // ---- persistent REPL history (~/.bitcode/history) ----
 
 function historyPath() {
-  return path.join(homedir(), ".bitcode", "history");
+  return path.join(bitcodeHome(), "history");
 }
 
 function loadHistory() {
@@ -62,11 +69,19 @@ function appendHistory(line) {
 
 const SLASH_COMMANDS = [
   { name: "help", hint: "show commands" },
+  { name: "plan", hint: "investigate a task with read-only tools and save a plan", args: true },
+  { name: "build", hint: "execute the most recently saved plan" },
+  { name: "compact", hint: "summarize older context, keeping recent turns" },
+  { name: "status", hint: "context size, token usage and task progress" },
+  { name: "skills", hint: "list local skills" },
+  { name: "mcp", hint: "show MCP connections" },
+  { name: "commands", hint: "list bundled and custom commands" },
   { name: "model", hint: "show or switch the active model", args: true },
   { name: "models", hint: "pick a model from a list" },
   { name: "setting", hint: "provider status & active model" },
   { name: "config", hint: "get · set config values", args: true },
   { name: "provider", hint: "add an API key · list providers", args: true },
+  { name: "login", hint: "configure a provider with a masked API key", args: true },
   { name: "doctor", hint: "config, provider, tools & plugin diagnostics" },
   { name: "session", hint: "save · load · list · export", args: true },
   { name: "subagent", hint: "delegate a sub-task to a persona", args: true },
@@ -104,6 +119,11 @@ Usage:
   bitcode [options] "<prompt>"       one-shot: run a single request and exit
   bitcode -p "<prompt>"              same as above (explicit)
   bitcode models                     list known providers and default models
+  bitcode login [provider]            choose a provider and save a masked API key
+  bitcode tools|commands|skills       inspect available capabilities (supports --json)
+  bitcode provider list|health        inspect provider configuration/connectivity
+  bitcode session list                list saved sessions
+  bitcode mcp                         inspect MCP connections
   bitcode config                     print the config file path
   bitcode doctor                     print a diagnostics report
   bitcode wallet seed                reveal the wallet's mnemonic (human only)
@@ -115,17 +135,28 @@ Options:
   -p, --print <prompt>               one-shot mode (auto-approves tools)
       --resume [id]                  resume a saved session (latest if no id)
       --continue                     resume the most recent session
-      --yolo                         skip approval prompts for mutating tools
+      --cwd <path>                   run in this working directory
+      --read-only                    expose only read-only tools
+      --json                         one-shot JSON result (answer, usage, events)
+      --max-steps <n>                bound the number of model rounds
+      --allow-payments               explicitly authorize financial tools in one-shot mode
+      --yolo                         skip ordinary mutation approvals (payments still ask)
   -h, --help                         show this help
   -v, --version                      show version
 
 Interactive slash commands:
   /help                show commands
+  /plan <task>         investigate with read-only tools and save a plan
+  /build               execute the latest saved plan
+  /compact             summarize older context
+  /status              context and token usage
+  /skills /mcp /commands  inspect extensions and commands
   /model [spec]        show or switch the active model
   /models              pick a model interactively from a numbered list
   /setting             provider key status + active model + config path
   /config <sub>        get [key] · set <key> <value>  (persisted, chmod 600)
   /provider <sub>      add <name> (masked key entry) · list · health
+  /login [provider]    choose a provider and save a masked API key
   /session <sub>       save [name] · load <id> · list · export [md|json]
   /subagent [name] [prompt]
                        list personas (~/.bitcode/agents/*.md), or delegate
@@ -139,46 +170,70 @@ Custom commands: any ~/.bitcode/commands/<name>.md becomes its own /<name>.
 Config: ${configPath()}
 `;
 
-function parseArgs(argv) {
-  const opts = { yolo: false, print: false, model: null, prompt: null, command: null, walletSub: null, resume: null };
+export function parseArgs(argv) {
+  const opts = { yolo: false, print: false, model: null, prompt: null, command: null, resume: null };
   const positionals = [];
+  const value = (i, flag) => { const v = argv[i]; if (!v || v.startsWith("--")) throw new Error(`${flag} requires a value`); return v; };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (a === "--") { positionals.push(...argv.slice(i + 1)); break; }
     if (a === "-h" || a === "--help") return { help: true };
     if (a === "-v" || a === "--version") return { version: true };
     if (a === "--yolo") opts.yolo = true;
+    else if (a === "--json") opts.json = true;
+    else if (a === "--read-only") opts.readOnly = true;
+    else if (a === "--allow-payments") opts.allowPayments = true;
+    else if (a === "--cwd") opts.cwd = value(++i, a);
+    else if (a === "--max-steps") { opts.maxSteps = Number(value(++i, a)); if (!Number.isSafeInteger(opts.maxSteps) || opts.maxSteps < 1) throw new Error("--max-steps must be a positive integer"); }
     else if (a === "--continue") opts.resume = "latest";
-    else if (a === "--resume") {
-      const next = argv[i + 1];
-      opts.resume = next && !next.startsWith("-") ? argv[++i] : "latest";
-    } else if (a === "-m" || a === "--model") opts.model = argv[++i];
-    else if (a === "-p" || a === "--print") {
-      opts.print = true;
-      opts.prompt = argv[++i];
-    } else if (a === "models" || a === "config" || a === "doctor") opts.command = a;
-    else if (a === "wallet" && opts.command == null) {
-      opts.command = "wallet";
-      opts.walletSub = argv[++i] || null;
+    else if (a === "--resume") opts.resume = argv[i + 1] && !argv[i + 1].startsWith("-") ? argv[++i] : "latest";
+    else if (a === "-m" || a === "--model") opts.model = value(++i, a);
+    else if (a === "-p" || a === "--print") { opts.print = true; opts.prompt = value(++i, a); }
+    else if (a.startsWith("-")) throw new Error(`unknown option: ${a}`);
+    else if (!opts.command && !opts.prompt && !positionals.length && ["models", "config", "doctor", "wallet", "tools", "commands", "skills", "mcp", "provider", "login", "session"].includes(a)) {
+      opts.command = a;
+      if (a === "wallet") opts.walletSub = argv[++i];
     } else positionals.push(a);
   }
-  if (!opts.prompt && positionals.length) opts.prompt = positionals.join(" ");
+  if (opts.command) opts.commandArgs = positionals;
+  else if (!opts.prompt && positionals.length) opts.prompt = positionals.join(" ");
+  if (opts.command === "login" && (positionals.length > 1 || opts.json || opts.prompt)) throw new Error("usage: bitcode login [provider]; enter the API key only at the prompt");
+  if (opts.json && !opts.prompt && !opts.command) throw new Error("--json requires a one-shot prompt or command");
   return opts;
 }
 
 export async function main(argv) {
   const opts = parseArgs(argv);
+  if (opts.cwd) process.chdir(opts.cwd);
   if (opts.help) return out(HELP);
-  if (opts.version) return out(`${t.accent(t.BOLT)}${t.BOLT ? " " : ""}bitcode 0.1.0`);
+  if (opts.version) return out(`${t.accent(t.BOLT)}${t.BOLT ? " " : ""}bitcode ${VERSION}`);
 
   const config = loadConfig();
 
-  if (opts.command === "config") return out(configPath());
-  if (opts.command === "models") return printModels(config);
-  if (opts.command === "wallet") return walletCommand(opts.walletSub, config);
-  if (opts.command === "doctor") {
-    const ext = await loadExtensions(config);
-    for (const line of doctorLines(config, { toolCount: buildTools(config, {}).length, ...ext })) out(line);
+  if (opts.command === "login") {
+    const result = await providerLogin(config, opts.commandArgs[0], { print: out });
+    out(result.ok ? t.ok(result.msg) : t.danger(result.msg));
+    if (!result.ok) process.exitCode = 1;
     return;
+  }
+  if (opts.command === "config") return out(configPath());
+  if (opts.command === "models") return opts.json ? printData(redact(allProviders(config)), opts) : printModels(config);
+  if (opts.command === "wallet") return walletCommand(opts.walletSub, config);
+  if (opts.command === "commands") return printData(loadCommands().map(({ name, description }) => ({ name, description })), opts);
+  if (opts.command === "skills") return printData(loadSkills(), opts);
+  if (opts.command === "session" && ![undefined, "list"].includes(opts.commandArgs?.[0])) throw new Error("use /session in interactive mode for save/load/export, or --resume for one-shot continuation");
+  if (opts.command === "session" && opts.json) return printData(listSessions(process.cwd()), opts);
+  if (opts.command === "provider" && opts.json && [undefined, "list"].includes(opts.commandArgs?.[0])) return printData(redact(allProviders(config)), opts);
+  if (opts.command === "provider" || opts.command === "session") return handleSlash(`/${opts.command} ${(opts.commandArgs || []).join(" ")}`, { config, cwd: process.cwd(), session: {}, messages: [], network: resolveNetwork(config).name, getActive: () => resolveModel({ config }), setActive: () => {}, ask: question });
+  if (["doctor", "tools", "mcp"].includes(opts.command)) {
+    const ext = await loadExtensions(config);
+    try {
+      const tools = buildTools(config, {});
+      if (opts.command === "tools") return printData(tools.map(({ name, description, parameters, mutating }) => ({ name, description, parameters, mutating })), opts);
+      if (opts.command === "mcp") return printData(ext.mcpServers, opts);
+      const lines = doctorLines(config, { toolCount: tools.length, ...ext });
+      return opts.json ? printData({ version: VERSION, node: process.version, tools: tools.length, dependencies: dependencyReport(config), ...ext }, opts) : lines.forEach(out);
+    } finally { await closeMcpConnections(); await closeWavelength(); }
   }
 
   let target;
@@ -190,21 +245,25 @@ export async function main(argv) {
   }
 
   const ctx = resolveNetwork(config);
-  const system = systemPrompt({ network: ctx.name });
+  const skills = loadSkills();
+  const system = systemPrompt({ network: ctx.name, lightning: !!config.lightning?.lndRestUrl }) + "\n\n" + contextPrompt(process.cwd(), skills);
   const agents = loadAgents();
   const modelRef = { current: target };
   const ext = await loadExtensions(config); // plugins + MCP register their tools first
-  const tools = buildTools(config, { modelRef, agents, system });
+  const plan = { steps: [] };
+  let tools;
+  try { tools = buildTools(config, { modelRef, agents, system, skills, plan }); }
+  catch (err) { await closeMcpConnections(); await closeWavelength(); throw err; }
 
   const limits = agentLimits(config);
+  if (opts.maxSteps) limits.maxSteps = opts.maxSteps;
   const fallbacks = resolveFallbacks(config);
 
-  if (opts.prompt) {
-    await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits, fallbacks });
-    return;
-  }
-  const commands = loadCommands();
-  await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext });
+  try {
+    if (opts.prompt) return await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits, fallbacks, opts });
+    const commands = loadCommands();
+    await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext, readOnly: opts.readOnly, plan, maxStepsOverride: opts.maxSteps });
+  } finally { await closeProcesses(); await closeCashuDaemons(); await closeMcpConnections(); await closeWavelength(); }
 }
 
 // ---- wallet command (human-only; never exposed as an agent tool) ----
@@ -274,7 +333,7 @@ async function loadExtensions(config) {
 function doctorLines(config, { toolCount, plugins = [], mcpServers = [] } = {}) {
   const lines = [];
   lines.push(t.label("bitcode doctor"));
-  lines.push(`  version   ${t.body("0.1.0")}`);
+  lines.push(`  version   ${t.body(VERSION)}`);
   lines.push(`  node      ${t.body(process.version)}`);
   lines.push(`  network   ${t.body(resolveNetwork(config).name)}`);
   lines.push(`  config    ${t.faint(configPath())}`);
@@ -285,6 +344,8 @@ function doctorLines(config, { toolCount, plugins = [], mcpServers = [] } = {}) 
   lines.push(t.label("Plugins"));
   if (!plugins.length) lines.push("  " + t.faint("none"));
   else for (const p of plugins) lines.push("  " + (p.ok ? t.ok(p.name) : t.danger(`${p.name} — ${p.error}`)));
+  lines.push(t.label("Dependencies"));
+  for (const dep of dependencyReport(config)) lines.push(`  ${dep.path ? t.ok(dep.name) : t.faint(`${dep.name} unavailable`)} — ${dep.path || dep.purpose}`);
   lines.push(t.label("MCP servers"));
   if (!mcpServers.length) lines.push("  " + t.faint("none"));
   else for (const s of mcpServers) lines.push("  " + (s.ok ? t.ok(`${s.name} (${s.tools} tools)`) : t.danger(`${s.name} — ${s.error}`)));
@@ -329,7 +390,7 @@ function previewArgs(tc) {
 }
 
 // Fresh per user turn so the "Reasoning" header prints once per turn.
-function buildHooks({ approve } = {}) {
+function buildHooks({ approve, askUser, onCheckpoint } = {}) {
   let reasoningOpen = false;
   return {
     onDelta: (piece) => process.stdout.write(piece),
@@ -355,22 +416,63 @@ function buildHooks({ approve } = {}) {
       if (lines.length > 5) out("      " + t.faint("…"));
       emit("toolEnd", { tc, result });
     },
-    approve,
+    approve, askUser, onCheckpoint,
+    onFallback: (from, to, err) => out(t.faint(`provider fallback: ${from.spec || from.model} → ${to.spec || to.model} (${err.message})`)),
   };
 }
 
 // ---- one-shot ----
 
-async function oneShot({ target, system, tools, network, prompt, limits, fallbacks }) {
-  out(t.wordmark(target.spec, network));
-  out("");
-  const messages = [{ role: "user", content: expandMentions(prompt) }];
-  await runAgent({ target, system, messages, tools, hooks: buildHooks(), limits, fallbacks });
+const FINANCIAL_TOOLS = new Set(["wallet_send", "btc_broadcast", "bitcoin_rpc", "ln_invoice_pay", "taproot_asset_send", "cashu_melt", "cashu_send", "cashu_pay_request", "cj_wallet_drain"]);
+export function requiresPaymentApproval(tool) { return tool.financial === true || FINANCIAL_TOOLS.has(tool.name); }
+function printData(value, opts = {}) { out(JSON.stringify(value, null, opts.json ? 0 : 2)); }
+async function withInterrupt(work) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(new Error("cancelled by user"));
+  process.on("SIGINT", abort);
+  try { return await work(controller.signal); }
+  finally { process.removeListener("SIGINT", abort); }
+}
+export function runWithInterrupt(options) {
+  return withInterrupt(signal => runAgent({ ...options, signal }));
+}
+
+async function oneShot({ target, system, tools, network, prompt, limits, fallbacks, opts }) {
+  if (!opts.json) { out(t.wordmark(target.spec, network)); out(""); }
+  const cwd = process.cwd();
+  let session = { id: newSessionId(), messages: [] };
+  if (opts.resume) {
+    const found = opts.resume === "latest" ? latestSession(cwd) : { id: opts.resume };
+    if (!found) throw new Error("no saved session to resume");
+    session = loadSession(cwd, found.id);
+    if (session.network && session.network !== network) throw new Error("saved session uses a different Bitcoin network");
+  }
+  const commands = loadCommands();
+  if (prompt.startsWith("/")) { const [name, ...args] = prompt.slice(1).split(/\s+/); const command = commands.find(c => c.name === name); if (command) prompt = expandCommand(command, args.join(" ")); }
+  const messages = session.messages;
+  messages.push({ role: "user", content: expandMentions(prompt) });
+  const events = [];
+  const usage = { input_tokens: 0, output_tokens: 0 };
+  const persist = () => saveSession(cwd, { ...session, messages, model: target.spec, network });
+  const hooks = opts.json ? { onToolEnd: (tc, result) => events.push({ name: tc.name, result }) } : buildHooks();
+  hooks.approve = (_tc, tool) => !requiresPaymentApproval(tool) || opts.allowPayments === true;
+  hooks.onCheckpoint = persist;
+  hooks.onUsage = u => { usage.input_tokens += u.input_tokens || 0; usage.output_tokens += u.output_tokens || 0; };
+  try {
+    const answer = await runWithInterrupt({ target, system, messages, tools, hooks, limits, fallbacks, readOnly: opts.readOnly });
+    const stopped = answer?.startsWith("[stopped:");
+    if (stopped) process.exitCode = 2;
+    if (opts.json) printData({ answer, status: stopped ? "incomplete" : "completed", session_id: session.id, model: target.spec, usage, events }, opts);
+  } catch (err) {
+    process.exitCode = 1;
+    if (opts.json) printData({ status: "error", error: err.message, session_id: session.id, usage, events }, opts);
+    else throw err;
+  } finally { persist(); }
 }
 
 // ---- interactive REPL ----
 
-async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks, ext = {} }) {
+async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks, ext = {}, readOnly = false, plan, maxStepsOverride }) {
   const cwd = process.cwd();
   const messages = [];
   let active = target;
@@ -383,6 +485,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
         out(t.faint("no previous session to resume in this directory"));
       } else {
         const s = loadSession(cwd, found.id);
+        if (s.network && s.network !== network) throw new Error("saved session uses a different Bitcoin network");
         messages.push(...s.messages);
         session.id = s.id;
         session.name = s.name;
@@ -404,15 +507,12 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   const menu = buildMenu(commands);
   const history = loadHistory();
 
-  const approve = yolo
-    ? undefined
-    : async (tc, tool) => {
-        const what = tc.name === "bash" ? `$ ${tc.args.command}` : `${tc.name} ${tc.args.path || ""}`;
-        const ans = await question(
-          "  " + t.accent("approve") + " " + t.bold(tool.name) + t.faint(` [${clip(what, 80)}]`) + " (y/N) ",
-        );
-        return /^y(es)?$/i.test(ans.trim());
-      };
+  const approve = async (tc, tool) => {
+    if (yolo && !requiresPaymentApproval(tool)) return true;
+    out(t.faint(JSON.stringify(tc.args || {}, null, 2)));
+    const ans = await question("  " + t.accent("approve") + " " + t.bold(tool.name) + ` on ${network} (y/N) `);
+    return /^y(es)?$/i.test(ans.trim());
+  };
 
   const persist = () => {
     try {
@@ -447,7 +547,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
           cwd,
           network,
           session,
-          ext,
+          ext, limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), approve, readOnly, plan, persist,
           getActive: () => active,
           setActive: (x) => {
             active = x;
@@ -461,7 +561,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
 
     messages.push({ role: "user", content: expandMentions(input) });
     try {
-      await runAgent({ target: active, system, messages, tools, hooks: buildHooks({ approve }), limits, fallbacks });
+      await runWithInterrupt({ target: active, system, messages, tools, hooks: buildHooks({ approve, askUser: question, onCheckpoint: persist }), limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), readOnly });
     } catch (err) {
       out(t.danger(`error: ${err.message}`));
     }
@@ -472,7 +572,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   out(t.faint(`${t.BOLT ? `\n${t.accent(t.BOLT)} ` : "\n"}bye`));
 }
 
-async function handleSlash(input, ctx) {
+export async function handleSlash(input, ctx) {
   const [cmd, ...rest] = input.slice(1).split(/\s+/);
   const arg = rest.join(" ");
   switch (cmd) {
@@ -481,10 +581,13 @@ async function handleSlash(input, ctx) {
       return "exit";
     case "reset":
       ctx.messages.length = 0;
+      ctx.session.id = newSessionId();
+      ctx.session.name = null;
+      if (ctx.plan) ctx.plan.steps = [];
       out(t.faint("history cleared"));
       return;
     case "tools":
-      out(t.faint(ctx.tools.map((x) => x.name).join(", ")));
+      for (const tool of ctx.tools.filter(x => !arg || x.name.includes(arg))) out(`${tool.name}${isMutating(tool) ? " [approval]" : ""} — ${tool.description || ""}`);
       return;
     case "model":
       if (!arg) {
@@ -542,11 +645,44 @@ async function handleSlash(input, ctx) {
       const nestedMessages = [{ role: "user", content: expandMentions(prompt) }];
       out(t.faint(`— delegating to ${persona ? persona.name : "(default)"} —`));
       try {
-        await runAgent({ target: ctx.getActive(), system: nestedSystem, messages: nestedMessages, tools: ctx.tools, hooks: buildHooks() });
+        await runWithInterrupt({ target: ctx.getActive(), system: nestedSystem, messages: nestedMessages, tools: ctx.tools.filter(t => t.name !== "subagent"), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask }), limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), readOnly: ctx.readOnly });
       } catch (err) {
         out(t.danger(`error: ${err.message}`));
       }
       out(t.faint("— done —"));
+      return;
+    }
+    case "skills": return printData(loadSkills());
+    case "commands": return printData((ctx.commands || loadCommands()).map(({ name, description }) => ({ name, description })));
+    case "mcp": return printData(ctx.ext?.mcpServers || []);
+    case "status": return printData({ model: ctx.getActive().spec, readOnly: !!ctx.readOnly, ...contextStats(ctx.messages), usage: ctx.messages.reduce((u, m) => ({ input_tokens: u.input_tokens + (m.usage?.input_tokens || 0), output_tokens: u.output_tokens + (m.usage?.output_tokens || 0) }), { input_tokens: 0, output_tokens: 0 }), plan: ctx.plan });
+    case "compact": {
+      try {
+        ctx.persist?.();
+        // Preserve a complete checkpoint before replacing older messages.
+        saveSession(ctx.cwd, { id: newSessionId(), model: ctx.getActive().spec, network: ctx.network, messages: ctx.messages, name: "before compaction" });
+        const changed = await withInterrupt(signal => compactContext({ messages: ctx.messages, target: ctx.getActive(), signal }));
+        ctx.persist?.();
+        out(changed ? t.ok("context compacted") : t.faint("not enough older turns to compact"));
+      } catch (err) { out(t.danger(err.message)); }
+      return;
+    }
+    case "plan": {
+      if (!arg) return out(t.faint("usage: /plan <task>"));
+      try {
+        const text = await runWithInterrupt({ target: ctx.getActive(), system: `${ctx.system}\nInvestigate the task using read-only tools. Return a concrete implementation plan with files, steps and verification. Do not implement changes.`, messages: [{ role: "user", content: expandMentions(arg) }], tools: ctx.tools, limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), readOnly: true, hooks: buildHooks({ askUser: ctx.ask }) });
+        if (!text?.startsWith("[stopped:")) out(t.ok(`plan saved: ${savePlan(ctx.cwd, { task: arg, text })}`));
+      } catch (err) { out(t.danger(err.message)); }
+      return;
+    }
+    case "build": {
+      const plan = latestPlan(ctx.cwd);
+      if (!plan) return out(t.faint("no saved plan; use /plan <task>"));
+      if (ctx.readOnly) return out(t.danger("restart without --read-only to implement the plan"));
+      ctx.messages.push({ role: "user", content: `Implement this saved plan, inspect current files first, and verify the changes:\n${plan.text}` });
+      try { await runWithInterrupt({ target: ctx.getActive(), system: ctx.system, messages: ctx.messages, tools: ctx.tools, limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask, onCheckpoint: ctx.persist }) }); }
+      catch (err) { out(t.danger(err.message)); }
+      ctx.persist?.();
       return;
     }
     case "doctor": {
@@ -577,7 +713,7 @@ async function handleSlash(input, ctx) {
           return;
         }
         const v = configGet(ctx.config, key);
-        out(v === undefined ? t.faint("(unset)") : t.body(typeof v === "object" ? JSON.stringify(v) : String(v)));
+        out(v === undefined ? t.faint("(unset)") : t.body(JSON.stringify(redact(v, key))));
         return;
       }
       if (sub === "set") {
@@ -587,13 +723,12 @@ async function handleSlash(input, ctx) {
         }
         const raw = valp.join(" ");
         let value = raw;
-        if (raw === "true") value = true;
-        else if (raw === "false") value = false;
-        else if (/^-?\d+$/.test(raw)) value = Number(raw);
-        configSet(ctx.config, key, value);
+        try { value = JSON.parse(raw); } catch { /* plain string */ }
         try {
+          configSet(ctx.config, key, value);
           const file = saveConfig(ctx.config);
-          out(t.ok(`set ${key} → ${raw}`) + t.faint(`  (${file})`));
+          out(t.ok(`set ${key} → ${/key|token|secret|macaroon|password/i.test(key) ? "[redacted]" : raw}`) + t.faint(`  (${file})`));
+          if (key !== "model") out(t.faint("Agent limits take effect next turn; restart to reload tool, network, MCP and provider settings."));
           if (key === "model") {
             try {
               ctx.setActive(resolveModel({ config: ctx.config }));
@@ -609,6 +744,15 @@ async function handleSlash(input, ctx) {
       }
       out(t.faint("usage: /config get [key] | /config set <key> <value>"));
       out(t.faint(`file: ${configPath()}`));
+      return;
+    }
+    case "login": {
+      if (rest.length > 1) { out(t.danger("usage: /login [provider]; enter the API key only at the prompt")); return; }
+      try {
+        const result = await providerLogin(ctx.config, rest[0], { ask: ctx.ask, print: out });
+        out(result.ok ? t.ok(result.msg) : t.danger(result.msg));
+        if (result.ok) ctx.setActive(resolveModel({ cliModel: ctx.getActive().spec, config: ctx.config }));
+      } catch (err) { out(t.danger(`login failed: ${err.message}`)); }
       return;
     }
     case "provider": {
@@ -689,6 +833,7 @@ async function handleSlash(input, ctx) {
         }
         try {
           const s = loadSession(cwd, id);
+          if (s.network && s.network !== ctx.network) throw new Error("saved session uses a different Bitcoin network");
           ctx.messages.length = 0;
           ctx.messages.push(...s.messages);
           ctx.session.id = s.id;
@@ -727,11 +872,19 @@ async function handleSlash(input, ctx) {
       return;
     }
     case "help":
-      out(t.faint("/model [spec]  /models  /setting  /config <sub>  /provider <sub>  /doctor  /session <sub>"));
-      out(t.faint("/subagent [name] [prompt]  /tools  /reset  /exit"));
-      if (ctx.commands.length) out(t.faint(`custom: ${ctx.commands.map((c) => "/" + c.name).join("  ")}`));
+      out(t.faint("/model [spec]  /models  /login [provider]  /setting  /config <sub>  /provider <sub>  /doctor  /session <sub>"));
+      out(t.faint("/plan <task>  /build  /compact  /status  /skills  /mcp  /commands"));
+      out(t.faint("/subagent [name] [prompt]  /tools [filter]  /reset  /exit"));
+      if (ctx.commands?.length) out(t.faint(`custom: ${ctx.commands.map((c) => "/" + c.name).join("  ")}`));
       return;
     default:
       out(t.danger(`unknown command: /${cmd}`));
   }
+}
+
+function redact(value, key = "") {
+  if (/key|token|secret|password|macaroon|mnemonic/i.test(key)) return "[redacted]";
+  if (Array.isArray(value)) return value.map(v => redact(v));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redact(v, k)]));
+  return value;
 }

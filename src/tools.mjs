@@ -4,7 +4,9 @@
 // All paths resolve against process.cwd(). `mutating: true` marks tools that
 // change state, so the CLI can gate them behind an approval prompt.
 
-import { exec } from "node:child_process";
+import { runShell, processTools } from "./processes.mjs";
+import { workspaceTools } from "./workspace-tools.mjs";
+import { resolveLightning } from "./lightning/network.mjs";
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { bitcoinTools } from "./bitcoin/tools.mjs";
@@ -37,34 +39,16 @@ const bash = {
   parameters: {
     type: "object",
     properties: {
-      command: { type: "string", description: "The shell command to execute." },
+      command: { type: "string", minLength: 1, description: "The shell command to execute." },
+      cwd: { type: "string", description: "Working directory (default current directory)." },
       timeout_ms: {
-        type: "number",
+        type: "integer", minimum: 1, maximum: 86400000,
         description: `Optional timeout in milliseconds (default ${DEFAULT_BASH_TIMEOUT}).`,
       },
     },
     required: ["command"],
   },
-  run: ({ command, timeout_ms }) =>
-    new Promise((resolve) => {
-      exec(
-        command,
-        {
-          cwd: process.cwd(),
-          timeout: timeout_ms || DEFAULT_BASH_TIMEOUT,
-          maxBuffer: 10 * 1024 * 1024,
-          shell: "/bin/bash",
-        },
-        (err, stdout, stderr) => {
-          let out = "";
-          if (stdout) out += stdout;
-          if (stderr) out += (out ? "\n" : "") + stderr;
-          if (err && err.killed) out += `\n[command timed out]`;
-          if (err && typeof err.code === "number") out += `\n[exit code ${err.code}]`;
-          resolve(clip(out.trim() || "[no output]"));
-        },
-      );
-    }),
+  run: runShell,
 };
 
 const readFileTool = {
@@ -73,12 +57,17 @@ const readFileTool = {
   description: "Read a UTF-8 text file and return its contents.",
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "Path to the file." } },
+    properties: { path: { type: "string", description: "Path to the file." }, offset: { type: "integer", minimum: 1 }, limit: { type: "integer", minimum: 1, maximum: 10000 }, line_numbers: { type: "boolean" } },
     required: ["path"],
   },
-  run: async ({ path: p }) => {
-    const content = await readFile(resolvePath(p), "utf8");
-    return clip(content);
+  run: async ({ path: p, offset = 1, limit, line_numbers = false }) => {
+    const abs = resolvePath(p);
+    if ((await stat(abs)).size > 10 * 1024 * 1024) throw new Error("file exceeds 10 MiB; use a shell command to read a range");
+    const content = await readFile(abs, "utf8");
+    if (content.includes("\u0000")) throw new Error("binary file: use a suitable binary tool");
+    const lines = content.split("\n");
+    const selected = lines.slice(offset - 1, limit ? offset - 1 + limit : undefined);
+    return clip(line_numbers ? selected.map((l, i) => `${offset + i}: ${l}`).join("\n") : selected.join("\n"));
   },
 };
 
@@ -119,6 +108,7 @@ const editFileTool = {
   run: async ({ path: p, old_string, new_string }) => {
     const abs = resolvePath(p);
     const content = await readFile(abs, "utf8");
+    if (!old_string) throw new Error("old_string must be non-empty");
     const idx = content.indexOf(old_string);
     if (idx === -1) return `ERROR: old_string not found in ${abs}`;
     if (content.indexOf(old_string, idx + 1) !== -1) {
@@ -206,9 +196,9 @@ function globToRegExp(glob) {
     const c = glob[i];
     if (c === "*") {
       if (glob[i + 1] === "*") {
-        re += ".*";
         i++;
-        if (glob[i + 1] === "/") i++;
+        if (glob[i + 1] === "/") { re += "(?:.*/)?"; i++; }
+        else re += ".*";
       } else {
         re += "[^/]*";
       }
@@ -250,7 +240,7 @@ const grepTool = {
     const root = resolvePath(p);
     const results = [];
     for await (const file of walkFiles(root)) {
-      if (nameRe && !nameRe.test(path.basename(file))) continue;
+      if (nameRe && !nameRe.test(glob.includes("/") ? path.relative(root, file).split(path.sep).join("/") : path.basename(file))) continue;
       let content;
       try {
         content = await readFile(file, "utf8");
@@ -326,7 +316,8 @@ function applyUnifiedDiff(content, diff) {
     let newRem = m[4] === undefined ? 1 : parseInt(m[4], 10);
     i++;
 
-    const target = oldStart - 1;
+    const target = oldRem === 0 ? oldStart : oldStart - 1;
+    if (target < 0 || target > src.length) throw new Error("hunk starts outside the source file");
     if (target < srcIdx) throw new Error(`hunk at line ${oldStart} overlaps a previous hunk`);
     while (srcIdx < target) out.push(src[srcIdx++]);
 
@@ -335,15 +326,18 @@ function applyUnifiedDiff(content, diff) {
       const tag = line === "" ? " " : line[0];
       const text = line === "" ? "" : line.slice(1);
       if (tag === "+") {
+        if (newRem <= 0) throw new Error("hunk has too many added lines");
         out.push(text);
         newRem--;
       } else if (tag === "-") {
+        if (oldRem <= 0) throw new Error("hunk has too many removed lines");
         if (src[srcIdx] !== text) {
           throw new Error(`removal mismatch at line ${srcIdx + 1}: expected "${text}", found "${src[srcIdx] ?? "<eof>"}"`);
         }
         srcIdx++;
         oldRem--;
       } else if (tag === " ") {
+        if (oldRem <= 0 || newRem <= 0) throw new Error("hunk has excess context");
         if (src[srcIdx] !== text) {
           throw new Error(`context mismatch at line ${srcIdx + 1}: expected "${text}", found "${src[srcIdx] ?? "<eof>"}"`);
         }
@@ -357,6 +351,8 @@ function applyUnifiedDiff(content, diff) {
       }
       i++;
     }
+    if (oldRem !== 0 || newRem !== 0) throw new Error("incomplete hunk");
+    if (i < dl.length && /^[ +\-]/.test(dl[i]) && dl[i] !== "") throw new Error("unexpected lines after hunk");
   }
   while (srcIdx < src.length) out.push(src[srcIdx++]);
   return out.join("\n");
@@ -417,6 +413,7 @@ export function registerTool(tool) {
   if (typeof tool.run !== "function") {
     throw new Error(`registerTool: tool "${tool.name}" needs a run() function`);
   }
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(tool.name)) throw new Error("registerTool: name must match [a-zA-Z0-9_-] and be at most 64 characters");
   registry.set(tool.name, tool);
   return tool.name;
 }
@@ -440,7 +437,7 @@ function subagentTool({ modelRef, agents, system, realTools }) {
     name: "subagent",
     mutating: true,
     description:
-      "Delegate a focused sub-task to a fresh nested agent with its own context window; returns only its final answer, not the full transcript. Optionally pick a persona with `agent` (a name from ~/.bitcode/agents/*.md). Approving this tool authorizes everything the subagent does internally — it runs without further per-tool confirmation prompts.",
+      "Delegate a focused sub-task to a fresh nested agent with its own context window; returns only its final answer, not the full transcript. Optionally pick a persona with `agent` (a name from ~/.bitcode/agents/*.md). The subagent inherits approvals, cancellation and budgets; it cannot delegate recursively.",
     parameters: {
       type: "object",
       properties: {
@@ -449,14 +446,14 @@ function subagentTool({ modelRef, agents, system, realTools }) {
       },
       required: ["prompt"],
     },
-    run: async ({ agent, prompt }) => {
+    run: async ({ agent, prompt }, context = {}) => {
       const persona = agent ? findAgent(agents, agent) : null;
       if (agent && !persona) {
         return `ERROR: unknown agent "${agent}". Known: ${agents.map((a) => a.name).join(", ") || "(none)"}`;
       }
       const nestedSystem = persona ? `${system}\n\n${persona.body}` : system;
       const messages = [{ role: "user", content: prompt }];
-      const text = await runAgent({ target: modelRef.current, messages, system: nestedSystem, tools: realTools, hooks: {} });
+      const text = await runAgent({ target: modelRef.current, messages, system: nestedSystem, tools: realTools.filter(t => t.name !== "subagent"), ...context, hooks: { ...context.hooks, onCheckpoint: undefined } });
       return clip(text || "[subagent returned no text]");
     },
   };
@@ -475,9 +472,11 @@ function subagentTool({ modelRef, agents, system, realTools }) {
 // a local `waved` daemon, which is inherently async. They're wired in by
 // loadExtensions() in cli.mjs (same async stage as plugins/config.mcp) and
 // land in `registeredTools()` before this function runs.
-export function buildTools(config = {}, { modelRef, agents = [], system = "", lightning = null } = {}) {
+export function buildTools(config = {}, { modelRef, agents = [], system = "", lightning = resolveLightning(config), skills, plan } = {}) {
   const base = [
     ...GENERIC_TOOLS,
+    ...processTools,
+    ...workspaceTools({ skills, plan }),
     ...bitcoinTools(config),
     ...liquidTools(config),
     bolt11Tool,
@@ -489,5 +488,5 @@ export function buildTools(config = {}, { modelRef, agents = [], system = "", li
   // Dedup by name, last wins — a registered tool may override a built-in.
   const realTools = [...new Map(base.map((t) => [t.name, t])).values()];
   if (!modelRef) return realTools;
-  return [...realTools, subagentTool({ modelRef, agents, system, realTools })];
+  return [...realTools.filter(t => t.name !== "subagent"), subagentTool({ modelRef, agents, system, realTools })];
 }

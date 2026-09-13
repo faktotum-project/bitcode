@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { on, off, emit, clear } from "../src/hooks.mjs";
 import { loadPlugins } from "../src/plugins.mjs";
-import { mcpTools } from "../src/mcp.mjs";
+import { mcpTools, closeMcpConnections } from "../src/mcp.mjs";
 import { buildTools, unregisterTool } from "../src/tools.mjs";
 
 test("hooks: listeners fire in order and a throwing one is isolated", async () => {
@@ -50,7 +50,8 @@ test("plugins: a plugin registers a tool; a broken one is reported not thrown", 
   unregisterTool("t_hello");
 });
 
-test("mcp: connect to a stdio server, wrap its tools, and call one", async () => {
+test("mcp: connect to a stdio server, wrap its tools, and call one", async (t) => {
+  t.after(closeMcpConnections);
   const dir = mkdtempSync(path.join(os.tmpdir(), "bc-mcp-"));
   const server = path.join(dir, "server.mjs");
   writeFileSync(
@@ -64,13 +65,13 @@ test("mcp: connect to a stdio server, wrap its tools, and call one", async () =>
          if (!line) continue;
          const msg = JSON.parse(line);
          const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\\n");
-         if (msg.method === "initialize") reply({ protocolVersion: "2024-11-05" });
+         if (msg.method === "initialize") reply({ protocolVersion: "2025-11-25", capabilities: { tools: {} }, serverInfo: { name: "test", version: "1" } });
          else if (msg.method === "tools/list") reply({ tools: [{ name: "echo", description: "echo", inputSchema: { type: "object", properties: { text: { type: "string" } } } }] });
          else if (msg.method === "tools/call") reply({ content: [{ type: "text", text: "echo: " + (msg.params.arguments.text || "") }] });
        }
      });`,
   );
-  const { tools, servers } = await mcpTools({ mcp: { demo: { command: process.execPath, args: [server] } } });
+  const { tools, servers } = await mcpTools({ mcp: { demo: { command: process.execPath, args: [server], negotiation: "legacy" } } });
   assert.equal(servers[0].ok, true);
   assert.equal(servers[0].tools, 1);
   assert.equal(tools[0].name, "mcp_demo_echo");

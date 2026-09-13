@@ -1,0 +1,37 @@
+Choose a model. Make it yours.
+
+bitcode 0.2.0 · 2026-09-11T11:15:24.264Z
+
+Actual login and /setting output, using an explicitly fake example key in disposable BITCODE_HOME. No provider request, authentication validation or GPT model execution occurred. Home paths are normalized. Login stores a key; -m selects the model for this session.
+
+Presentation: animated command entry, original ANSI CLI output, shortened waits. Example login key is fake. Paths normalized.
+
+
+
+$ node bitcode.mjs login openai
+
+  enter API key for openai: ••••••••••••••••••••••••••••
+saved key for openai → ~/.bitcode/config.json
+
+$ node bitcode.mjs -m openai/gpt-6-astra
+
+
+⚡ bitcode  agent · openai/gpt-6-astra  · signet  ● ready
+  ~/bitcode
+  ● thinking  →  ● running  →  ● reading  →  ● drafting  →  ● done
+
+type a request, or /help for commands. Ctrl+D to quit.
+
+› /setting
+P R O V I D E R S
+  anthropic    ANTHROPIC_API_KEY (unset)
+  openai       saved key ✓
+  openrouter   OPENROUTER_API_KEY (unset)
+  groq         GROQ_API_KEY (unset)
+  ollama       local
+
+  active model: openai/gpt-6-astra
+  config:       ~/.bitcode/config.json
+› /exit
+
+⚡ bye

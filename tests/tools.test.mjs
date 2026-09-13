@@ -75,3 +75,26 @@ test("registerTool validates its argument", () => {
   assert.throws(() => registerTool({}), /non-empty name/);
   assert.throws(() => registerTool({ name: "x" }), /run\(\)/);
 });
+
+test("read_file supports bounded line ranges with line numbers", async () => {
+  const result = await get("read_file").run({ path: "README.md", offset: 2, limit: 1, line_numbers: true });
+  assert.equal(result, "2: TODO later");
+});
+test("empty edits and incomplete patches do not change files", async () => {
+  const before = readFileSync("README.md", "utf8");
+  await assert.rejects(get("edit_file").run({ path: "README.md", old_string: "", new_string: "oops" }), /non-empty/);
+  for (const diff of ["@@ -1,2 +1,2 @@\n # title", "@@ -100,1 +100,1 @@\n-x\n+y"]) {
+    assert.match(await get("patch").run({ path: "README.md", diff }), /ERROR/);
+  }
+  assert.equal(readFileSync("README.md", "utf8"), before);
+});
+test("globstar preserves the directory boundary", async () => {
+  writeFileSync("src/abcbar.mjs", "//test");
+  const result = await get("glob").run({ pattern: "src/**/bar.mjs" });
+  assert.equal(result, "[no files matched]");
+});
+test("Lightning tools register when LND is configured", () => {
+  const tools = buildTools({ lightning: { lndRestUrl: "http://127.0.0.1:8080", lndMacaroonHex: "00" } });
+  assert.ok(tools.some(t => t.name === "ln_info"));
+  assert.ok(tools.some(t => t.name === "ln_invoice_pay"));
+});

@@ -8,13 +8,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node }}
       # --ignore-scripts skips the postinstall Rust build of the Cashu binaries,
       # which the test suite does not need (Cashu tools spawn them at runtime).
-      - run: npm install --ignore-scripts
+      - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npm test

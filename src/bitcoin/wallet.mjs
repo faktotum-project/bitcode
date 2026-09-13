@@ -1,3 +1,4 @@
+import { bitcodeHome } from "../paths.mjs";
 // Autonomous HD wallet (BIP84 native segwit, descriptor-based) built on audited
 // @scure libraries, following the 2026 best practices in
 // aggiornamenti_bitcoin_ai_agents.md:
@@ -7,7 +8,6 @@
 //     `bitcode wallet seed` can reveal it).
 // Keys live at ~/.bitcode/wallet.<net>.json (0600) or in BITCODE_MNEMONIC.
 import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import * as btc from "@scure/btc-signer";
 import { HDKey } from "@scure/bip32";
@@ -23,7 +23,7 @@ const b64 = (bytes) => Buffer.from(bytes).toString("base64");
 const fromB64 = (s) => new Uint8Array(Buffer.from(s, "base64"));
 
 export function wallet(ctx) {
-  const dir = path.join(homedir(), ".bitcode");
+  const dir = bitcodeHome();
   const file = path.join(dir, `wallet.${ctx.name}.json`);
   const api = esplora(ctx.esploraUrl);
 

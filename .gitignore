@@ -2,3 +2,4 @@ node_modules/
 deps/cdk/target/
 deps/cdk/bin/
 deps/wavelength/
+.demo-archive/

@@ -22,7 +22,7 @@ import net from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
 import { resolveWavelength } from "./network.mjs";
 import { wavelengthDaemon, wavecliBinPath } from "./daemon.mjs";
-import { mcpConnect } from "../mcp.mjs";
+import { mcpConnect, mcpResult } from "../mcp.mjs";
 
 // The TLS cert file appears slightly before the gRPC listener actually
 // accepts connections (confirmed against a live daemon: a file-existence
@@ -62,7 +62,7 @@ export function filterReadOnlyMcpMethods(schema) {
 // Runs `wavecli schema --all --json` — no daemon connection needed, it's a
 // static dump of the compiled-in command tree.
 export function readOnlyMcpMethods(wavecliPath = wavecliBinPath()) {
-  const raw = execFileSync(wavecliPath, ["schema", "--all", "--json"], { encoding: "utf8" });
+  const raw = execFileSync(wavecliPath, ["schema", "--all", "--json"], { encoding: "utf8", timeout: 10000, maxBuffer: 2 * 1024 * 1024 });
   return filterReadOnlyMcpMethods(JSON.parse(raw));
 }
 
@@ -81,6 +81,9 @@ export function mcpServeArgs(ctx) {
   ];
 }
 
+const activeDaemons = new Set();
+export async function closeWavelength() { await Promise.allSettled([...activeDaemons].map(daemon => daemon.stop())); activeDaemons.clear(); }
+
 export async function wavelengthTools(config = {}) {
   const ctx = resolveWavelength(config);
   if (!ctx) return [];
@@ -91,7 +94,8 @@ export async function wavelengthTools(config = {}) {
     const allowed = readOnlyMcpMethods();
 
     daemon = wavelengthDaemon(ctx);
-    daemon.start();
+    await daemon.start();
+    activeDaemons.add(daemon);
     process.on("exit", () => daemon.stop());
     await waitForRpcReady(ctx);
 
@@ -106,11 +110,8 @@ export async function wavelengthTools(config = {}) {
         mutating: false,
         description: `${def.description} (Wavelength, ${ctx.network}).`,
         parameters: def.inputSchema || { type: "object", properties: {} },
-        run: async (args) => {
-          const res = await client.callTool(def.name, args);
-          if (res?.content) return res.content.map((c) => c.text ?? JSON.stringify(c)).join("\n");
-          return JSON.stringify(res ?? {});
-        },
+        retryable: false,
+        run: async (args, { signal } = {}) => mcpResult(await client.callTool(def.name, args, { signal })),
       }));
   } catch (err) {
     // Best-effort, same contract as config.mcp servers (mcp.mjs): a
@@ -120,8 +121,8 @@ export async function wavelengthTools(config = {}) {
     // set on purpose, so a one-line reason goes to stderr.
     const tail = daemon?.logTail();
     process.stderr.write(`wavelength: disabled — ${err.message}${tail ? `\n${tail}` : ""}\n`);
-    client?.close();
-    daemon?.stop();
+    await client?.close();
+    await daemon?.stop();
     return [];
   }
 }

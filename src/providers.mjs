@@ -1,4 +1,4 @@
-// Model adapters. Two wire formats behind one canonical interface.
+// Model adapters. Responses, Chat Completions and Messages behind one canonical interface.
 //
 // Canonical message shapes used everywhere else in the app:
 //   { role: "user",      content: string }
@@ -15,17 +15,19 @@
 import { randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
+import { wait, throwIfAborted } from "./runtime.mjs";
 
 const ANTHROPIC_VERSION = "2023-06-01";
 const REQUEST_TIMEOUT_MS = 600_000;
 const DEFAULT_MAX_TOKENS = 4096;
 
-export async function callModel({ provider, model, apiKey, system, messages, tools, onDelta }) {
+export async function callModel({ provider, model, apiKey, system, messages, tools, onDelta, signal }) {
   if (provider.api === "anthropic") {
-    return callAnthropic({ provider, model, apiKey, system, messages, tools, onDelta });
+    return callAnthropic({ provider, model, apiKey, system, messages, tools, onDelta, signal });
   }
+  if (provider.api === "responses") return callResponses({ provider, model, apiKey, system, messages, tools, onDelta, signal });
   if (provider.api === "openai") {
-    return callOpenAI({ provider, model, apiKey, system, messages, tools, onDelta });
+    return callOpenAI({ provider, model, apiKey, system, messages, tools, onDelta, signal });
   }
   throw new Error(`unsupported provider api: ${provider.api}`);
 }
@@ -34,7 +36,7 @@ export async function callModel({ provider, model, apiKey, system, messages, too
 // enforces a headers timeout we cannot disable without a dependency, which a
 // slow cold-loading local model trips before its first byte. Raw http lets us
 // wait. Resolves with the response stream (utf8) once status is 2xx.
-function openStream(urlString, headers, body) {
+function openStream(urlString, headers, body, signal) {
   return new Promise((resolve, reject) => {
     let u;
     try {
@@ -42,11 +44,13 @@ function openStream(urlString, headers, body) {
     } catch {
       return reject(new Error(`bad URL: ${urlString}`));
     }
+    if (!["https:", "http:"].includes(u.protocol)) return reject(new Error("unsupported URL protocol"));
     const lib = u.protocol === "https:" ? https : http;
     const payload = JSON.stringify({ ...body, stream: true });
     const req = lib.request(
       {
         method: "POST",
+        signal,
         hostname: u.hostname,
         port: u.port || (u.protocol === "https:" ? 443 : 80),
         path: u.pathname + u.search,
@@ -61,7 +65,7 @@ function openStream(urlString, headers, body) {
         res.setEncoding("utf8");
         if (res.statusCode < 200 || res.statusCode >= 300) {
           let errBody = "";
-          for await (const c of res) errBody += c;
+          try { for await (const c of res) { errBody += c; if (errBody.length > 8192) { res.destroy(); break; } } } catch (err) { reject(err); return; }
           const err = new Error(`${urlString} -> HTTP ${res.statusCode}: ${errBody.slice(0, 800)}`);
           err.statusCode = res.statusCode;
           const ra = res.headers["retry-after"];
@@ -94,20 +98,22 @@ function openStream(urlString, headers, body) {
 // server sends one. Non-retryable errors (4xx other than 429, bad key) throw
 // immediately.
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-const RETRYABLE_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "EPIPE"]);
+const RETRYABLE_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "EPIPE", "ECONNREFUSED", "EAI_AGAIN"]);
+export const isRetryable = err => RETRYABLE_STATUS.has(err?.statusCode) || RETRYABLE_CODES.has(err?.code);
 const MAX_HTTP_RETRIES = 3;
 
-async function openStreamRetry(urlString, headers, body) {
+async function openStreamRetry(urlString, headers, body, signal) {
   let lastErr;
   for (let a = 0; a <= MAX_HTTP_RETRIES; a++) {
     try {
-      return await openStream(urlString, headers, body);
+      throwIfAborted(signal);
+      return await openStream(urlString, headers, body, signal);
     } catch (err) {
       lastErr = err;
-      const retryable = RETRYABLE_STATUS.has(err.statusCode) || RETRYABLE_CODES.has(err.code);
+      const retryable = !signal?.aborted && isRetryable(err) && err.code !== "ECONNREFUSED";
       if (!retryable || a === MAX_HTTP_RETRIES) throw err;
-      const wait = err.retryAfter && err.retryAfter > 0 ? err.retryAfter : Math.min(500 * 2 ** a, 8000);
-      await new Promise((r) => setTimeout(r, wait));
+      const delay = Math.min(err.retryAfter || 500 * 2 ** a, 30_000);
+      await wait(delay, signal);
     }
   }
   throw lastErr;
@@ -116,7 +122,7 @@ async function openStreamRetry(urlString, headers, body) {
 // Lightweight, token-free reachability probe for /provider health.
 export function providerHealth(provider, apiKey, timeoutMs = 5000) {
   const target =
-    provider.api === "openai" ? `${provider.baseURL}/models` : provider.baseURL;
+    provider.api === "anthropic" ? `${provider.baseURL}/v1/models` : `${provider.baseURL}/models`;
   return new Promise((resolve) => {
     let u;
     try {
@@ -135,7 +141,7 @@ export function providerHealth(provider, apiKey, timeoutMs = 5000) {
       { method: "GET", hostname: u.hostname, port: u.port || (u.protocol === "https:" ? 443 : 80), path: u.pathname + u.search, headers },
       (res) => {
         res.resume();
-        const ok = res.statusCode < 500;
+        const ok = res.statusCode >= 200 && res.statusCode < 300;
         resolve({ ok, detail: `HTTP ${res.statusCode}${apiKey ? "" : " (no key)"}` });
       },
     );
@@ -147,20 +153,33 @@ export function providerHealth(provider, apiKey, timeoutMs = 5000) {
 
 // Yield SSE data payloads (the part after "data:"), skipping comments and blank
 // lines. Stops at the "[DONE]" sentinel.
-async function* sseEvents(res) {
+export async function* sseEvents(res) {
   let buf = "";
+  let data = [], eventChars = 0;
   for await (const chunk of res) {
     buf += chunk;
+    if (buf.length > 10_000_000) throw new Error("SSE event exceeds size limit");
     let nl;
     while ((nl = buf.indexOf("\n")) !== -1) {
       const line = buf.slice(0, nl).replace(/\r$/, "");
       buf = buf.slice(nl + 1);
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (data === "[DONE]") return;
-      yield data;
+      if (!line) {
+        if (data.length) { const payload = data.join("\n"); data = []; eventChars = 0; yield payload; if (payload === "[DONE]") return; }
+      } else if (line.startsWith("data:")) {
+        eventChars += line.length;
+        if (eventChars > 10_000_000) throw new Error("SSE event exceeds size limit");
+        data.push(line.slice(5).replace(/^ /, ""));
+      }
     }
   }
+  if (buf.startsWith("data:")) data.push(buf.slice(5).replace(/^ /, ""));
+  if (data.length) yield data.join("\n");
+}
+
+function eventJSON(data) {
+  const ev = JSON.parse(data);
+  if (ev.error || ev.type === "error") throw new Error(ev.error?.message || ev.message || "provider stream error");
+  return ev;
 }
 
 // ---- OpenAI Chat Completions (and compatible servers: Ollama, Groq, ...) ----
@@ -188,7 +207,7 @@ function toOpenAIMessages(system, messages) {
   return out;
 }
 
-async function callOpenAI({ provider, model, apiKey, system, messages, tools, onDelta }) {
+async function callOpenAI({ provider, model, apiKey, system, messages, tools, onDelta, signal }) {
   const headers = {};
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
 
@@ -201,17 +220,18 @@ async function callOpenAI({ provider, model, apiKey, system, messages, tools, on
     body.tool_choice = "auto";
   }
 
-  const res = await openStreamRetry(`${provider.baseURL}/chat/completions`, headers, body);
+  const res = await openStreamRetry(`${provider.baseURL}/chat/completions`, headers, body, signal);
 
   let text = "";
+  let complete = false, usage;
   const calls = []; // accumulated by streamed tool_call index
   for await (const data of sseEvents(res)) {
-    let json;
-    try {
-      json = JSON.parse(data);
-    } catch {
-      continue;
-    }
+    if (data === "[DONE]") { complete = true; break; }
+    const json = eventJSON(data);
+    if (json.usage) usage = { input_tokens: json.usage.prompt_tokens || 0, output_tokens: json.usage.completion_tokens || 0 };
+    const reason = json.choices?.[0]?.finish_reason;
+    if (reason === "length" || reason === "content_filter") throw new Error(`model response incomplete: ${reason}`);
+    if (reason) complete = true;
     const delta = json.choices?.[0]?.delta;
     if (!delta) continue;
     if (delta.content) {
@@ -227,20 +247,55 @@ async function callOpenAI({ provider, model, apiKey, system, messages, tools, on
     }
   }
 
+  if (!complete) throw new Error("provider stream ended before completion");
   const toolCalls = calls
     .filter((c) => c && c.name)
     .map((c) => ({ id: c.id || randomUUID(), name: c.name, args: parseArgs(c.args) }));
-  return { text, toolCalls };
+  return { text, toolCalls, usage };
 }
 
 function parseArgs(raw) {
-  if (raw == null || raw === "") return {};
-  if (typeof raw === "object") return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
+  const args = typeof raw === "string" ? JSON.parse(raw || "{}") : raw ?? {};
+  if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("model returned invalid tool arguments: expected JSON object");
+  return args;
+}
+
+// ---- Responses API: retain every native output item for stateless reasoning ----
+async function callResponses({ provider, model, apiKey, system, messages, tools, onDelta, signal }) {
+  const input = [];
+  for (const m of messages) {
+    if (m.role === "user") input.push({ role: "user", content: m.content });
+    else if (m.role === "tool") input.push({ type: "function_call_output", call_id: m.toolCallId, output: String(m.content) });
+    else if (m.role === "assistant") {
+      if (m.providerState?.api === "responses" && m.providerState.baseURL === provider.baseURL && m.providerState.model === model) input.push(...m.providerState.output);
+      else {
+        if (m.content) input.push({ role: "assistant", content: m.content });
+        for (const tc of m.toolCalls || []) input.push({ type: "function_call", call_id: tc.id, name: tc.name, arguments: JSON.stringify(tc.args) });
+      }
+    }
   }
+  const body = { model, input, store: false, instructions: system,
+    tools: (tools || []).map(t => ({ type: "function", ...t, strict: false })),
+    include: ["reasoning.encrypted_content"],
+  };
+  if (provider.maxOutputTokens) body.max_output_tokens = provider.maxOutputTokens;
+  if (provider.reasoningEffort) body.reasoning = { effort: provider.reasoningEffort };
+  const res = await openStreamRetry(`${provider.baseURL.replace(/\/$/, "")}/responses`, apiKey ? { authorization: `Bearer ${apiKey}` } : {}, body, signal);
+  let text = "", response;
+  for await (const data of sseEvents(res)) {
+    if (data === "[DONE]") break;
+    const ev = eventJSON(data);
+    if (ev.type === "response.output_text.delta") { text += ev.delta; onDelta?.(ev.delta); }
+    if (ev.type === "response.failed" || ev.type === "response.incomplete") throw new Error(ev.response?.error?.message || `model response incomplete: ${ev.response?.incomplete_details?.reason || ev.type}`);
+    if (ev.type === "response.completed") response = ev.response;
+  }
+  if (!response || response.status !== "completed") throw new Error("Responses stream ended before completion");
+  const output = response.output || [];
+  if (!text) { text = output.filter(x => x.type === "message").flatMap(x => x.content || []).filter(x => x.type === "output_text" || x.type === "refusal").map(x => x.text || x.refusal).join(""); if (text) onDelta?.(text); }
+  return { text, usage: response.usage,
+    toolCalls: output.filter(x => x.type === "function_call").map(x => ({ id: x.call_id, name: x.name, args: parseArgs(x.arguments) })),
+    providerState: { api: "responses", baseURL: provider.baseURL, model, output },
+  };
 }
 
 // ---- Anthropic Messages API ----
@@ -275,7 +330,7 @@ function toAnthropicMessages(messages) {
   return merged;
 }
 
-async function callAnthropic({ provider, model, apiKey, system, messages, tools, onDelta }) {
+async function callAnthropic({ provider, model, apiKey, system, messages, tools, onDelta, signal }) {
   if (!apiKey) {
     throw new Error(`missing API key: set ${provider.keyEnv} for the anthropic provider`);
   }
@@ -283,7 +338,7 @@ async function callAnthropic({ provider, model, apiKey, system, messages, tools,
 
   const body = {
     model,
-    max_tokens: DEFAULT_MAX_TOKENS,
+    max_tokens: provider.maxOutputTokens || DEFAULT_MAX_TOKENS,
     messages: toAnthropicMessages(messages),
   };
   if (system) body.system = system;
@@ -295,17 +350,18 @@ async function callAnthropic({ provider, model, apiKey, system, messages, tools,
     }));
   }
 
-  const res = await openStreamRetry(`${provider.baseURL}/v1/messages`, headers, body);
+  const res = await openStreamRetry(`${provider.baseURL}/v1/messages`, headers, body, signal);
 
   let text = "";
+  let complete = false;
+  let usage = {};
   const blocks = []; // by content-block index
   for await (const data of sseEvents(res)) {
-    let ev;
-    try {
-      ev = JSON.parse(data);
-    } catch {
-      continue;
-    }
+    const ev = eventJSON(data);
+    if (ev.type === "message_stop") complete = true;
+    if (ev.type === "message_start") usage = { ...ev.message?.usage };
+    if (ev.usage) usage = { ...usage, ...ev.usage };
+    if (ev.delta?.stop_reason === "max_tokens") throw new Error("model response incomplete: max_tokens");
     if (ev.type === "content_block_start") {
       blocks[ev.index] = { ...ev.content_block, json: "" };
     } else if (ev.type === "content_block_delta") {
@@ -319,8 +375,9 @@ async function callAnthropic({ provider, model, apiKey, system, messages, tools,
     }
   }
 
+  if (!complete) throw new Error("Anthropic stream ended before message_stop");
   const toolCalls = blocks
     .filter((b) => b && b.type === "tool_use")
-    .map((b) => ({ id: b.id, name: b.name, args: parseArgs(b.json) }));
-  return { text, toolCalls };
+    .map((b) => ({ id: b.id, name: b.name, args: parseArgs(b.json || b.input) }));
+  return { text, toolCalls, usage };
 }

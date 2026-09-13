@@ -1,0 +1,30 @@
+One command. A useful answer.
+
+bitcode 0.2.0 · 2026-09-11T11:34:04.297Z
+
+Actual bitcode interactive CLI /btc:fees with ollama/qwen3.8:27b, mainnet and --read-only. Provider ID is the configured local tag, not independent model attestation. Tool output and assistant text are unmodified except normalized home paths. Waits shortened in the video.
+
+Presentation: animated command entry, original ANSI CLI output, shortened waits. Example login key is fake. Paths normalized.
+
+
+
+$ node bitcode.mjs --read-only
+
+
+⚡ bitcode  agent · ollama/qwen3.8:27b  · mainnet  ● ready
+  ~/bitcode
+  ● thinking  →  ● running  →  ● reading  →  ● drafting  →  ● done
+
+type a request, or /help for commands. Ctrl+D to quit.
+
+› /btc:fees Reply in at most 50 words. No tables.
+R E A S O N I N G
+   READING   {}
+    ✓ network mainnet
+      fastest 2 · 30min 1 · 1h 1 · economy 1 · min 1 (sat/vB)
+Fees are rock bottom: fastest 2 sat/vB, 30min/1h/economy/min all 1 sat/vB. Great time for ch
+eap low-priority sends — even economy at 1 sat/vB should confirm fine. No premium needed unl
+ess you want a near-guarantee in the next block or so (2 sat/vB barely differs in cost).
+› /exit
+
+⚡ bye

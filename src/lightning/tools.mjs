@@ -74,7 +74,7 @@ export function lightningTools(lnCfg) {
       parameters: {
         type: "object",
         properties: {
-          amount_sats: { type: "number" },
+          amount_sats: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
           memo: { type: "string" },
           expiry_seconds: { type: "number" },
         },

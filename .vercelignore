@@ -1,4 +1,8 @@
-# The deployed site is the single self-contained index.html; everything
-# else in the repo (agent source, docs, slides) stays out of the deployment.
+# Include only the page and its public demo media in a future deployment.
 *
 !index.html
+!assets/
+!assets/demos/
+!assets/demos/**
+!assets/releases/
+!assets/releases/**

@@ -1,628 +1,786 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>bitcode — An AI agent that reads the chain.</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'%3E%3Cpath fill='%23F7931A' d='M0 0h1v4H0zM1 0h2v1H1zM2 1h1v1H2zM1 2h1v1H1zM3 2h1v2H3z'/%3E%3Cpath fill='%230F0F0F' d='M0 4h2v1H0z'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  *{box-sizing:border-box}
-  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scroll-behavior:smooth}
-  body{margin:0;background:#f7f7f4;color:#26251e;font-family:Inter,system-ui,"Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:-0.015em}
-  ::selection{background:#f7931a;color:#fff}
-  a:focus-visible,button:focus-visible{outline:2px solid #f7931a;outline-offset:2px;border-radius:4px}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f7f4">
+  <meta name="description" content="bitcode is a terminal coding and Bitcoin agent. Inspect repositories, work with the chain, and connect your tools — with your choice of model.">
+  <title>bitcode — Your code. Your Bitcoin. One agent.</title>
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="bitcode — Your code. Your Bitcoin. One agent.">
+  <meta property="og:description" content="A terminal agent for code and Bitcoin. 62 tools, 45 commands, and your choice of model.">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'%3E%3Cpath fill='%23F7931A' d='M0 0h1v4H0zM1 0h2v1H1zM2 1h1v1H2zM1 2h1v1H1zM3 2h1v2H3z'/%3E%3Cpath fill='%230F0F0F' d='M0 4h2v1H0z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* Shared with the bitcode design system and src/theme.mjs. */
+    :root {
+      --orange: #f7931a;
+      --orange-active: #d97b0f;
+      --canvas: #f7f7f4;
+      --canvas-soft: #fafaf7;
+      --surface: #fff;
+      --surface-strong: #e6e5e0;
+      --hairline: #cfcdc4;
+      --ink: #26251e;
+      --body: #5a5852;
+      --muted: #807d72;
+      --muted-soft: #a09c92;
+      --success: #1f8a65;
+      --pending: #dfa88f;
+      --relayed: #9fc9a2;
+      --mempool: #9fbbe0;
+      --confirming: #c0a8dd;
+      --confirmed: #c08532;
+      --mono: 'JetBrains Mono', monospace;
+      --radius: 12px;
+      --page-width: 1200px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 100px; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font-family: Inter, system-ui, sans-serif; font-size: 1rem; line-height: 1.6; letter-spacing: -.015em; }
+    ::selection { background: var(--orange); color: var(--ink); }
+    a { color: inherit; text-underline-offset: 4px; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button:disabled { cursor: default; }
+    button, input { letter-spacing: inherit; }
+    button, a { touch-action: manipulation; }
+    :focus-visible { outline: 3px solid var(--orange-active); outline-offset: 5px; border-radius: 4px; }
+    [hidden] { display: none !important; }
+    svg { display: block; flex-shrink: 0; }
+    h1, h2, h3, p { margin: 0; }
+    h1, h2, h3 { text-wrap: balance; }
+    p { text-wrap: pretty; }
+    code, pre { font-family: var(--mono); letter-spacing: -.035em; }
+    code { font-size: .875em; }
+    .container { width: min(100%, var(--page-width)); margin-inline: auto; padding-inline: 40px; }
+    .section { padding-block: 96px; }
+    .eyebrow { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: .75rem; line-height: 1.5; text-transform: uppercase; letter-spacing: .08em; color: var(--body); margin-bottom: 22px; }
+    .eyebrow::before { content: ''; width: 7px; height: 7px; background: var(--orange); flex: none; }
+    .section-title { font-size: clamp(2rem, 3.2vw, 2.75rem); line-height: 1.14; font-weight: 400; letter-spacing: -.045em; }
+    .section-description { color: var(--body); line-height: 1.75; max-width: 47ch; }
+    .section-heading { display: grid; grid-template-columns: 1.2fr 1fr; align-items: end; gap: 64px; margin-bottom: 40px; }
+    .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 46px; padding: 11px 20px; border: 1px solid transparent; border-radius: 8px; font-size: .875rem; font-weight: 600; line-height: 1.5; text-decoration: none; transition: background .18s, border-color .18s, transform .18s; }
+    .button-primary { background: var(--orange); color: var(--ink); }
+    .button-primary:hover { background: var(--orange-active); transform: translateY(-1px); }
+    .button-secondary { background: transparent; border-color: var(--hairline); }
+    .button-secondary:hover { background: var(--surface); border-color: var(--ink); }
+    .text-link { display: inline-flex; align-items: center; gap: 8px; font-size: .875rem; font-weight: 500; text-decoration: none; }
+    .text-link:hover { text-decoration: underline; }
+    .skip-link { position: fixed; z-index: 100; top: 10px; left: 16px; padding: 10px 18px; border-radius: 6px; background: var(--ink); color: white; transform: translateY(-160%); }
+    .skip-link:focus { transform: none; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
-  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
-  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    /* A quiet, persistent navigation with a real mobile disclosure. */
+    .site-header { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--surface-strong); background: rgba(247,247,244,.94); backdrop-filter: blur(16px); }
+    .nav-shell { display: flex; align-items: center; justify-content: space-between; min-height: 76px; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; flex: none; }
+    .brand--refined { gap: 10px; }
+    .brand-name { font-size: 1.375rem; font-weight: 600; letter-spacing: -.05em; }
+    .brand-logo { width: 24px; height: 30px; }
+    .brand--refined .version { margin-left: 10px; }
+    .version { font: .6875rem/1 var(--mono); letter-spacing: 0; padding: 5px 7px; border: 1px solid var(--hairline); border-radius: 4px; color: var(--body); }
+    .nav-links { display: flex; align-items: center; gap: 30px; }
+    .nav-link { color: var(--body); font-size: .875rem; text-decoration: none; transition: color .15s; }
+    .nav-link:hover, .nav-link[aria-current="location"] { color: var(--ink); text-decoration: underline; text-decoration-color: var(--orange); text-decoration-thickness: 2px; text-underline-offset: 7px; }
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+    .nav-actions .button { min-height: 40px; padding: 8px 16px; }
+    .menu-toggle { display: none; border: 1px solid var(--hairline); background: transparent; border-radius: 8px; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
 
-  .terminal-line{animation:fadeIn 0.25s ease-out both}
-  .cursor{display:inline-block;width:9px;height:16px;background:#26251e;vertical-align:-3px;animation:blink 1.1s step-end infinite}
-  .cursor-orange{background:#f7931a}
+    /* The agent is visible in the first screen, alongside the proposition. */
+    .hero { padding-block: 84px 64px; }
+    .hero-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 54px; align-items: center; }
+    .release { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 25px; font-family: var(--mono); font-size: .75rem; color: var(--body); text-decoration: none; }
+    .release-tag { border: 1px solid var(--hairline); background: var(--surface); padding: 3px 8px; border-radius: 4px; color: var(--ink); }
+    .release:hover .release-copy { text-decoration: underline; }
+    .hero-logo-build { display: block; width: 72px; height: 90px; margin: 0 0 25px; }
+    .hero-logo-piece { transform-box: fill-box; transform-origin: center; animation: hero-logo-drop .54s steps(6, end) calc(.08s + var(--piece) * .18s) both, hero-logo-orange-cycle .32s step-end 1.72s 3; }
+    .hero-logo-piece--ink { animation-name: hero-logo-drop, hero-logo-ink-cycle; }
+    @keyframes hero-logo-drop { from { transform: translateY(-18px); } to { transform: translateY(0); } }
+    @keyframes hero-logo-orange-cycle { 0%, 100% { fill: #F7931A; } 50% { fill: #0F0F0F; } }
+    @keyframes hero-logo-ink-cycle { 0%, 100% { fill: #0F0F0F; } 50% { fill: #F7931A; } }
+    .hero h1 { font-size: clamp(3.2rem, 5.25vw, 4.5rem); font-weight: 400; line-height: 1.06; letter-spacing: -.055em; margin-bottom: 25px; }
+    .hero h1 span { display: block; }
+    .hero h1 .accent-line { text-decoration: underline; text-decoration-color: var(--orange); text-decoration-thickness: 4px; text-underline-offset: 10px; }
+    .hero-description { max-width: 40ch; color: var(--body); font-size: 1.0625rem; line-height: 1.75; }
+    .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 30px; }
+    .hero-note { display: flex; align-items: center; gap: 8px; color: var(--body); font-family: var(--mono); font-size: .6875rem; margin-top: 18px; letter-spacing: 0; }
+    .hero-note .icon { width: 14px; height: 14px; color: var(--success); }
+    .terminal-wrap { min-width: 0; }
+    .terminal { border: 1px solid var(--hairline); border-radius: var(--radius); background: var(--surface); box-shadow: 0 4px 8px rgba(38,37,30,.02), 0 24px 64px -24px rgba(38,37,30,.16); overflow: hidden; }
+    .terminal-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; background: var(--canvas-soft); border-bottom: 1px solid var(--surface-strong); padding: 10px 18px; }
+    .terminal-title { display: flex; align-items: center; gap: 12px; font: .6875rem/1.5 var(--mono); color: var(--body); }
+    .window-dots { display: flex; gap: 5px; }
+    .window-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--pending); }
+    .window-dots i:nth-child(2) { background: var(--relayed); }
+    .window-dots i:nth-child(3) { background: var(--mempool); }
+    .demo-label { font: .625rem/1.4 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--body); border: 1px solid var(--hairline); border-radius: 3px; padding: 2px 5px; }
+    .terminal-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; min-height: 49px; border-top: 1px solid var(--surface-strong); background: var(--canvas-soft); font: .625rem/1.5 var(--mono); color: var(--body); }
+    .terminal-status { display: flex; align-items: center; gap: 7px; }
+    .status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--success); }
+    .demo-caption { margin-top: 12px; text-align: center; color: var(--body); font: .625rem/1.6 var(--mono); }
+    .facts { display: grid; grid-template-columns: repeat(4, 1fr); padding-block: 27px; border-block: 1px solid var(--hairline); }
+    .fact { display: flex; align-items: center; justify-content: center; gap: 14px; }
+    .fact + .fact { border-left: 1px solid var(--hairline); }
+    .fact-value { font: 1.625rem/1.1 var(--mono); letter-spacing: -.06em; }
+    .fact-label { max-width: 14ch; color: var(--body); font-size: .75rem; line-height: 1.5; }
 
-  .container{max-width:1180px;margin:0 auto;padding:0 40px}
-  @media(max-width:768px){.container{padding:0 20px}}
+    /* Familiar white surfaces, with the transaction palette as accents. */
+    .cap-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .cap { display: flex; flex-direction: column; align-items: start; background: var(--surface); border: 1px solid var(--surface-strong); border-radius: var(--radius); padding: 26px; transition: border-color .18s, transform .18s; }
+    .cap:hover { border-color: var(--hairline); transform: translateY(-3px); }
+    .cap-top { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 24px; }
+    .cap-icon { display: grid; place-items: center; height: 36px; width: 36px; border-radius: 8px; background: var(--canvas); }
+    .cap-icon .icon { width: 20px; height: 20px; }
+    .cap-index { font: .6875rem/1 var(--mono); color: var(--body); }
+    .cap h3 { font-size: 1.0625rem; font-weight: 500; margin-bottom: 9px; letter-spacing: -.025em; }
+    .cap p { color: var(--body); font-size: .875rem; line-height: 1.8; margin-bottom: 22px; }
+    .cap code { font-size: .6875rem; line-height: 1.8; color: var(--body); margin-top: auto; padding-top: 16px; width: 100%; border-top: 1px solid var(--surface-strong); overflow-wrap: anywhere; }
+    .cap-note { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; margin-top: 22px; color: var(--body); font-size: .75rem; }
+    .cap-note p { max-width: 73ch; }
+    .cap-note a { flex: none; font-size: .75rem; }
 
-  .grid-3{display:grid;grid-template-columns:repeat(3,1fr)}
-  .grid-2{display:grid;grid-template-columns:repeat(2,1fr)}
-  @media(max-width:768px){.grid-3,.grid-2{grid-template-columns:1fr}}
+    /* The five original lifecycle colors remain the signature sequence. */
+    .reasoning { background: var(--ink); color: var(--canvas); }
+    .reasoning .eyebrow { color: var(--hairline); }
+    .reasoning .section-description { color: var(--hairline); }
+    .stage-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid #49483f; border-radius: var(--radius); overflow: hidden; margin: 0; padding: 0; list-style: none; }
+    .stage { padding: 25px 20px; }
+    .stage + .stage { border-left: 1px solid #49483f; }
+    .stage-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 23px; }
+    .stage-swatch { width: 27px; height: 27px; background: var(--stage); border-radius: 7px; }
+    .stage-number { color: var(--muted-soft); font: .6875rem/1 var(--mono); }
+    .stage h3 { color: var(--stage); font: .75rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 12px; }
+    .stage p { font-size: .8125rem; line-height: 1.75; color: var(--hairline); }
+    .control-row { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 35px; }
+    .control-item { display: flex; align-items: start; gap: 14px; }
+    .control-item > .icon { margin-top: 4px; color: var(--orange); }
+    .control-item h3 { font-size: .875rem; font-weight: 500; margin-bottom: 5px; }
+    .control-item p { font-size: .8125rem; color: var(--hairline); line-height: 1.75; }
+    .control-item code { color: var(--canvas); }
 
-  .cap-grid{display:grid;grid-template-columns:repeat(3,1fr)}
-  @media(max-width:900px){.cap-grid{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:600px){.cap-grid{grid-template-columns:1fr}}
+    .workflow .section-heading { align-items: start; }
+    .provider-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+    .provider { padding: 5px 10px; border: 1px solid var(--hairline); border-radius: 5px; font: .6875rem/1.5 var(--mono); color: var(--body); }
+    .mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+    .mode-card { min-width: 0; }
+    .mode-head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+    .mode-head .icon { width: 16px; height: 16px; color: var(--body); }
+    .mode-head h3 { font-size: .875rem; font-weight: 500; }
+    .snippet { position: relative; padding: 18px 46px 18px 17px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); min-height: 98px; display: flex; align-items: center; }
+    .snippet pre { margin: 0; font-size: .6875rem; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .copy-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; background: transparent; border: 1px solid transparent; border-radius: 6px; min-width: 36px; min-height: 36px; padding: 7px; font-size: .75rem; }
+    .copy-button:hover { background: var(--surface-strong); }
+    .copy-button .icon { width: 16px; height: 16px; }
+    .snippet .copy-button { position: absolute; top: 9px; right: 7px; }
+    .copy-button[data-copied="true"] { color: var(--success); background: var(--canvas); }
+    .mode-card > p { margin-top: 12px; color: var(--body); font-size: .75rem; line-height: 1.75; }
 
-  .stage-grid{display:grid;grid-template-columns:repeat(5,1fr)}
-  @media(max-width:768px){.stage-grid{grid-template-columns:1fr;gap:8px}}
+    .getting-started { border-top: 1px solid var(--hairline); padding-bottom: 88px; }
+    .install-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 70px; align-items: start; }
+    .install-intro .section-description { margin-top: 20px; }
+    .install-steps { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 19px; }
+    .install-steps li { display: flex; align-items: baseline; gap: 14px; }
+    .step-index { font: .6875rem/1 var(--mono); color: var(--body); border: 1px solid var(--hairline); padding: 5px 6px; border-radius: 4px; }
+    .install-steps h3 { display: inline; font-size: .875rem; font-weight: 500; }
+    .install-steps p { color: var(--body); font-size: .8125rem; margin-top: 3px; }
+    .install-box { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; min-width: 0; }
+    .install-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--surface-strong); background: var(--canvas-soft); }
+    .install-bar span { font: .6875rem/1.5 var(--mono); color: var(--body); }
+    .install-box pre { font-size: .75rem; line-height: 2.1; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 22px; }
+    .code-comment { color: var(--body); }
+    .install-next { border-top: 1px solid var(--surface-strong); padding: 20px 22px; }
+    .install-next h3 { font-size: .8125rem; font-weight: 500; margin-bottom: 7px; }
+    .install-next p { font-size: .8125rem; color: var(--body); line-height: 1.8; }
+    .install-next code { display: inline; background: var(--canvas); padding: 2px 4px; border-radius: 3px; overflow-wrap: anywhere; }
+    .install-note { margin-top: 15px; color: var(--body); font-size: .75rem; line-height: 1.75; }
+    .install-links { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 26px; }
+    .site-footer { border-top: 1px solid var(--hairline); }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 26px; padding-block: 30px; }
+    .footer-brand { display: flex; align-items: center; gap: 18px; }
+    .footer-brand .brand-name { font-size: 1.125rem; }
+    .footer-brand .brand-logo { width: 16px; height: 20px; }
+    .footer-tagline { color: var(--body); font-size: .75rem; }
+    .footer-links { display: flex; align-items: center; flex-wrap: wrap; gap: 24px; }
+    .footer-links a { font-size: .75rem; text-decoration: none; color: var(--body); }
+    .footer-links a:hover { color: var(--ink); text-decoration: underline; }
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 60; max-width: calc(100% - 32px); padding: 12px 20px; border-radius: 8px; background: var(--ink); color: var(--canvas); box-shadow: 0 6px 28px rgba(38,37,30,.18); font-size: .875rem; text-align: center; }
+    .toast:empty { display: none; }
 
-  /* ---- Tetris logo: each rect of the pixel-"b" drops into place ---- */
-  @keyframes tdrop{from{transform:translateY(-6px)}to{transform:translateY(0)}}
-  /* confirmation blink: orange ↔ ink swap, from asset/1_potrace.svg ↔ 2_potrace.svg */
-  @keyframes gswap{0%,100%{fill:#F7931A}50%{fill:#0F0F0F}}
-  @keyframes kswap{0%,100%{fill:#0F0F0F}50%{fill:#F7931A}}
-  .tetris{--t0:.15s;--step:.2s;--drop:.55s;--blink:1.95s}
-  .tetris.play .pc.g{animation:tdrop var(--drop) steps(6,end) calc(var(--t0) + var(--i)*var(--step)) both,gswap .3s step-end var(--blink) 2}
-  .tetris.play .pc.k{animation:tdrop var(--drop) steps(6,end) calc(var(--t0) + var(--i)*var(--step)) both,kswap .3s step-end var(--blink) 2}
-  .tetris-sm{--t0:.05s;--step:.08s;--drop:.3s;--blink:.85s}
-  #logo-hero{cursor:pointer}
+    @media (min-width: 1600px) { .hero { padding-block: 104px 80px; } }
+    @media (max-width: 1050px) {
+      .hero-grid { gap: 32px; grid-template-columns: .85fr 1fr; }
+      .hero h1 { font-size: 3.3rem; }
+      .nav-links { gap: 22px; }
+      .section-heading { gap: 40px; }
+      .cap { padding: 22px; }
+      .install-grid { gap: 40px; }
+      .stage { padding-inline: 16px; }
+    }
+    @media (max-width: 800px) {
+      .container { padding-inline: 24px; }
+      .section { padding-block: 72px; }
+      .nav-shell { min-height: 68px; position: relative; flex-wrap: wrap; gap: 0; }
+      .nav-links { order: 3; width: 100%; justify-content: center; padding-block: 12px 18px; gap: 26px; }
+      .js .menu-toggle { display: inline-flex; }
+      .js .nav-links { display: none; position: absolute; top: 100%; left: 0; width: 100%; background: var(--canvas); padding: 12px 24px 20px; border-bottom: 1px solid var(--hairline); box-shadow: 0 12px 20px -15px rgba(38,37,30,.2); }
+      .js .nav-links.is-open { display: flex; }
+      .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
+      .hero { padding-block: 54px 42px; }
+      .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+      .hero-copy { text-align: center; }
+      .hero h1 { font-size: clamp(3.25rem, 8.2vw, 4.3rem); }
+      .hero-description { margin-inline: auto; max-width: 47ch; }
+      .hero-actions, .hero-note { justify-content: center; }
+      .terminal-wrap { width: 100%; max-width: 580px; margin-inline: auto; }
+      .fact { gap: 9px; }
+      .fact-value { font-size: 1.375rem; }
+      .fact-label { font-size: .6875rem; }
+      .section-heading { grid-template-columns: 1fr; gap: 20px; margin-bottom: 32px; }
+      .section-description { max-width: 60ch; }
+      .cap-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .cap-note { align-items: start; }
+      .stage-grid { grid-template-columns: 1fr; }
+      .stage { display: grid; grid-template-columns: 60px 112px 1fr; align-items: center; gap: 20px; padding: 20px 24px; }
+      .stage + .stage { border-left: 0; border-top: 1px solid #49483f; }
+      .stage-head, .stage h3 { margin-bottom: 0; }
+      .stage-head { flex-direction: row-reverse; }
+      .stage-swatch { width: 22px; height: 22px; border-radius: 5px; }
+      .control-row { gap: 30px; }
+      .mode-grid { grid-template-columns: 1fr; gap: 24px; }
+      .snippet { min-height: 78px; }
+      .snippet pre { font-size: .8125rem; }
+      .install-grid { grid-template-columns: 1fr; gap: 35px; }
+      .footer-brand { flex-wrap: wrap; }
+    }
+    @media (max-width: 480px) {
+      .container { padding-inline: 20px; }
+      .section { padding-block: 56px; }
+      .brand { gap: 9px; }
+      .brand--refined { gap: 10px; }
+      .brand-name { font-size: 1.25rem; }
+      .brand-logo { width: 20px; height: 25px; }
+      .brand .version { display: none; }
+      .nav-actions { gap: 8px; }
+      .nav-actions .button { font-size: .75rem; padding-inline: 12px; }
+      .nav-actions .button .icon { display: none; }
+      .js .nav-links { flex-direction: column; align-items: stretch; gap: 0; }
+      .nav-link { padding-block: 9px; }
+      .hero { padding-top: 40px; }
+      .hero h1 { font-size: clamp(2.65rem, 11.5vw, 3.5rem); }
+      .hero-description { font-size: 1rem; }
+      .hero-actions { gap: 10px; }
+      .hero-actions .button { padding-inline: 16px; }
+      .hero-note { font-size: .625rem; }
+      .release { font-size: .6875rem; gap: 8px; }
+      .terminal-bar { padding-inline: 14px; }
+      .terminal-title { font-size: .625rem; gap: 9px; }
+      .terminal-bottom { padding-inline: 12px; gap: 8px; }
+      .demo-caption { font-size: .5625rem; }
+      .facts { grid-template-columns: repeat(2, 1fr); padding-block: 0; }
+      .fact { justify-content: start; padding: 22px 12px; gap: 14px; }
+      .fact:nth-child(3) { border-left: 0; }
+      .fact:nth-child(n+3) { border-top: 1px solid var(--hairline); }
+      .fact-value { font-size: 1.5rem; min-width: 43px; }
+      .cap-grid { grid-template-columns: 1fr; }
+      .cap { padding: 25px; }
+      .cap-top { margin-bottom: 18px; }
+      .cap p { font-size: .9375rem; }
+      .cap-note { flex-direction: column; gap: 12px; }
+      .stage { grid-template-columns: 48px 1fr; gap: 10px 20px; padding: 21px; }
+      .stage p { grid-column: 2; }
+      .stage-swatch { width: 18px; height: 18px; }
+      .stage-number { font-size: .625rem; }
+      .control-row { grid-template-columns: 1fr; gap: 24px; }
+      .install-box pre { padding: 18px; font-size: .6875rem; }
+      .install-next { padding-inline: 18px; }
+      .footer-inner { padding-block: 26px; }
+      .footer-brand { gap: 12px; }
+      .footer-tagline { font-size: .6875rem; }
+      .footer-links { width: 100%; justify-content: space-between; gap: 16px; }
+    }
 
-  /* ---- hero entrance ---- */
-  .hi{animation:fadeIn .6s ease both}
-  .hero-h1{font-size:72px;font-weight:400;line-height:1.04;letter-spacing:-0.03em;margin:0 auto 28px;max-width:15ch}
-  @media(max-width:768px){.hero-h1{font-size:44px}}
+    /* Recorded sessions extend the same canvas, type and lifecycle colors. */
+    .recorded-demos { border-top: 1px solid var(--hairline); background: var(--canvas-soft); }
+    .recording-player { position: relative; border: 1px solid var(--hairline); border-radius: 10px; overflow: hidden; background: var(--canvas); }
+    .recording-player video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+    .hero-player { border: 0; border-bottom: 1px solid var(--surface-strong); border-radius: 0; }
+    .hero-cli-screen { border-bottom: 1px solid var(--surface-strong); background: var(--surface); }
+    .hero-cli-body { min-height: 300px; padding: 22px 24px; overflow: hidden; font: .75rem/1.75 var(--mono); letter-spacing: -.035em; }
+    .hero-cli-line { min-height: 1.75em; overflow-wrap: anywhere; }
+    .hero-cli-line--muted { color: var(--muted); }
+    .hero-cli-line--prompt { color: var(--ink); }
+    .hero-cli-line--prompt::before { content: '› '; color: var(--orange); font-weight: 600; }
+    .hero-cli-line--reasoning { margin-top: 8px; color: var(--muted-soft); letter-spacing: .18em; }
+    .hero-cli-pill { display: inline-block; margin: 3px 8px 3px 0; padding: 1px 7px; background: var(--mempool); color: var(--ink); font-weight: 600; letter-spacing: .08em; }
+    .hero-cli-line--result { padding-left: 12px; color: var(--body); }
+    .hero-cli-line--result strong { color: var(--success); }
+    .hero-cli-line--answer { margin-top: 7px; color: var(--ink); }
+    .hero-cli-cursor { display: inline-block; width: 7px; height: 1.25em; margin-left: 3px; vertical-align: -.25em; background: var(--orange); animation: hero-cli-blink 1.1s step-end infinite; }
+    @keyframes hero-cli-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+    .hero-recording-copy { padding: 22px 24px; }
+    .recording-kicker { display: flex; align-items: center; gap: 8px; font: .75rem/1.6 var(--mono); color: var(--body); }
+    .hero-recording-copy h2 { font-size: 1.375rem; font-weight: 500; letter-spacing: -.035em; margin-block: 9px 6px; }
+    .hero-recording-copy > p { color: var(--body); font-size: .875rem; }
+    .recording-model { color: var(--ink); font: .75rem/1.7 var(--mono); overflow-wrap: anywhere; margin-top: 16px; }
+    .recording-model span { color: var(--body); }
+    .terminal-bottom .text-link { font-size: .75rem; min-height: 36px; }
+    .demo-story { display: grid; grid-template-columns: 1.15fr 1fr; align-items: center; gap: 48px; padding-block: 40px; border-top: 1px solid var(--hairline); }
+    .demo-story:nth-of-type(2) .demo-story-media { order: 2; }
+    .demo-story-media { min-width: 0; }
+    .demo-story-copy .eyebrow { margin-bottom: 13px; font-size: .6875rem; }
+    .demo-story-copy h3 { font-size: 1.625rem; line-height: 1.2; font-weight: 400; letter-spacing: -.04em; margin-bottom: 15px; }
+    .demo-story-copy > p:not(.eyebrow):not(.recording-flow):not(.recording-format) { color: var(--body); font-size: .9375rem; line-height: 1.8; }
+    .recording-meta { display: flex; justify-content: space-between; gap: 16px; margin-top: 12px; color: var(--body); font: .75rem/1.5 var(--mono); }
+    .recording-flow { font: .75rem/1.8 var(--mono); color: var(--body); border-top: 1px solid var(--surface-strong); padding-top: 16px; margin-top: 16px; }
+    .recording-downloads { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
+    .recording-downloads .button { min-height: 42px; font-size: .8125rem; padding: 9px 12px; }
+    .recording-downloads .text-link { font-size: .8125rem; }
+    .recording-format { font-size: .75rem; color: var(--body); margin-top: 12px; }
+    .recording-disclosure { border-top: 1px solid var(--hairline); padding-top: 24px; color: var(--body); font-size: .8125rem; line-height: 1.8; max-width: 95ch; }
+    .video-message { position: absolute; bottom: 48px; left: 10px; right: 10px; padding: 10px 12px; color: white; background: var(--ink); border-radius: 6px; font-size: .8125rem; }
+    .video-message:empty { display: none; }
+    .video-start { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border: 0; background: rgba(247,247,244,.08); width: 100%; padding: 0; }
+    .video-start span { display: inline-flex; align-items: center; gap: 10px; padding: 12px 19px; min-height: 46px; border: 1px solid var(--ink); border-radius: 999px; background: var(--ink); color: white; font-size: .875rem; box-shadow: 0 4px 20px #26251e24; transition: background .18s, transform .18s; }
+    .video-start:hover span { background: #3a382f; transform: translateY(-2px); }
+    .video-start:focus-visible { outline-offset: -5px; }
 
-  /* ---- hero lockup: logo builds centered, then slides left as the wordmark appears ---- */
-  .lockup{display:flex;align-items:center;justify-content:center;gap:22px;margin:0 0 40px}
-  .lockup .wm{font-size:64px;font-weight:600;letter-spacing:-0.04em;color:#26251e;line-height:1}
-  .js .lockup .wm{max-width:0;opacity:0;overflow:hidden;white-space:nowrap;transition:max-width .8s cubic-bezier(.2,.7,.2,1),opacity .5s ease .2s}
-  .js .lockup.named .wm{max-width:340px;opacity:1}
-  @media(max-width:768px){.lockup .wm{font-size:42px}.lockup{gap:14px}}
+    .model-examples { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 34px; }
+    .model-example { border-left: 2px solid var(--orange); padding: 8px 14px; }
+    .model-example a { display: inline-block; font-size: .9375rem; font-weight: 500; text-decoration: none; }
+    .model-example a:hover { text-decoration: underline; }
+    .model-example p { font-size: .75rem; color: var(--body); margin-top: 5px; }
+    /* Metadata may be smaller; actionable controls and code remain readable. */
+    .version, .release, .hero-note, .demo-label, .terminal-title, .demo-caption,
+    .cap-index, .cap code, .stage-number, .provider, .install-bar span { font-size: .75rem; }
+    .cap p { font-size: 1rem; }
+    .stage p, .control-item p, .mode-card > p, .install-steps p, .install-next p, .install-note { font-size: .875rem; }
+    .snippet pre, .install-box pre { font-size: .8125rem; }
+    .fact-label { font-size: .8125rem; }
+    .copy-button { min-width: 44px; min-height: 44px; }
+    .snippet { padding-right: 55px; }
+    .stage:nth-child(5) h3 { color: var(--canvas); }
+    @media (max-width: 800px) {
+      .demo-story { grid-template-columns: 1fr; gap: 22px; padding-block: 30px; }
+      .demo-story:nth-of-type(2) .demo-story-media { order: 0; }
+      .model-examples { grid-template-columns: 1fr; gap: 16px; }
+      .demo-story-copy { max-width: 64ch; }
+      .nav-links { gap: 20px; }
+    }
+    @media (max-width: 480px) {
+      .hero-cli-body { min-height: 282px; padding: 17px 18px; font-size: .6875rem; }
+      .hero-recording-copy { padding: 18px; }
+      .terminal-title { font-size: .6875rem; }
+      .demo-caption { font-size: .6875rem; }
+      .terminal-bottom { flex-wrap: wrap; }
+      .terminal-bottom .text-link { font-size: .6875rem; }
+      .recording-meta { font-size: .6875rem; }
+      .hero-recording-copy h2 { font-size: 1.25rem; }
+      .recording-downloads { gap: 16px; }
+      .fact { gap: 10px; padding-inline: 7px; }
+      .fact-label { font-size: .75rem; }
+      .fact-value { font-size: 1.25rem; min-width: 39px; }
+    }
 
-  /* ---- 21 utilities ticker (21, like the 21M coins) ---- */
-  .u21px{display:flex;gap:5px;justify-content:center;margin-bottom:16px}
-  .u21px span{width:8px;height:8px;border-radius:2px;background:#e6e5e0;transition:background .3s ease}
-  .u21px span.f{background:#f7931a}
-  .u21px span.cur{background:#f7931a;animation:pulse 1.2s infinite}
-  #u21-line{font-family:'JetBrains Mono',monospace;font-size:14px;min-height:24px;color:#5a5852}
-  @media(max-width:600px){#u21-line{font-size:12px}}
-
-  /* ---- buttons & links ---- */
-  .btn-orange{display:inline-flex;align-items:center;gap:8px;background:#f7931a;color:#fff;border:0;border-radius:8px;font-size:14px;font-weight:500;font-family:'JetBrains Mono',monospace;text-decoration:none;cursor:pointer;transition:background .15s ease}
-  .btn-orange:hover{background:#d97b0f}
-  .btn-ink{display:inline-flex;align-items:center;gap:8px;background:#26251e;color:#f7f7f4;border:0;border-radius:8px;font-size:14px;font-weight:500;font-family:'JetBrains Mono',monospace;cursor:pointer;transition:background .15s ease}
-  .btn-ink:hover{background:#3a382f}
-  .copycmd.copied{background:#1f8a65 !important}
-  .btn-orange,.btn-ink{white-space:nowrap}
-  .navlink{font-size:14px;font-weight:500;color:#5a5852;text-decoration:none;transition:color .15s ease}
-  .navlink:hover{color:#26251e}
-  .navbar{padding:0 40px}
-  @media(max-width:768px){.navlink{display:none}.nav-chip{display:none}.navbar{padding:0 20px}}
-
-  /* ---- scroll reveal (class added by JS so no-JS stays visible) ---- */
-  .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease;transition-delay:calc(var(--i,0)*90ms)}
-  .reveal.on{opacity:1;transform:none}
-
-  /* ---- capability cards ---- */
-  .cap{background:#fff;padding:28px 26px;transition:transform .18s ease,box-shadow .18s ease}
-  .cap:hover{transform:translateY(-2px);box-shadow:inset 0 0 0 1px #f7931a,0 8px 24px rgba(38,37,30,.07);position:relative;z-index:1}
-
-  /* ---- reasoning pipeline: stages light up in sequence ---- */
-  @keyframes swpulse{0%{transform:scale(1)}45%{transform:scale(1.3)}100%{transform:scale(1)}}
-  .stage-grid.armed .stage{opacity:.22;transform:translateY(8px);transition:opacity .55s ease,transform .55s ease;transition-delay:calc(var(--i)*.32s)}
-  .stage-grid.armed.on .stage{opacity:1;transform:none}
-  .stage-grid.armed.on .sw{animation:swpulse .7s ease calc(var(--i)*.32s) both}
-
-  /* ---- terminal pill, mirrors theme.mjs pill() ---- */
-  .tpill{display:inline-block;padding:1px 8px;border-radius:5px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-right:8px;vertical-align:1px}
-
-  @media (prefers-reduced-motion: reduce){
-    *{animation:none !important;transition:none !important}
-    .reveal,.stage-grid.armed .stage{opacity:1;transform:none}
-  }
-</style>
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .hero-logo-piece { transform: none; }
+    }
+  </style>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
+    <defs>
+      <symbol id="pixel-b" viewBox="0 0 4 5"><path fill="#F7931A" d="M0 0h1v4H0zM1 0h2v1H1zM2 1h1v1H2zM1 2h1v1H1zM3 2h1v2H3z"/><path fill="#0F0F0F" d="M0 4h2v1H0z"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 16"/></symbol>
+      <symbol id="i-bitcoin" viewBox="0 0 24 24"><path d="M8 5v14m-2-14h8a3.5 3.5 0 0 1 0 7H8m-2 7h9a3.5 3.5 0 0 0 0-7M10 2v3m4-3v3m-4 14v3m4-3v3"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-9 12h7l-1 8 10-13h-8z"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 10 5-10 5L2 8zm-10 9 10 5 10-5M2 16l10 5 10-5"/></symbol>
+      <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M16 10h5v5h-5a2.5 2.5 0 0 1 0-5M7 9h4"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-12 0zm6 9v5"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+      <symbol id="i-replay" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="m6 9 3 3-3 3m7 0h5"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v5c0 5-8 10-8 10S4 16 4 11V6z"/><path d="m8 11 3 3 5-5"/></symbol>
+      <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4m-5 0h10"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    </defs>
+  </svg>
 
-<!-- ======== NAVBAR ======== -->
-<div class="navbar" style="position:sticky;top:0;z-index:50;height:64px;display:flex;align-items:center;justify-content:space-between;background:rgba(247,247,244,0.86);backdrop-filter:blur(10px);border-bottom:1px solid #e6e5e0">
-  <div style="display:flex;align-items:center;gap:10px">
-    <div style="width:22px;height:28px;display:flex;align-items:center;justify-content:center">
-      <svg class="tetris tetris-sm" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5" width="18" height="22" shape-rendering="crispEdges" style="display:block">
-        <rect class="pc k" style="--i:0" x="0" y="4" width="2" height="1" fill="#0F0F0F"/>
-        <rect class="pc g" style="--i:1" x="0" y="0" width="1" height="4" fill="#F7931A"/>
-        <rect class="pc g" style="--i:2" x="3" y="2" width="1" height="2" fill="#F7931A"/>
-        <rect class="pc g" style="--i:3" x="1" y="2" width="1" height="1" fill="#F7931A"/>
-        <rect class="pc g" style="--i:4" x="2" y="1" width="1" height="1" fill="#F7931A"/>
-        <rect class="pc g" style="--i:5" x="1" y="0" width="2" height="1" fill="#F7931A"/>
-      </svg>
+  <header class="site-header">
+    <div class="container nav-shell">
+      <a class="brand brand--refined" href="#" aria-label="bitcode home">
+        <svg class="brand-logo" aria-hidden="true" shape-rendering="crispEdges"><use href="#pixel-b"/></svg>
+        <span class="brand-name">bitcode</span><span class="version">v0.2</span>
+      </a>
+      <nav class="nav-links" id="site-nav" aria-label="Main navigation">
+        <a class="nav-link" href="#capabilities">Capabilities</a>
+        <a class="nav-link" href="#demos">Demos</a>
+        <a class="nav-link" href="#reasoning">How it works</a>
+        <a class="nav-link" href="https://github.com/faktotum-project/bitcode#readme">Docs <span aria-hidden="true">↗</span></a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button button-primary" href="#get-started">Get started <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open navigation"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      </div>
     </div>
-    <span style="font-size:16px;font-weight:600;letter-spacing:-0.02em">bitcode</span>
-    <span class="nav-chip" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#807d72;padding:3px 8px;border:1px solid #cfcdc4;border-radius:9999px;margin-left:4px">agent · mainnet</span>
-  </div>
-  <div style="display:flex;align-items:center;gap:28px">
-    <a href="#capabilities" class="navlink">Capabilities</a>
-    <a href="#reasoning" class="navlink">Reasoning</a>
-    <a href="https://github.com/faktotum-project/bitcode#readme" target="_blank" rel="noopener" class="navlink">Docs</a>
-    <a href="#terminal" class="btn-orange" style="height:40px;padding:0 18px">run agent</a>
-  </div>
-</div>
+  </header>
 
-<!-- ======== HERO ======== -->
-<div class="container" style="text-align:center;padding-top:84px;padding-bottom:24px">
-  <div class="hi" style="animation-delay:.15s;display:inline-flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72;border:1px solid #e6e5e0;background:#fff;border-radius:9999px;padding:5px 14px;margin-bottom:28px">
-    <span style="width:7px;height:7px;border-radius:9999px;background:#1f8a65;display:inline-block;animation:pulse 1.8s infinite"></span>
-    synced to mainnet · <span id="bh">901,420</span>
-  </div>
-  <div class="lockup" id="lockup" title="click to replay">
-    <svg class="tetris" id="logo-hero" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5" width="80" height="100" shape-rendering="crispEdges" style="display:block" role="img" aria-label="bitcode logo — click to replay animation">
-      <title>bitcode</title>
-      <rect class="pc k" style="--i:0" x="0" y="4" width="2" height="1" fill="#0F0F0F"/>
-      <rect class="pc g" style="--i:1" x="0" y="0" width="1" height="4" fill="#F7931A"/>
-      <rect class="pc g" style="--i:2" x="3" y="2" width="1" height="2" fill="#F7931A"/>
-      <rect class="pc g" style="--i:3" x="1" y="2" width="1" height="1" fill="#F7931A"/>
-      <rect class="pc g" style="--i:4" x="2" y="1" width="1" height="1" fill="#F7931A"/>
-      <rect class="pc g" style="--i:5" x="1" y="0" width="2" height="1" fill="#F7931A"/>
-    </svg>
-    <span class="wm">bitcode</span>
-  </div>
-  <h1 class="hero-h1 hi" style="animation-delay:.3s">An AI agent that reads the chain.</h1>
-  <div id="u21" class="hi" style="animation-delay:.45s;margin:0 auto 40px;max-width:640px">
-    <div class="u21px" id="u21-px" aria-hidden="true"></div>
-    <div id="u21-line"></div>
-    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a09c92;margin-top:10px">21 utilities — one per million coins.</div>
-  </div>
-  <div class="hi" style="animation-delay:.6s;display:flex;gap:14px;align-items:center;justify-content:center">
-    <button class="btn-ink copycmd" type="button" title="copy to clipboard" style="height:44px;padding:0 22px">$ npx bitcode</button>
-    <a href="#terminal" style="font-size:14px;font-weight:500;color:#26251e;text-underline-offset:3px">Watch it think →</a>
-  </div>
-</div>
-
-<!-- ======== TERMINAL ANIMATION SECTION ======== -->
-<div id="terminal" style="background:#f7f7f4">
-  <div class="container" style="padding-top:40px;padding-bottom:80px">
-    <div style="border:1px solid #cfcdc4;border-radius:12px;background:#fff;overflow:hidden;max-width:820px;margin:0 auto">
-      <!-- terminal header -->
-      <div style="display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 16px;background:#fafaf7;border-bottom:1px solid #efeee8">
-        <div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#807d72">
-          <span style="width:9px;height:9px;border-radius:9999px;background:#dfa88f"></span>
-          <span style="width:9px;height:9px;border-radius:9999px;background:#9fc9a2"></span>
-          <span style="width:9px;height:9px;border-radius:9999px;background:#9fbbe0"></span>
-          <span style="margin-left:8px">bitcode — agent session</span>
+  <main id="main">
+    <section class="hero container" aria-labelledby="hero-title">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <a class="release" href="https://github.com/faktotum-project/bitcode#readme"><span class="release-tag">v0.2</span><span class="release-copy">Coding + Bitcoin + MCP</span><span aria-hidden="true">↗</span></a>
+          <svg class="hero-logo-build" viewBox="0 0 4 5" shape-rendering="crispEdges" role="img" aria-label="Bitcode logo">
+            <rect class="hero-logo-piece hero-logo-piece--ink" style="--piece:0" x="0" y="4" width="2" height="1" fill="#0F0F0F"/>
+            <rect class="hero-logo-piece" style="--piece:1" x="0" y="0" width="1" height="4" fill="#F7931A"/>
+            <rect class="hero-logo-piece" style="--piece:2" x="3" y="2" width="1" height="2" fill="#F7931A"/>
+            <rect class="hero-logo-piece" style="--piece:3" x="1" y="2" width="1" height="1" fill="#F7931A"/>
+            <rect class="hero-logo-piece" style="--piece:4" x="2" y="1" width="1" height="1" fill="#F7931A"/>
+            <rect class="hero-logo-piece" style="--piece:5" x="1" y="0" width="2" height="1" fill="#F7931A"/>
+          </svg>
+          <h1 id="hero-title"><span>Your code.</span><span>Your Bitcoin.</span><span class="accent-line">One agent.</span></h1>
+          <p class="hero-description">Work on your repository. Read the chain. Put your tools to work — from one terminal, with the model you choose.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#get-started">Run bitcode <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+            <a class="button button-secondary" href="https://github.com/faktotum-project/bitcode">View source <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+          </div>
+          <p class="hero-note"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>Node.js 22+ <span aria-hidden="true">·</span> Runs on your machine</p>
         </div>
-        <div style="display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#1f8a65">
-          <span style="width:7px;height:7px;border-radius:9999px;background:#1f8a65;display:inline-block"></span>connected · mainnet
+
+        <div class="terminal-wrap" id="terminal">
+          <div class="terminal">
+            <div class="hero-cli-screen">
+              <div class="terminal-bar"><span class="terminal-title"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>bitcode · agent session</span><span class="demo-label">mainnet · read-only</span></div>
+              <div class="hero-cli-body" id="hero-cli-output" aria-label="Animated preview of a bitcode CLI session">
+                <div class="hero-cli-line"><strong>⚡ bitcode</strong> <span class="hero-cli-line--muted">· ollama/qwen3.8:27b · mainnet · ready</span></div>
+                <div class="hero-cli-line hero-cli-line--muted">type a request, or /help for commands. Ctrl+C to quit.</div>
+                <div class="hero-cli-line hero-cli-line--prompt">/btc:fees</div>
+                <div class="hero-cli-line hero-cli-line--reasoning">R E A S O N I N G</div>
+                <div class="hero-cli-line"><span class="hero-cli-pill">READING</span><span class="hero-cli-line--muted">{}</span></div>
+                <div class="hero-cli-line hero-cli-line--result"><strong>✓</strong> network mainnet</div>
+                <div class="hero-cli-line hero-cli-line--result">fastest 2 · 30min 1 · 1h 1 · economy 1 · min 1 (sat/vB)</div>
+                <div class="hero-cli-line hero-cli-line--answer">Fees are rock bottom: fastest 2 sat/vB, 30min/1h/economy/min all 1 sat/vB.</div>
+              </div>
+            </div>
+            <div class="hero-recording-copy"><span class="recording-kicker"><span class="status-dot" aria-hidden="true"></span>The real CLI · animated preview</span><h2>One command. A useful answer.</h2><p>Type /btc:fees. Follow the tool call. Read the result.</p><div class="recording-model">ollama/qwen3.8:27b <span>· local tag · recorded snapshot</span></div></div>
+            <div class="terminal-bottom"><a class="text-link" href="#demos">Install. Configure. Use. <span aria-hidden="true">↓</span></a><a class="text-link" href="assets/demos/features-transcript.txt">Transcript <span aria-hidden="true">↗</span></a></div>
+          </div>
+          <p class="demo-caption">Recorded CLI output. Typing animated; waits shortened.</p>
         </div>
       </div>
-      <!-- terminal body -->
-      <div id="terminal-body" style="font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.95;color:#5a5852;padding:18px 20px;min-height:440px;white-space:pre-wrap">
-        <!-- filled by JS -->
+    </section>
+
+    <div class="container">
+      <div class="facts" aria-label="Included in bitcode version 0.2">
+        <div class="fact"><span class="fact-value">62</span><span class="fact-label">tools in the default agent</span></div>
+        <div class="fact"><span class="fact-value">45</span><span class="fact-label">bundled slash commands</span></div>
+        <div class="fact"><span class="fact-value">5</span><span class="fact-label">built-in model providers</span></div>
+        <div class="fact"><span class="fact-value">MCP</span><span class="fact-label">tools, resources &amp; prompts</span></div>
       </div>
     </div>
-  </div>
-</div>
 
-<!-- ======== CAPABILITIES ======== -->
-<div id="capabilities" style="border-top:1px solid #e6e5e0">
-  <div class="container" style="padding-top:80px;padding-bottom:80px">
-    <div data-reveal style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Capabilities</div>
-    <h2 data-reveal style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px;max-width:20ch">One agent across the whole Bitcoin stack.</h2>
-    <p data-reveal style="font-size:16px;line-height:1.55;color:#5a5852;max-width:58ch;margin:0 0 44px">From raw chain data to a broadcast transaction — bitcode ships the <code style="font-family:'JetBrains Mono',monospace;font-size:14px">/btc:*</code> command set a builder, trader, or treasury would reach for.</p>
-    <div class="cap-grid" style="gap:1px;background:#e6e5e0;border:1px solid #e6e5e0;border-radius:12px;overflow:hidden">
-      <div class="cap" data-reveal style="--i:0">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#f7931a;margin-bottom:18px">/btc:tx · /btc:address</div>
-        <div style="font-size:18px;font-weight:600;margin-bottom:8px">On-chain analysis</div>
-        <div style="font-size:14px;line-height:1.55;color:#5a5852">Trace addresses, transactions and wallets across hops; label clusters and surface flows.</div>
+    <section class="section container" id="capabilities" aria-labelledby="capabilities-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Built to do the work</p><h2 class="section-title" id="capabilities-title">From the working tree<br>to the Bitcoin stack.</h2></div>
+        <p class="section-description">One conversation for code, chain data and configured wallets. Use a built-in command, ask in plain language, or bring your own tools.</p>
       </div>
-      <div class="cap" data-reveal style="--i:1">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#f7931a;margin-bottom:18px">bitcode -p "…"</div>
-        <div style="font-size:18px;font-weight:600;margin-bottom:8px">Market insight</div>
-        <div style="font-size:14px;line-height:1.55;color:#5a5852">Price, dominance and sentiment context — one-shot answers, summarised in plain terms.</div>
+      <div class="cap-grid">
+        <article class="cap">
+          <div class="cap-top"><span class="cap-icon" style="background:var(--pending)"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></span><span class="cap-index">01 / CODE</span></div>
+          <h3>Your repository, in context.</h3><p>Read and edit files, inspect Git changes, run tests and manage processes. Plan the work before making changes.</p><code>/repo:review &nbsp; /plan &nbsp; /build</code>
+        </article>
+        <article class="cap">
+          <div class="cap-top"><span class="cap-icon" style="background:var(--relayed)"><svg class="icon" aria-hidden="true"><use href="#i-bitcoin"/></svg></span><span class="cap-index">02 / BITCOIN</span></div>
+          <h3>Read the chain. Take action.</h3><p>Inspect fees, blocks, transactions and addresses. Create a wallet, receive bitcoin and confirm a send from your terminal.</p><code>/btc:fees &nbsp; /btc:tx &nbsp; /btc:send</code>
+        </article>
+        <article class="cap">
+          <div class="cap-top"><span class="cap-icon" style="background:var(--mempool)"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg></span><span class="cap-index">03 / LIGHTNING</span></div>
+          <h3>A closer look at your node.</h3><p>Decode invoices, inspect channels and check balances. Send and receive with a configured LND node; connect tapd for assets.</p><code>/ln:decode &nbsp; /ln:channels &nbsp; /ln:pay</code>
+        </article>
+        <article class="cap">
+          <div class="cap-top"><span class="cap-icon" style="background:var(--confirming)"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg></span><span class="cap-index">04 / LIQUID</span></div>
+          <h3>Another layer of visibility.</h3><p>Query Liquid fees, transactions, blocks and asset metadata. Read-only tools for understanding activity on the network.</p><code>/liquid:tx &nbsp; /liquid:asset</code>
+        </article>
+        <article class="cap">
+          <div class="cap-top"><span class="cap-icon" style="background:var(--pending)"><svg class="icon" aria-hidden="true"><use href="#i-cash"/></svg></span><span class="cap-index">05 / CASHU</span></div>
+          <h3>Ecash, from the command line.</h3><p>Work with mint quotes, tokens and payment requests. Manage your wallet and local mint with the optional Cashu binaries.</p><code>/cashu:mint &nbsp; /cashu:pending</code>
+        </article>
+        <article class="cap">
+          <div class="cap-top"><span class="cap-icon"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg></span><span class="cap-index">06 / EXTENSIONS</span></div>
+          <h3>Make room for your workflow.</h3><p>Connect MCP tools, resources and prompts. Load local skills, add Markdown commands and delegate bounded tasks to subagents.</p><code>/mcp &nbsp; /skills &nbsp; /subagent</code>
+        </article>
       </div>
-      <div class="cap" data-reveal style="--i:2">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#f7931a;margin-bottom:18px">"explain…" · @path</div>
-        <div style="font-size:18px;font-weight:600;margin-bottom:8px">Bitcoin & Lightning Q&A</div>
-        <div style="font-size:14px;line-height:1.55;color:#5a5852">Ask anything from UTXOs to channel liquidity; answers grounded in live data.</div>
+      <div class="cap-note"><p>Capabilities depend on your configuration. Wavelength read-only tools are also available with its optional binaries.</p><a class="text-link" href="https://github.com/faktotum-project/bitcode#tools">Explore all tools <span aria-hidden="true">↗</span></a></div>
+    </section>
+
+<!-- RECORDED DEMOS START -->
+    <section class="section recorded-demos" id="demos" aria-labelledby="demos-title">
+      <div class="container">
+        <div class="section-heading"><div><p class="eyebrow">See the work happen</p><h2 class="section-title" id="demos-title">Install. Configure.<br>Put it to work.</h2></div><p class="section-description">Three terminal walkthroughs, from setup to your first useful answer. Watch the commands, read the transcript, or download a vertical cut for Stories.</p></div>
+        <article class="demo-story" aria-labelledby="heading-installation"><div class="demo-story-media"><div class="recording-player"><video id="recording-installation" controls playsinline preload="none" poster="assets/demos/installation-poster.webp" width="1920" height="1080" aria-label="From source to your terminal. — bitcode CLI walkthrough"><source src="assets/demos/installation-16x9.mp4" type="video/mp4"><track kind="captions" src="assets/demos/installation.en.vtt" srclang="en" label="English" default><p><a href="assets/demos/installation-16x9.mp4">Download this walkthrough</a>.</p></video><p class="video-message" role="status" aria-live="polite"></p></div><div class="recording-meta"><span>0:30 · CLI walkthrough</span><span>2026-09-11</span></div></div><div class="demo-story-copy"><p class="eyebrow">01 / INSTALL</p><h3 id="heading-installation">From source to your terminal.</h3><p>Follow the source installation, install the core dependencies and run doctor. Check the version before moving on to model setup.</p><div class="recording-model">Node.js 22+ · Git · Bash</div><p class="recording-flow">Clone → install → doctor → version</p><div class="recording-downloads"><a class="text-link" href="assets/demos/installation-transcript.txt">Read transcript <span aria-hidden="true">↗</span></a><a class="button button-secondary" href="assets/demos/installation-9x16.mp4" download>Download 9:16 <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div><p class="recording-format">Stories · 1080 × 1920 · MP4 · 0:27</p></div></article>
+<article class="demo-story" aria-labelledby="heading-configuration"><div class="demo-story-media"><div class="recording-player"><video id="recording-configuration" controls playsinline preload="none" poster="assets/demos/configuration-poster.webp" width="1920" height="1080" aria-label="Choose your provider. — bitcode CLI walkthrough"><source src="assets/demos/configuration-16x9.mp4" type="video/mp4"><track kind="captions" src="assets/demos/configuration.en.vtt" srclang="en" label="English" default><p><a href="assets/demos/configuration-16x9.mp4">Download this walkthrough</a>.</p></video><p class="video-message" role="status" aria-live="polite"></p></div><div class="recording-meta"><span>0:17 · CLI walkthrough</span><span>2026-09-11</span></div></div><div class="demo-story-copy"><p class="eyebrow">02 / CONFIGURE</p><h3 id="heading-configuration">Choose your provider.</h3><p>Use login to enter a masked API key, select a model at startup and inspect /setting. This walkthrough uses an example key and makes no provider request.</p><div class="recording-model">API key setup · example key</div><p class="recording-flow">Login → masked key → model → settings</p><div class="recording-downloads"><a class="text-link" href="assets/demos/configuration-transcript.txt">Read transcript <span aria-hidden="true">↗</span></a><a class="button button-secondary" href="assets/demos/configuration-9x16.mp4" download>Download 9:16 <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div><p class="recording-format">Stories · 1080 × 1920 · MP4 · 0:15</p></div></article>
+<article class="demo-story" aria-labelledby="heading-features"><div class="demo-story-media"><div class="recording-player"><video id="recording-features" controls playsinline preload="none" poster="assets/demos/features-poster.webp" width="1920" height="1080" aria-label="Type a command. Read the answer. — bitcode CLI walkthrough"><source src="assets/demos/features-16x9.mp4" type="video/mp4"><track kind="captions" src="assets/demos/features.en.vtt" srclang="en" label="English" default><p><a href="assets/demos/features-16x9.mp4">Download this walkthrough</a>.</p></video><p class="video-message" role="status" aria-live="polite"></p></div><div class="recording-meta"><span>0:39 · CLI walkthrough</span><span>2026-09-11</span></div></div><div class="demo-story-copy"><p class="eyebrow">03 / USE</p><h3 id="heading-features">Type a command. Read the answer.</h3><p>Type /btc:fees in the real CLI. Watch its command menu, tool output and streamed answer explain a recorded Bitcoin fee snapshot. Fee estimates do not guarantee confirmation times.</p><div class="recording-model">ollama/qwen3.8:27b · local tag · read-only</div><p class="recording-flow">Command → tool → response</p><div class="recording-downloads"><a class="text-link" href="assets/demos/features-transcript.txt">Read transcript <span aria-hidden="true">↗</span></a><a class="button button-secondary" href="assets/demos/features-9x16.mp4" download>Download 9:16 <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div><p class="recording-format">Stories · 1080 × 1920 · MP4 · 0:35</p></div></article>
+        <p class="recording-disclosure">Animated command entry with captured CLI output and shorter waits. Clone commands are instructional; login uses an example key. The Bitcoin response comes from the recorded local-model session. Transcripts include the source and context of each walkthrough.</p>
       </div>
-      <div class="cap" data-reveal style="--i:3">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#f7931a;margin-bottom:18px">/btc:fees · /btc:balance</div>
-        <div style="font-size:18px;font-weight:600;margin-bottom:8px">Wallet assistance</div>
-        <div style="font-size:14px;line-height:1.55;color:#5a5852">Estimate fees, build sends and receives, and pick a confirmation target.</div>
+    </section>
+    <!-- RECORDED DEMOS END -->
+
+    <section class="section reasoning" id="reasoning" aria-labelledby="reasoning-title">
+      <div class="container">
+        <div class="section-heading">
+          <div><p class="eyebrow">Visible steps. Deliberate actions.</p><h2 class="section-title" id="reasoning-title">Follow the work.<br>Stay in control.</h2></div>
+          <p class="section-description">Color-coded activity makes tool calls easy to follow. See what the agent reads, runs and changes, with results in the same conversation.</p>
+        </div>
+        <ol class="stage-grid" aria-label="Agent activity states">
+          <li class="stage" style="--stage:var(--pending)"><div class="stage-head"><span class="stage-swatch" aria-hidden="true"></span><span class="stage-number">01</span></div><h3>Thinking</h3><p>Interpret the request and identify the next step.</p></li>
+          <li class="stage" style="--stage:var(--relayed)"><div class="stage-head"><span class="stage-swatch" aria-hidden="true"></span><span class="stage-number">02</span></div><h3>Running</h3><p>Execute a command or query the chain.</p></li>
+          <li class="stage" style="--stage:var(--mempool)"><div class="stage-head"><span class="stage-swatch" aria-hidden="true"></span><span class="stage-number">03</span></div><h3>Reading</h3><p>Gather context from files, tools and network data.</p></li>
+          <li class="stage" style="--stage:var(--confirming)"><div class="stage-head"><span class="stage-swatch" aria-hidden="true"></span><span class="stage-number">04</span></div><h3>Drafting</h3><p>Prepare changes under your active approval policy.</p></li>
+          <li class="stage" style="--stage:var(--confirmed)"><div class="stage-head"><span class="stage-swatch" aria-hidden="true"></span><span class="stage-number">05</span></div><h3>Done</h3><p>Return results and explain what happened.</p></li>
+        </ol>
+        <div class="control-row">
+          <div class="control-item"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><div><h3>Choose how the agent acts.</h3><p>Start with <code>--read-only</code> to inspect. Interactive mode asks before changes; built-in financial tools require explicit authorization.</p></div></div>
+          <div class="control-item"><svg class="icon" aria-hidden="true"><use href="#i-replay"/></svg><div><h3>Keep the thread of your work.</h3><p>Resume saved sessions, compact long conversations, and use <code>Ctrl+C</code> to cancel supported operations.</p></div></div>
+        </div>
       </div>
-      <div class="cap" data-reveal style="--i:4">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#f7931a;margin-bottom:18px">/btc:mempool · /btc:block</div>
-        <div style="font-size:18px;font-weight:600;margin-bottom:8px">Monitoring & alerts</div>
-        <div style="font-size:14px;line-height:1.55;color:#5a5852">Watch addresses, mempool congestion and fee swings; get notified on movement.</div>
+    </section>
+
+    <section class="section container workflow" id="workflow" aria-labelledby="workflow-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Fits the way you work</p><h2 class="section-title" id="workflow-title">Your terminal.<br>Your choice of model.</h2></div>
+        <div><p class="section-description">Start a conversation, return structured output to a script, or use a local model through Ollama. The tools stay with you.</p><div class="provider-list" aria-label="Built-in providers"><span class="provider">OpenAI</span><span class="provider">Anthropic</span><span class="provider">OpenRouter</span><span class="provider">Groq</span><span class="provider">Ollama</span></div></div>
       </div>
-      <div class="cap" data-reveal style="--i:5">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#f7931a;margin-bottom:18px">/btc:send · /btc:receive</div>
-        <div style="font-size:18px;font-weight:600;margin-bottom:8px">Action execution</div>
-        <div style="font-size:14px;line-height:1.55;color:#5a5852">Draft, sign-on-confirm and broadcast transactions; open Lightning channels.</div>
+      <div class="model-examples" aria-label="Model options, subject to provider access">
+        <div class="model-example"><a href="https://developers.openai.com/api/docs/models/gpt-6-astra">GPT-6 Astra ↗</a><p>OpenAI Responses · provider key required</p></div>
+        <div class="model-example"><a href="https://www.anthropic.com/claude/fable">Claude Fable 5.1 ↗</a><p>Anthropic · provider key required</p></div>
+        <div class="model-example"><a href="https://qwen.ai/blog?id=qwen3.8-flash-next">Qwen3.8-Flash-Next ↗</a><p>Use the exact ID offered by your deployment</p></div>
       </div>
+      <div class="mode-grid">
+        <article class="mode-card"><div class="mode-head"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><h3>Interactive</h3></div><div class="snippet"><pre id="cmd-interactive">node bitcode.mjs</pre><button class="copy-button" type="button" data-copy="cmd-interactive" aria-label="Copy interactive command" hidden><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button></div><p>Talk through a task. Mention files with <code>@path</code> and inspect available commands with <code>/help</code>.</p></article>
+        <article class="mode-card"><div class="mode-head"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg><h3>Scriptable</h3></div><div class="snippet"><pre id="cmd-json">node bitcode.mjs --read-only \
+  --json -p "review this repo"</pre><button class="copy-button" type="button" data-copy="cmd-json" aria-label="Copy read-only JSON command" hidden><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button></div><p>Get an answer, tool events and usage as JSON. Use read-only mode for repository reviews.</p></article>
+        <article class="mode-card"><div class="mode-head"><svg class="icon" aria-hidden="true"><use href="#i-monitor"/></svg><h3>Local model</h3></div><div class="snippet"><pre id="cmd-local">node bitcode.mjs \
+  -m ollama/qwen3.8:27b</pre><button class="copy-button" type="button" data-copy="cmd-local" aria-label="Copy Ollama command" hidden><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button></div><p>Use your running Ollama instance with a matching downloaded model tag. Network tools still contact their services.</p></article>
+      </div>
+    </section>
+
+    <section class="section getting-started" id="get-started" aria-labelledby="install-title">
+      <div class="container install-grid">
+        <div class="install-intro">
+          <p class="eyebrow">Start with one command line</p>
+          <h2 class="section-title" id="install-title">Make it your agent.</h2>
+          <p class="section-description">Install from source and choose your provider. The coding agent is ready without a JavaScript build step.</p>
+          <ol class="install-steps">
+            <li><span class="step-index" aria-hidden="true">01</span><div><h3>Check your environment.</h3><p>Node.js 22+, Git and Bash for shell tools.</p></div></li>
+            <li><span class="step-index" aria-hidden="true">02</span><div><h3>Install the core agent.</h3><p>Clone the repository and install dependencies.</p></div></li>
+            <li><span class="step-index" aria-hidden="true">03</span><div><h3>Connect a model. Start a task.</h3><p>Use a provider API key or a running local model.</p></div></li>
+          </ol>
+          <div class="install-links"><a class="text-link" href="https://github.com/faktotum-project/bitcode#install-and-run">Installation guide <span aria-hidden="true">↗</span></a><a class="text-link" href="https://github.com/faktotum-project/bitcode#models-and-providers">Provider setup <span aria-hidden="true">↗</span></a></div>
+        </div>
+        <div>
+          <div class="install-box">
+            <div class="install-bar"><span>Terminal / Bash</span><button class="copy-button" type="button" data-copy="install-command" aria-label="Copy installation commands" hidden><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button></div>
+            <pre id="install-command"><span class="code-comment"># Get the source</span>
+git clone https://github.com/faktotum-project/bitcode.git
+cd bitcode
+
+<span class="code-comment"># Install without optional wallet builds</span>
+npm ci --ignore-scripts
+
+<span class="code-comment"># Check your setup and configure a provider</span>
+node bitcode.mjs doctor
+node bitcode.mjs login openai
+node bitcode.mjs -m openai/gpt-6-astra</pre>
+            <div class="install-next"><h3>Inside the agent</h3><p>Use <code>/login</code> to configure another provider, <code>/setting</code> to inspect your setup, and <code>/help</code> to explore commands. Ollama uses a running local model and needs no API key.</p></div>
+          </div>
+          <p class="install-note">Cashu and Wavelength need optional binaries. Run <code>doctor</code> to see what is available, and follow the <a href="https://github.com/faktotum-project/bitcode#install-and-run">setup instructions</a> for the tools you need.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand"><a class="brand" href="#" aria-label="bitcode home"><svg class="brand-logo" aria-hidden="true" shape-rendering="crispEdges"><use href="#pixel-b"/></svg><span class="brand-name">bitcode</span></a><span class="footer-tagline">A terminal agent for code and Bitcoin.</span></div>
+      <nav class="footer-links" aria-label="Footer navigation"><a href="https://github.com/faktotum-project/bitcode">GitHub <span aria-hidden="true">↗</span></a><a href="https://github.com/faktotum-project/bitcode#readme">Documentation</a><a href="#get-started">Get started <span aria-hidden="true">↑</span></a></nav>
     </div>
-  </div>
-</div>
+  </footer>
+  <div class="toast" id="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
 
-<!-- ======== REASONING TIMELINE ======== -->
-<div id="reasoning" style="border-top:1px solid #e6e5e0;background:#26251e;color:#f7f7f4">
-  <div class="container" style="padding-top:80px;padding-bottom:80px">
-    <div data-reveal style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#dfa88f;margin-bottom:14px">Reasoning, in the open</div>
-    <h2 data-reveal style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 12px;max-width:22ch">Every answer shows its work.</h2>
-    <p data-reveal style="font-size:16px;line-height:1.55;color:#a09c92;max-width:58ch;margin:0 0 48px">The transaction lifecycle — Pending → Relayed → Mempool → Confirming → Confirmed — is the agent's live reasoning timeline. Each tool it runs prints a coloured stage pill; you can stop, inspect, or override at any step. Nothing touches your keys without confirmation.</p>
-    <div class="stage-grid" id="stage-grid" style="gap:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden">
-      <div class="stage" style="--i:0;background:#26251e;padding:24px 20px">
-        <div class="sw" style="width:28px;height:28px;border-radius:8px;background:#dfa88f;margin-bottom:16px"></div>
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#f7f7f4;margin-bottom:4px">Pending</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#dfa88f;margin-bottom:8px">thinking</div>
-        <div style="font-size:13px;line-height:1.5;color:#a09c92">Parses your intent and plans which sources to touch.</div>
-      </div>
-      <div class="stage" style="--i:1;background:#26251e;padding:24px 20px">
-        <div class="sw" style="width:28px;height:28px;border-radius:8px;background:#9fc9a2;margin-bottom:16px"></div>
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#f7f7f4;margin-bottom:4px">Relayed</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#9fc9a2;margin-bottom:8px">running · querying</div>
-        <div style="font-size:13px;line-height:1.5;color:#a09c92">Walks outputs and hops across the UTXO graph.</div>
-      </div>
-      <div class="stage" style="--i:2;background:#26251e;padding:24px 20px">
-        <div class="sw" style="width:28px;height:28px;border-radius:8px;background:#9fbbe0;margin-bottom:16px"></div>
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#f7f7f4;margin-bottom:4px">Mempool</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#9fbbe0;margin-bottom:8px">reading</div>
-        <div style="font-size:13px;line-height:1.5;color:#a09c92">Checks pending transactions and live fee pressure.</div>
-      </div>
-      <div class="stage" style="--i:3;background:#26251e;padding:24px 20px">
-        <div class="sw" style="width:28px;height:28px;border-radius:8px;background:#c0a8dd;margin-bottom:16px"></div>
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#f7f7f4;margin-bottom:4px">Confirming</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#c0a8dd;margin-bottom:8px">drafting</div>
-        <div style="font-size:13px;line-height:1.5;color:#a09c92">Composes the answer or a transaction for your review.</div>
-      </div>
-      <div class="stage" style="--i:4;background:#26251e;padding:24px 20px">
-        <div class="sw" style="width:28px;height:28px;border-radius:8px;background:#c08532;margin-bottom:16px"></div>
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#f7f7f4;margin-bottom:4px">Confirmed</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#c08532;margin-bottom:8px">done</div>
-        <div style="font-size:13px;line-height:1.5;color:#a09c92">Returns the result — nothing signed without confirmation.</div>
-      </div>
-    </div>
-  </div>
-</div>
+  <script>
+    (() => {
+      const output = document.getElementById('hero-cli-output');
+      if (!output || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-<!-- ======== TERMINAL STRIP ======== -->
-<div style="border-top:1px solid #e6e5e0">
-  <div class="container grid-2" style="padding-top:80px;padding-bottom:80px;gap:64px;align-items:center">
-    <div data-reveal>
-      <div style="font-size:11px;font-weight:600;letter-spacing:0.088em;text-transform:uppercase;color:#807d72;margin-bottom:14px">Runs where you do</div>
-      <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 16px;max-width:18ch">CLI, one-shot, or REPL — same agent.</h2>
-      <p style="font-size:16px;line-height:1.55;color:#5a5852;max-width:46ch;margin:0 0 28px">Pipe it into a script with <code style="font-family:'JetBrains Mono',monospace;font-size:14px">-p</code>, mention files with <code style="font-family:'JetBrains Mono',monospace;font-size:14px">@path</code>, or talk to it. Any provider: Anthropic, OpenAI, or a local Ollama model.</p>
-      <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <div style="background:#e6e5e0;color:#26251e;padding:5px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Zero-dependency</div>
-        <div style="background:#e6e5e0;color:#26251e;padding:5px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Self-host</div>
-        <div style="background:#e6e5e0;color:#26251e;padding:5px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Approval-gated</div>
-      </div>
-    </div>
-    <div data-reveal style="--i:2;border:1px solid #cfcdc4;border-radius:12px;background:#fff;overflow:hidden">
-      <div style="height:36px;background:#fafaf7;border-bottom:1px solid #efeee8;display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#807d72">~/treasury — zsh</div>
-      <div style="padding:18px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.85;color:#5a5852;overflow-x:auto">
-        <div><span style="color:#f7931a">$</span> bitcode -p "/btc:fees"</div>
-        <div style="color:#26251e">→ next block 142 sat/vB <span style="color:#1f8a65">· economy 61</span></div>
-        <div style="margin-top:8px"><span style="color:#f7931a">$</span> bitcode -m ollama/gpt-oss:20b "explain @src/agent.mjs"</div>
-        <div style="color:#26251e;display:flex;align-items:center;gap:5px"><svg viewBox="0 0 4 5" width="13" height="16" shape-rendering="crispEdges" style="display:block;flex:none"><rect x="0" y="4" width="2" height="1" fill="#0F0F0F"/><rect x="0" y="0" width="1" height="4" fill="#F7931A"/><rect x="3" y="2" width="1" height="2" fill="#F7931A"/><rect x="1" y="2" width="1" height="1" fill="#F7931A"/><rect x="2" y="1" width="1" height="1" fill="#F7931A"/><rect x="1" y="0" width="2" height="1" fill="#F7931A"/></svg>bitcode <span style="color:#a09c92">agent ·</span> ollama/gpt-oss:20b <span style="color:#1f8a65">● ready</span><span style="display:inline-block;width:8px;height:13px;background:#26251e;margin-left:3px;vertical-align:-2px;animation:blink 1.1s step-end infinite"></span></div>
-      </div>
-    </div>
-  </div>
-</div>
+      const lines = [
+        { text: '⚡ bitcode · ollama/qwen3.8:27b · mainnet · ready', className: 'hero-cli-line', wait: 380 },
+        { text: 'type a request, or /help for commands. Ctrl+C to quit.', className: 'hero-cli-line hero-cli-line--muted', wait: 520 },
+        { text: '/btc:fees', className: 'hero-cli-line hero-cli-line--prompt', type: true, wait: 420 },
+        { text: 'R E A S O N I N G', className: 'hero-cli-line hero-cli-line--reasoning', wait: 260 },
+        { text: 'READING  {}', className: 'hero-cli-line', pill: true, wait: 500 },
+        { text: '✓  network mainnet', className: 'hero-cli-line hero-cli-line--result', success: true, wait: 360 },
+        { text: 'fastest 2 · 30min 1 · 1h 1 · economy 1 · min 1 (sat/vB)', className: 'hero-cli-line hero-cli-line--result', wait: 640 },
+        { text: 'Fees are rock bottom: fastest 2 sat/vB, 30min/1h/economy/min all 1 sat/vB.', className: 'hero-cli-line hero-cli-line--answer', wait: 3400 }
+      ];
+      let timer;
 
-<!-- ======== CTA BAND ======== -->
-<div style="border-top:1px solid #e6e5e0">
-  <div class="container" data-reveal style="padding-top:96px;padding-bottom:96px;text-align:center">
-    <h2 style="font-size:36px;font-weight:400;line-height:1.2;letter-spacing:-0.02em;margin:0 0 14px">Point an agent at the chain.</h2>
-    <p style="font-size:16px;color:#5a5852;margin:0 0 28px">Free read-only tier. No key custody, ever.</p>
-    <button class="btn-orange copycmd" type="button" title="copy to clipboard" style="height:44px;padding:0 24px">$ npx bitcode</button>
-  </div>
-</div>
-
-<!-- ======== FOOTER ======== -->
-<div style="border-top:1px solid #e6e5e0;background:#f7f7f4">
-  <div class="container" style="padding-top:48px;padding-bottom:48px;display:flex;align-items:center;justify-content:space-between;gap:32px;flex-wrap:wrap">
-    <div style="display:flex;align-items:center;gap:10px">
-      <div style="width:22px;height:28px;display:flex;align-items:center;justify-content:center">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5" width="18" height="22" shape-rendering="crispEdges" style="display:block">
-          <path fill="#F7931A" d="M0 0h1v4H0zM1 0h2v1H1zM2 1h1v1H2zM1 2h1v1H1zM3 2h1v2H3z"/>
-          <path fill="#0F0F0F" d="M0 4h2v1H0z"/>
-        </svg>
-      </div>
-      <span style="font-size:15px;font-weight:600">bitcode</span>
-      <span style="font-size:13px;color:#807d72;margin-left:6px">A vertical AI agent for Bitcoin.</span>
-    </div>
-    <div style="display:flex;gap:24px;font-size:14px;color:#5a5852">
-      <a href="https://github.com/faktotum-project/bitcode" target="_blank" rel="noopener" class="navlink" style="display:inline">GitHub</a>
-      <a href="https://github.com/faktotum-project/bitcode#readme" target="_blank" rel="noopener" class="navlink" style="display:inline">Docs</a>
-      <a href="https://github.com/faktotum-project/bitcode#models--providers" target="_blank" rel="noopener" class="navlink" style="display:inline">API</a>
-      <a href="https://github.com/faktotum-project/bitcode/commits/main" target="_blank" rel="noopener" class="navlink" style="display:inline">Status</a>
-    </div>
-  </div>
-</div>
-
-<script>
-(function() {
-  document.documentElement.classList.add('js');
-  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  /* ---- tetris logo: build centered, then slide left as the wordmark appears ---- */
-  var logos = document.querySelectorAll('.tetris');
-  if (!reduced) logos.forEach(function(el) { el.classList.add('play'); });
-  var hero = document.getElementById('logo-hero');
-  var lockup = document.getElementById('lockup');
-  var nameTimer = null;
-  function heroPlay() {
-    lockup.classList.remove('named');
-    hero.classList.remove('play');
-    void hero.getBoundingClientRect();
-    requestAnimationFrame(function() { hero.classList.add('play'); });
-    clearTimeout(nameTimer);
-    /* drop ends ~1.75s, confirmation blink ends ~2.55s → then reveal the name */
-    nameTimer = setTimeout(function() { lockup.classList.add('named'); }, 2650);
-  }
-  if (lockup && hero) {
-    if (reduced) {
-      lockup.classList.add('named');
-    } else {
-      nameTimer = setTimeout(function() { lockup.classList.add('named'); }, 2650);
-      lockup.addEventListener('click', heroPlay);
-      lockup.style.cursor = 'pointer';
-    }
-  }
-
-  /* ---- 21 real utilities, one per million coins ---- */
-  var UT = [
-    ['/btc:fees', 'live fee estimates by confirmation target'],
-    ['/btc:mempool', 'congestion and pending volume, right now'],
-    ['/btc:block', 'inspect any block by height or hash'],
-    ['/btc:tx', 'decode a transaction, inputs to outputs'],
-    ['/btc:address', 'history and balance of any address'],
-    ['/btc:balance', 'your wallet, at a glance'],
-    ['/btc:receive', 'fresh receive addresses on demand'],
-    ['/btc:descriptor', 'watch-only descriptors, safe to share'],
-    ['/btc:send', 'drafts, checks fees, asks before broadcasting'],
-    ['wallet_create', 'a descriptor wallet from a fresh seed'],
-    ['bitcode wallet seed', 'seed reveal — human-only, never a tool'],
-    ['approve (y/N)', 'every mutation gated behind you'],
-    ['R E A S O N I N G', 'a colour-coded stage pill per tool call'],
-    ['@path', 'mention a file and it lands in context'],
-    ['/subagent', 'delegate sub-tasks to markdown personas'],
-    ['~/.bitcode/commands', 'your own slash commands, plain markdown'],
-    ['-p "…"', 'one-shot mode — pipe it into scripts'],
-    ['-m provider/model', 'Anthropic, OpenAI, Groq, OpenRouter'],
-    ['ollama/gpt-oss:20b', 'fully local, fully private'],
-    ['/models', 'switch models mid-session'],
-    ['npx bitcode', 'zero dependencies — pure Node ESM']
-  ];
-  var pxRow = document.getElementById('u21-px');
-  var uLine = document.getElementById('u21-line');
-  if (pxRow && uLine) {
-    var px = UT.map(function() {
-      var d = document.createElement('span');
-      pxRow.appendChild(d);
-      return d;
-    });
-    function showU(n) {
-      px.forEach(function(d, k) {
-        d.className = k < n ? 'f' : (k === n ? 'cur' : '');
-      });
-      var u = UT[n];
-      uLine.className = '';
-      void uLine.offsetWidth;
-      uLine.className = 'terminal-line';
-      uLine.innerHTML = '';
-      var c = document.createElement('span');
-      c.style.color = '#a09c92';
-      c.textContent = String(n + 1).padStart(2, '0') + '/21  ';
-      var cmd = document.createElement('span');
-      cmd.style.color = '#f7931a';
-      cmd.style.fontWeight = '600';
-      cmd.textContent = u[0];
-      var desc = document.createElement('span');
-      desc.style.color = '#5a5852';
-      desc.textContent = ' — ' + u[1];
-      uLine.appendChild(c); uLine.appendChild(cmd); uLine.appendChild(desc);
-    }
-    if (reduced) {
-      px.forEach(function(d) { d.className = 'f'; });
-      uLine.textContent = '21/21 real utilities — from /btc:fees to npx bitcode.';
-    } else {
-      var ui = 0;
-      showU(0);
-      setInterval(function() { ui = (ui + 1) % UT.length; showU(ui); }, 2300);
-    }
-  }
-
-  /* ---- block-height tick ---- */
-  var bh = document.getElementById('bh');
-  if (bh && !reduced) {
-    var TARGET = 901420, START = 901296, DUR = 1500, t0 = null;
-    requestAnimationFrame(function tick(now) {
-      if (t0 === null) t0 = now;
-      var p = Math.min(1, (now - t0) / DUR);
-      var e = 1 - Math.pow(1 - p, 3);
-      bh.textContent = Math.round(START + (TARGET - START) * e).toLocaleString('en-US');
-      if (p < 1) requestAnimationFrame(tick);
-    });
-  }
-
-  /* ---- copy-to-clipboard CTAs ---- */
-  document.querySelectorAll('.copycmd').forEach(function(b) {
-    b.addEventListener('click', function() {
-      try { navigator.clipboard.writeText('npx bitcode'); } catch (e) {}
-      var prev = b.textContent;
-      b.textContent = '✓ copied';
-      b.classList.add('copied');
-      setTimeout(function() { b.textContent = prev; b.classList.remove('copied'); }, 1400);
-    });
-  });
-
-  /* ---- scroll reveal ---- */
-  var revealables = document.querySelectorAll('[data-reveal]');
-  if (!reduced && 'IntersectionObserver' in window) {
-    revealables.forEach(function(el) { el.classList.add('reveal'); });
-    var io = new IntersectionObserver(function(entries) {
-      entries.forEach(function(en) {
-        if (en.isIntersecting) { en.target.classList.add('on'); io.unobserve(en.target); }
-      });
-    }, { threshold: 0.18 });
-    revealables.forEach(function(el) { io.observe(el); });
-  }
-
-  /* ---- reasoning pipeline sweep ---- */
-  var sg = document.getElementById('stage-grid');
-  if (sg && !reduced && 'IntersectionObserver' in window) {
-    sg.classList.add('armed');
-    var sio = new IntersectionObserver(function(entries) {
-      entries.forEach(function(en) {
-        if (en.isIntersecting) { sg.classList.add('on'); sio.unobserve(sg); }
-      });
-    }, { threshold: 0.35 });
-    sio.observe(sg);
-  }
-})();
-</script>
-
-<script>
-(function() {
-  /* Replay of a real bitcode session — colours and copy from src/theme.mjs
-     and src/cli.mjs (wordmark, stage legend, Reasoning pills, approval gate). */
-  var body = document.getElementById('terminal-body');
-  if (!body) return;
-  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  var C = {
-    orange: '#f7931a', ink: '#26251e', body: '#5a5852', muted: '#807d72',
-    faint: '#a09c92', ok: '#1f8a65',
-    pending: '#dfa88f', relayed: '#9fc9a2', mempool: '#9fbbe0',
-    confirming: '#c0a8dd', confirmed: '#c08532'
-  };
-
-  function s(t, c, o) { o = o || {}; return { t: t, c: c, b: o.b, pill: o.pill, type: o.type }; }
-  function pillSeg(hex, name) { return { t: name, pill: hex }; }
-  function logoSeg() { return { icon: true }; }
-  var LOGO_SVG = '<svg viewBox="0 0 4 5" width="13" height="16" shape-rendering="crispEdges" style="display:block">'
-    + '<rect x="0" y="4" width="2" height="1" fill="#0F0F0F"/><rect x="0" y="0" width="1" height="4" fill="#F7931A"/>'
-    + '<rect x="3" y="2" width="1" height="2" fill="#F7931A"/><rect x="1" y="2" width="1" height="1" fill="#F7931A"/>'
-    + '<rect x="2" y="1" width="1" height="1" fill="#F7931A"/><rect x="1" y="0" width="2" height="1" fill="#F7931A"/></svg>';
-  function prompt(text) { return { segs: [s('› ', C.orange, { b: true }), s(text, C.ink, { type: true })], pause: 420 }; }
-  function toolLine(hex, name, rest) {
-    var segs = [s('  ', C.faint), pillSeg(hex, name)];
-    if (rest) segs.push(s(rest, C.faint));
-    return { segs: segs, pause: 500 };
-  }
-  function resultLine(text) {
-    return { segs: [s('    ', C.faint), s('✓ ', C.ok, { b: true }), s(text, C.body)], pause: 300 };
-  }
-  var reasoning = { segs: [s('R E A S O N I N G', C.faint)], pause: 200 };
-
-  var LINES = [
-    { segs: [
-        logoSeg(), s(' bitcode', C.ink, { b: true }), s('  agent · ', C.faint),
-        s('anthropic/claude-sonnet-4-6', C.body), s('  · ', C.faint), s('mainnet', C.orange),
-        s('  ● ', C.ok), s('ready', C.faint)
-      ], pause: 260 },
-    { segs: [
-        s('● ', C.pending), s('thinking', C.faint), s('  →  ', C.faint),
-        s('● ', C.relayed), s('running', C.faint), s('  →  ', C.faint),
-        s('● ', C.mempool), s('reading', C.faint), s('  →  ', C.faint),
-        s('● ', C.confirming), s('drafting', C.faint), s('  →  ', C.faint),
-        s('● ', C.confirmed), s('done', C.faint)
-      ], pause: 200 },
-    { segs: [s('type a request, or /help for commands. Ctrl+C to quit.', C.faint)], pause: 600 },
-    { gap: true, pause: 200 },
-
-    prompt('/btc:fees'),
-    reasoning,
-    toolLine(C.mempool, 'reading', '  btc_fees'),
-    resultLine('next block 142 sat/vB · 30min 97 · economy 61'),
-    { gap: true, pause: 500 },
-
-    prompt('trace bc1qar0…mdq — where did the funds go?'),
-    reasoning,
-    toolLine(C.relayed, 'querying', '  btc_address bc1qar0…mdq'),
-    resultLine('3 txs · 2 hops → consolidation at bc1q7x…'),
-    toolLine(C.pending, 'thinking'),
-    { segs: [s('→ ', C.orange, { b: true }), s('funds moved in 2 hops to a consolidation wallet — full trace above.', C.ink)], pause: 700 },
-    { gap: true, pause: 400 },
-
-    prompt('/btc:send bc1q7x… 0.01'),
-    toolLine(C.confirming, 'drafting', '  wallet_send'),
-    { segs: [s('  approve ', C.orange), s('wallet_send', C.ink, { b: true }), s(' [0.01 BTC → bc1q7x…] (y/N) ', C.faint)], pause: 900 },
-    { segs: [s('y', C.ink, { type: true })], append: true, pause: 350 },
-    resultLine('broadcast · txid 4f2a91…c8'),
-    { segs: [s('    ', C.faint), pillSeg(C.confirmed, 'done'), s('  nothing was signed without your confirmation', C.faint)], pause: 500 },
-    { gap: true, pause: 300 },
-    { segs: [s('✓ ', C.ok, { b: true }), s('bitcode ready', C.ink, { b: true })], pause: 400 }
-  ];
-
-  var cursor = document.createElement('span');
-  cursor.className = 'cursor';
-  var idx = 0;
-
-  function lum(hex) {
-    var n = parseInt(hex.slice(1), 16);
-    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
-  }
-
-  function mkSpan(seg) {
-    var sp = document.createElement('span');
-    if (seg.icon) {
-      sp.style.display = 'inline-flex';
-      sp.style.verticalAlign = '-3px';
-      sp.innerHTML = LOGO_SVG;
-    } else if (seg.pill) {
-      sp.className = 'tpill';
-      sp.style.background = seg.pill;
-      sp.style.color = lum(seg.pill) < 0.6 ? '#ffffff' : '#26251e';
-      sp.textContent = seg.t;
-    } else {
-      if (seg.c) sp.style.color = seg.c;
-      if (seg.b) sp.style.fontWeight = '600';
-    }
-    return sp;
-  }
-
-  function play() {
-    body.innerHTML = '';
-    idx = 0;
-    step();
-  }
-
-  function step() {
-    if (idx >= LINES.length) {
-      if (!reduced) setTimeout(play, 6000);
-      return;
-    }
-    var l = LINES[idx++];
-    if (l.gap) {
-      var g = document.createElement('div');
-      g.style.height = '18px';
-      body.appendChild(g);
-      return next(l.pause || 150);
-    }
-    var el;
-    if (l.append && body.lastElementChild) {
-      el = body.lastElementChild;
-    } else {
-      el = document.createElement('div');
-      el.className = 'terminal-line';
-      body.appendChild(el);
-    }
-    el.appendChild(cursor);
-    cursor.className = 'cursor' + (l.segs.some(function(x) { return x.t && x.t.indexOf('›') === 0; }) ? '' : ' cursor-orange');
-    renderSegs(el, l.segs, 0, function() { next(l.pause || 180); });
-  }
-
-  function next(ms) {
-    if (reduced) return step();
-    setTimeout(step, ms);
-  }
-
-  function renderSegs(el, segs, si, done) {
-    if (si >= segs.length) return done();
-    var seg = segs[si];
-    var sp = mkSpan(seg);
-    el.insertBefore(sp, cursor);
-    if (seg.icon || seg.pill || !seg.type || reduced) {
-      if (!seg.pill && !seg.icon) sp.textContent = seg.t;
-      return renderSegs(el, segs, si + 1, done);
-    }
-    var ci = 0;
-    (function typeChar() {
-      if (ci < seg.t.length) {
-        sp.textContent += seg.t[ci++];
-        setTimeout(typeChar, 42);
-      } else {
-        renderSegs(el, segs, si + 1, done);
+      function addLine(line, done) {
+        const row = document.createElement('div');
+        row.className = line.className;
+        output.appendChild(row);
+        if (line.pill) {
+          const pill = document.createElement('span');
+          pill.className = 'hero-cli-pill';
+          pill.textContent = 'READING';
+          row.append(pill, document.createTextNode(' {}'));
+          return done();
+        }
+        if (line.success) {
+          const mark = document.createElement('strong');
+          mark.textContent = '✓';
+          row.append(mark, document.createTextNode('  network mainnet'));
+          return done();
+        }
+        if (!line.type) { row.textContent = line.text; return done(); }
+        const cursor = document.createElement('span');
+        cursor.className = 'hero-cli-cursor';
+        row.appendChild(cursor);
+        let index = 0;
+        const type = () => {
+          if (index < line.text.length) {
+            row.insertBefore(document.createTextNode(line.text[index++]), cursor);
+            timer = window.setTimeout(type, 38);
+          } else {
+            cursor.remove();
+            done();
+          }
+        };
+        type();
       }
+
+      function play(index = 0) {
+        if (index === 0) output.replaceChildren();
+        if (index === lines.length) { timer = window.setTimeout(() => play(), 2500); return; }
+        addLine(lines[index], () => { timer = window.setTimeout(() => play(index + 1), lines[index].wait); });
+      }
+      play();
+      document.addEventListener('visibilitychange', () => { if (document.hidden) window.clearTimeout(timer); });
     })();
-  }
+  </script>
 
-  play();
-})();
-</script>
+  <script>
+    (() => {
+      'use strict';
+      document.documentElement.classList.add('js');
 
+      // Navigation remains visible without JavaScript. Escape returns focus to its trigger.
+      const menu = document.getElementById('site-nav');
+      const menuButton = document.querySelector('.menu-toggle');
+      function closeMenu(returnFocus = false) {
+        menu.classList.remove('is-open');
+        menuButton.setAttribute('aria-expanded', 'false');
+        menuButton.setAttribute('aria-label', 'Open navigation');
+        if (returnFocus) menuButton.focus();
+      }
+      menuButton.addEventListener('click', () => {
+        const isOpen = menuButton.getAttribute('aria-expanded') !== 'true';
+        menu.classList.toggle('is-open', isOpen);
+        menuButton.setAttribute('aria-expanded', String(isOpen));
+        menuButton.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && menuButton.getAttribute('aria-expanded') === 'true') closeMenu(true);
+      });
+      document.addEventListener('click', event => {
+        if (!event.target.closest('.site-header')) closeMenu();
+      });
+      document.querySelectorAll('.site-header a').forEach(link => link.addEventListener('click', () => closeMenu()));
+      const mobileNav = window.matchMedia('(max-width: 800px)');
+      mobileNav.addEventListener('change', () => closeMenu());
+
+      // Native video controls also work without JavaScript. Keep one session playing.
+      const recordings = Array.from(document.querySelectorAll('video'));
+      recordings.forEach(video => {
+        const message = video.parentElement.querySelector('.video-message');
+        const start = document.createElement('button');
+        start.type = 'button';
+        start.className = 'video-start';
+        start.setAttribute('aria-label', 'Play ' + video.getAttribute('aria-label'));
+        const startLabel = document.createElement('span');
+        startLabel.textContent = '▶  Play session';
+        start.appendChild(startLabel);
+        video.parentElement.appendChild(start);
+        video.controls = false;
+        start.addEventListener('click', async () => {
+          video.controls = true;
+          try { await video.play(); video.focus(); }
+          catch { failed(); start.hidden = false; }
+        });
+        video.addEventListener('playing', () => { start.hidden = true; video.controls = true; });
+        video.addEventListener('ended', () => { start.hidden = false; startLabel.textContent = '↻  Replay session'; video.controls = false; });
+        video.addEventListener('play', () => {
+          recordings.forEach(other => { if (other !== video) other.pause(); });
+          message.textContent = '';
+        });
+        video.addEventListener('waiting', () => { message.textContent = 'Loading recording…'; });
+        ['playing', 'canplay', 'pause', 'ended'].forEach(event => video.addEventListener(event, () => { message.textContent = ''; }));
+        const failed = () => { message.textContent = 'Recording unavailable. Use the download or read the transcript below.'; };
+        video.addEventListener('error', failed);
+        video.querySelectorAll('source').forEach(source => source.addEventListener('error', failed));
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) recordings.forEach(video => video.pause());
+      });
+
+      // Only report success after the clipboard write resolves; keep a manual fallback.
+      const copyStatus = document.getElementById('copy-status');
+      let toastTimer;
+      const resetTimers = new WeakMap();
+      function announce(message) {
+        clearTimeout(toastTimer);
+        copyStatus.textContent = message;
+        toastTimer = setTimeout(() => { copyStatus.textContent = ''; }, 4500);
+      }
+      document.querySelectorAll('[data-copy]').forEach(button => {
+        button.hidden = false;
+        button.addEventListener('click', async () => {
+          const source = document.getElementById(button.dataset.copy);
+          const originalLabel = button.getAttribute('aria-label');
+          button.disabled = true;
+          try {
+            if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+            await navigator.clipboard.writeText(source.textContent);
+            clearTimeout(resetTimers.get(button));
+            button.dataset.copied = 'true';
+            button.querySelector('use').setAttribute('href', '#i-check');
+            announce('Command copied to clipboard.');
+            resetTimers.set(button, setTimeout(() => {
+              delete button.dataset.copied;
+              button.querySelector('use').setAttribute('href', '#i-copy');
+            }, 2200));
+          } catch {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(source);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            announce('Copy unavailable. Command selected — use your device’s Copy action.');
+          } finally {
+            button.disabled = false;
+            button.setAttribute('aria-label', originalLabel);
+          }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

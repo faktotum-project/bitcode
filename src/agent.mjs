@@ -1,7 +1,8 @@
 // The agentic loop: call the model, run any requested tools, feed results back,
 // repeat until the model returns a final text answer with no tool calls.
 
-import { callModel } from "./providers.mjs";
+import { callModel, isRetryable } from "./providers.mjs";
+import { validateArgs, formatResult, isMutating, throwIfAborted, wait, withToolContext } from "./runtime.mjs";
 
 const MAX_STEPS = 50;
 
@@ -26,7 +27,7 @@ export function systemPrompt({ network = "signet", lightning = false } = {}) {
     "- Wallet: cashu_balance, cashu_mint, cashu_melt, cashu_send, cashu_receive, cashu_decode_token, cashu_list_proofs.",
     "- Mint: cashu_mint_info, cashu_mintd_start, cashu_mintd_stop, cashu_mintd_status.",
     "- Payment requests (NUT-18): cashu_create_request, cashu_pay_request, cashu_decode_request.",
-    "Coding tools: bash, read_file, write_file, edit_file, list_dir, grep (regex content search), glob (find files by pattern), patch (apply a unified diff).",
+    "Coding tools: bash, exec_command/write_stdin/list_processes/terminate_process, read_file (line ranges), write_file, edit_file, list_dir, grep, glob, patch, git_status, git_diff, git_log, web_fetch, update_plan/read_plan, ask_user, list_skills/read_skill. MCP tools, resources and prompts are available when configured. Only call tools present in this request.",
     "",
     "Guidelines:",
     "- Inspect before acting: query the chain/mempool and read files instead of guessing.",
@@ -39,130 +40,109 @@ export function systemPrompt({ network = "signet", lightning = false } = {}) {
   ].join("\n");
 }
 
-// Per-run limits. Defaults preserve historical behaviour (50 steps, unbounded
-// tool calls, no retries). Override via config.agent.* → agentLimits().
+// Limits are shared with delegated runs. Mutations form execution barriers:
+// reads before a write complete first; later reads observe the write.
 export const DEFAULT_LIMITS = {
-  maxSteps: MAX_STEPS,
-  maxToolCallsPerTurn: Infinity,
-  maxTotalToolCalls: Infinity,
-  toolRetryAttempts: 0,
-  toolRetryDelay: 500,
+  maxSteps: MAX_STEPS, maxToolCallsPerTurn: 16, maxTotalToolCalls: 200,
+  maxParallelTools: 4, maxResultChars: 50_000,
+  toolRetryAttempts: 0, toolRetryDelay: 500,
 };
 
 export function agentLimits(config = {}) {
   const a = config.agent || {};
-  const pick = (v, d) => (typeof v === "number" && v >= 0 ? v : d);
-  return {
-    maxSteps: pick(a.maxSteps, DEFAULT_LIMITS.maxSteps),
-    maxToolCallsPerTurn: pick(a.maxToolCallsPerTurn, DEFAULT_LIMITS.maxToolCallsPerTurn),
-    maxTotalToolCalls: pick(a.maxTotalToolCalls, DEFAULT_LIMITS.maxTotalToolCalls),
-    toolRetryAttempts: pick(a.toolRetryAttempts, DEFAULT_LIMITS.toolRetryAttempts),
-    toolRetryDelay: pick(a.toolRetryDelay, DEFAULT_LIMITS.toolRetryDelay),
-  };
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Drives one turn (one user request) to completion.
-//   target  : resolved model from config.resolveModel()
-//   messages: canonical message array (mutated in place; carries history)
-//   system  : system prompt string
-//   hooks   : { onDelta, onAssistantEnd, onToolStart, onToolEnd, approve }
-//   limits  : from agentLimits(config)
-//   fallbacks: optional [target, …] tried in order if the model call fails
-// Returns the final assistant text.
-export async function runAgent({ target, messages, system, tools, hooks = {}, limits = DEFAULT_LIMITS, fallbacks = [] }) {
-  const schemas = tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    parameters: t.parameters,
+  return Object.fromEntries(Object.entries(DEFAULT_LIMITS).map(([key, fallback]) => {
+    const value = a[key] ?? (key === "toolRetryAttempts" ? a.maxRetries : undefined);
+    const min = ["maxParallelTools", "maxResultChars"].includes(key) ? 1 : 0;
+    return [key, Number.isSafeInteger(value) && value >= min ? value : fallback];
   }));
-
-  let totalToolCalls = 0;
-
-  for (let step = 0; step < limits.maxSteps; step++) {
-    const { text, toolCalls } = await callWithFallback(
-      [target, ...fallbacks],
-      { system, messages, tools: schemas, onDelta: hooks.onDelta },
-      hooks,
-    );
-
-    messages.push({ role: "assistant", content: text || "", toolCalls });
-    hooks.onAssistantEnd?.(text);
-
-    if (!toolCalls || toolCalls.length === 0) return text;
-
-    // Phase 1 — resolve each call: budget check, then interactive approval
-    // (sequential, so two prompts never race for stdin).
-    const decisions = [];
-    for (let k = 0; k < toolCalls.length; k++) {
-      const tc = toolCalls[k];
-      const overBudget = k >= limits.maxToolCallsPerTurn || totalToolCalls >= limits.maxTotalToolCalls;
-      const tool = overBudget ? null : tools.find((t) => t.name === tc.name);
-      let approved = true;
-      if (!overBudget) {
-        totalToolCalls++;
-        if (tool?.mutating && hooks.approve) approved = await hooks.approve(tc, tool);
-      }
-      decisions.push({ tc, tool, approved, overBudget });
-    }
-
-    // Phase 2 — announce all (ordered), so the reasoning log stays readable.
-    for (const d of decisions) hooks.onToolStart?.(d.tc);
-
-    // Phase 3 — run independent calls concurrently.
-    const results = await Promise.all(
-      decisions.map((d) => {
-        if (d.overBudget) return Promise.resolve("ERROR: tool budget exceeded for this turn");
-        if (!d.approved) return Promise.resolve("Tool call denied by the user.");
-        return runToolWithRetry(d.tool, d.tc, limits);
-      }),
-    );
-
-    // Phase 4 — report + append results in original order (tool_result must
-    // pair with each tool_use the model emitted).
-    decisions.forEach((d, i) => {
-      hooks.onToolEnd?.(d.tc, results[i]);
-      messages.push({ role: "tool", toolCallId: d.tc.id, name: d.tc.name, content: results[i] });
-    });
-  }
-
-  return `[stopped: reached ${limits.maxSteps} steps without a final answer]`;
 }
 
-// Try each target in turn; the first that returns wins. A failure falls through
-// to the next (e.g. cloud provider down → local model). Throws the last error
-// if every target fails.
+export async function runAgent({ target, messages, system, tools, hooks = {}, limits = DEFAULT_LIMITS, fallbacks = [], signal, state = { totalToolCalls: 0 }, readOnly = false }) {
+  limits = { ...DEFAULT_LIMITS, ...limits };
+  const available = readOnly ? tools.filter(t => !isMutating(t)) : tools;
+  const schemas = available.map(t => ({ name: t.name, description: t.description || t.name, parameters: t.parameters || { type: "object", properties: {} } }));
+  const finish = async text => {
+    messages.push({ role: "assistant", content: text, toolCalls: [] });
+    hooks.onDelta?.(text);
+    hooks.onAssistantEnd?.(text);
+    await hooks.onCheckpoint?.(messages);
+    return text;
+  };
+  for (let step = 0; step < limits.maxSteps; step++) {
+    throwIfAborted(signal);
+    const response = await callWithFallback([target, ...fallbacks], { system, messages, tools: schemas, onDelta: hooks.onDelta, signal }, hooks);
+    const { text, toolCalls = [], usage, providerState } = response;
+    if (toolCalls.some(tc => !tc.id || !tc.name) || new Set(toolCalls.map(tc => tc.id)).size !== toolCalls.length) throw new Error("model returned missing or duplicate tool call IDs");
+    messages.push({ role: "assistant", content: text || "", toolCalls, ...(providerState ? { providerState } : {}), ...(usage ? { usage } : {}) });
+    hooks.onAssistantEnd?.(text);
+    if (usage) hooks.onUsage?.(usage);
+    if (!toolCalls.length) { await hooks.onCheckpoint?.(messages); return text; }
+
+    const results = new Array(toolCalls.length);
+    const context = { signal, hooks, limits, state, readOnly, target, fallbacks };
+    const execute = async (tc, i) => {
+      const tool = available.find(t => t.name === tc.name);
+      hooks.onToolStart?.(tc);
+      let result;
+      try {
+        throwIfAborted(signal);
+        if (i >= limits.maxToolCallsPerTurn || state.totalToolCalls >= limits.maxTotalToolCalls) throw new Error("tool budget exceeded");
+        if (!tool) throw new Error(`unknown or unavailable tool "${tc.name}"`);
+        validateArgs(tool, tc.args ?? {});
+        state.totalToolCalls++;
+        if (isMutating(tool) && hooks.approve && !await hooks.approve(tc, tool)) throw new Error("tool call denied by the user");
+        throwIfAborted(signal);
+        result = await runToolWithRetry(tool, tc, limits, context);
+      } catch (err) {
+        result = `ERROR: ${signal?.aborted ? "cancelled; inspect state before retrying" : err.message}`;
+      }
+      results[i] = formatResult(result, limits.maxResultChars);
+      hooks.onToolEnd?.(tc, results[i]);
+    };
+    // Only explicitly read-only tools may overlap. Approval is requested at
+    // execution time, after preceding mutations and their results are known.
+    let reads = [];
+    const flush = async () => { await Promise.all(reads); reads = []; };
+    for (let i = 0; i < toolCalls.length; i++) {
+      const tc = toolCalls[i];
+      const tool = available.find(t => t.name === tc.name);
+      if (isMutating(tool) || tool?.serial) { await flush(); await execute(tc, i); }
+      else { reads.push(execute(tc, i)); if (reads.length >= limits.maxParallelTools) await flush(); }
+    }
+    await flush();
+    toolCalls.forEach((tc, i) => messages.push({ role: "tool", toolCallId: tc.id, name: tc.name, content: results[i] }));
+    await hooks.onCheckpoint?.(messages);
+    throwIfAborted(signal);
+    if (state.totalToolCalls >= limits.maxTotalToolCalls) return finish(`[stopped: reached tool budget of ${limits.maxTotalToolCalls}; task may be incomplete]`);
+  }
+  return finish(`[stopped: reached ${limits.maxSteps} steps without a final answer]`);
+}
+
 async function callWithFallback(targets, req, hooks) {
-  let lastErr;
   for (let i = 0; i < targets.length; i++) {
     const target = targets[i];
+    let streamed = false;
     try {
-      return await callModel({
-        provider: target.provider,
-        model: target.model,
-        apiKey: target.apiKey,
-        ...req,
-      });
+      return await callModel({ provider: target.provider, model: target.model, apiKey: target.apiKey, ...req,
+        onDelta: piece => { streamed = true; req.onDelta?.(piece); } });
     } catch (err) {
-      lastErr = err;
-      if (i < targets.length - 1) hooks.onFallback?.(target, targets[i + 1], err);
+      if (req.signal?.aborted || streamed || !isRetryable(err) || i === targets.length - 1) throw err;
+      hooks.onFallback?.(target, targets[i + 1], err);
     }
   }
-  throw lastErr;
 }
 
-async function runToolWithRetry(tool, tc, limits) {
-  if (!tool) return `ERROR: unknown tool "${tc.name}"`;
-  const attempts = Math.max(0, Number(limits.toolRetryAttempts) || 0);
-  let lastErr;
-  for (let a = 0; a <= attempts; a++) {
+async function runToolWithRetry(tool, tc, limits, context) {
+  // Never automatically replay side effects: a failed response may have
+  // followed a successful payment, write or process launch.
+  const retries = !isMutating(tool) && tool.retryable !== false ? limits.toolRetryAttempts : 0;
+  for (let a = 0; ; a++) {
     try {
-      return String(await tool.run(tc.args || {}));
+      throwIfAborted(context.signal);
+      return await withToolContext(context, () => tool.run(tc.args ?? {}, context));
     } catch (err) {
-      lastErr = err;
-      if (a < attempts) await sleep(limits.toolRetryDelay * Math.pow(2, a));
+      if (context.signal?.aborted || a >= retries) throw err;
+      await wait(limits.toolRetryDelay * 2 ** a, context.signal);
     }
   }
-  return `ERROR: ${lastErr?.message || String(lastErr)}`;
 }

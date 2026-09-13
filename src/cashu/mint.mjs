@@ -1,6 +1,6 @@
 // Cashu mint daemon — wraps `cdk-mintd` as a managed subprocess.
 // This lets the agent start/stop a local mint (useful for regtest/dev).
-import { spawn } from "node:child_process";
+import { managedDaemon } from "../daemon.mjs";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,39 +12,21 @@ function mintdBinPath() {
   return "cdk-mintd";
 }
 
+const daemons = new Set();
+export async function closeCashuDaemons() { await Promise.allSettled([...daemons].map(d => d.stop())); daemons.clear(); }
 export function cashuMint(ctx) {
-  let proc = null;
-
+  let daemon;
   return {
-    start({ config, seedFile } = {}) {
-      if (proc) return { status: "already running", pid: proc.pid };
-
+    async start({ config, seedFile } = {}) {
+      if (daemon?.status().status === "running") return { ...daemon.status(), status: "already running" };
       const args = ["--work-dir", ctx.workDir];
       if (config) args.push("--config", config);
       if (seedFile) args.push("--seed-file", seedFile);
-
-      proc = spawn(mintdBinPath(), args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: false,
-      });
-
-      proc.on("exit", (code) => {
-        proc = null;
-      });
-
-      return { status: "started", pid: proc.pid, workDir: ctx.workDir };
+      daemon = managedDaemon({ command: mintdBinPath(), args, info: { workDir: ctx.workDir } });
+      daemons.add(daemon);
+      return daemon.start();
     },
-
-    stop() {
-      if (!proc) return { status: "not running" };
-      proc.kill("SIGTERM");
-      proc = null;
-      return { status: "stopped" };
-    },
-
-    status() {
-      if (!proc) return { status: "stopped" };
-      return { status: "running", pid: proc.pid, workDir: ctx.workDir };
-    },
+    stop: () => daemon ? daemon.stop() : { status: "not running" },
+    status: () => daemon?.status() || { status: "stopped", workDir: ctx.workDir },
   };
 }

@@ -1,3 +1,4 @@
+import { bitcodeHome } from "./paths.mjs";
 // Provider registry and model resolution.
 //
 // A "model spec" is written as "<provider>/<model>", e.g. "ollama/gpt-oss:20b"
@@ -9,11 +10,10 @@
 //   4. built-in fallback
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 
 // Built-in providers. `api` selects the wire format: "anthropic" (Messages API)
-// or "openai" (Chat Completions, used by most OpenAI-compatible servers).
+// "responses" (OpenAI Responses), or "openai" (compatible Chat Completions).
 // For "openai", baseURL already includes the version segment (e.g. /v1).
 export const BUILTIN_PROVIDERS = {
   anthropic: {
@@ -23,10 +23,10 @@ export const BUILTIN_PROVIDERS = {
     defaultModel: "claude-sonnet-4-6",
   },
   openai: {
-    api: "openai",
+    api: "responses",
     baseURL: "https://api.openai.com/v1",
     keyEnv: "OPENAI_API_KEY",
-    defaultModel: "gpt-5.5",
+    defaultModel: "gpt-6-astra",
   },
   openrouter: {
     api: "openai",
@@ -51,14 +51,16 @@ export const BUILTIN_PROVIDERS = {
 const FALLBACK_MODEL = "anthropic/claude-sonnet-4-6";
 
 export function configPath() {
-  return path.join(homedir(), ".bitcode", "config.json");
+  return path.join(bitcodeHome(), "config.json");
 }
 
 export function loadConfig() {
   const file = configPath();
   if (!existsSync(file)) return {};
   try {
-    return JSON.parse(readFileSync(file, "utf8"));
+    const config = JSON.parse(readFileSync(file, "utf8"));
+    if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("expected a JSON object");
+    return config;
   } catch (err) {
     throw new Error(`invalid config at ${file}: ${err.message}`);
   }
@@ -70,7 +72,7 @@ export function saveConfig(config) {
   const file = configPath();
   mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(config, null, 2));
+  writeFileSync(tmp, JSON.stringify(config, null, 2), { mode: 0o600 });
   try {
     chmodSync(tmp, 0o600);
   } catch {
@@ -87,6 +89,7 @@ export function configGet(config, key) {
 
 export function configSet(config, key, value) {
   const parts = key.split(".");
+  if (parts.some(p => !p || ["__proto__", "prototype", "constructor"].includes(p))) throw new Error("invalid config path");
   let o = config;
   for (let i = 0; i < parts.length - 1; i++) {
     if (o[parts[i]] == null || typeof o[parts[i]] !== "object") o[parts[i]] = {};

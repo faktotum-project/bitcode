@@ -27,7 +27,7 @@ export function expandMentions(text, cwd = process.cwd()) {
     } catch {
       continue;
     }
-    if (!stat.isFile()) continue;
+    if (!stat.isFile() || stat.size > 10 * 1024 * 1024 || blocks.length > 80000) continue;
 
     let content;
     try {
@@ -35,6 +35,7 @@ export function expandMentions(text, cwd = process.cwd()) {
     } catch {
       continue;
     }
+    if (content.includes("\u0000")) continue;
     if (content.length > MAX_MENTION_CHARS) {
       content = content.slice(0, MAX_MENTION_CHARS) + `\n…[truncated ${content.length - MAX_MENTION_CHARS} chars]`;
     }

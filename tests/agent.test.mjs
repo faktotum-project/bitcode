@@ -102,3 +102,66 @@ test("fallback target answers when the primary call fails", async () => {
   assert.equal(out, "from fallback");
   assert.equal(fellBack, true);
 });
+
+test("mutations form barriers between concurrent reads", async () => {
+  let turn = 0, value = 0;
+  script = res => ++turn === 1 ? sse(res, [toolCall(0, "a", "read"), toolCall(1, "b", "write"), toolCall(2, "c", "read"), toolCall(3, "d", "write")]) : sse(res, [textChunk("done")]);
+  const sequence = [];
+  const tools = [
+    { name: "read", mutating: false, parameters: {}, run: async () => { await new Promise(r => setTimeout(r, 10)); sequence.push(`read:${value}`); return value; } },
+    { name: "write", mutating: true, parameters: {}, run: async () => { sequence.push(`write:${++value}`); return value; } },
+  ];
+  await runAgent({ target: target(), messages: [], tools, hooks: { approve: () => true } });
+  assert.deepEqual(sequence, ["read:0", "write:1", "read:1", "write:2"]);
+});
+
+test("side effects are never automatically retried", async () => {
+  let turn = 0, calls = 0;
+  script = res => ++turn === 1 ? sse(res, [toolCall(0, "a", "pay")]) : sse(res, [textChunk("done")]);
+  const messages = [];
+  await runAgent({ target: target(), messages, tools: [{ name: "pay", mutating: true, run: () => { calls++; throw new Error("response lost after send"); } }], limits: agentLimits({ agent: { toolRetryAttempts: 3 } }) });
+  assert.equal(calls, 1); assert.match(messages[1].content, /response lost/);
+});
+
+test("invalid arguments and unknown tools never execute and have paired results", async () => {
+  let turn = 0, called = false;
+  script = res => ++turn === 1 ? sse(res, [toolCall(0, "a", "write"), toolCall(1, "b", "missing")]) : sse(res, [textChunk("done")]);
+  const messages = [];
+  await runAgent({ target: target(), messages, tools: [{ name: "write", parameters: { type: "object", required: ["path"] }, run: () => { called = true; } }] });
+  assert.equal(called, false); assert.equal(messages.filter(m => m.role === "tool").length, 2);
+  assert.match(messages[1].content, /invalid arguments/);
+});
+
+test("read-only mode excludes mutations even if a model requests them", async () => {
+  let turn = 0, called = false;
+  script = res => ++turn === 1 ? sse(res, [toolCall(0, "a", "write")]) : sse(res, [textChunk("done")]);
+  const messages = [];
+  await runAgent({ target: target(), messages, readOnly: true, tools: [{ name: "write", mutating: true, run: () => { called = true; } }] });
+  assert.equal(called, false); assert.match(messages[1].content, /unavailable/);
+});
+
+test("budget stops repeated calls, persists final status and does not call model again", async () => {
+  let modelCalls = 0, checkpoints = 0;
+  script = res => { modelCalls++; sse(res, [toolCall(0, "a", "read")]); };
+  const messages = [];
+  const out = await runAgent({ target: target(), messages, tools: [{ name: "read", mutating: false, run: () => "ok" }], limits: agentLimits({ agent: { maxTotalToolCalls: 1 } }), hooks: { onCheckpoint: () => checkpoints++ } });
+  assert.match(out, /stopped.*budget/); assert.equal(modelCalls, 1); assert.equal(messages.at(-1).content, out); assert.equal(checkpoints, 2);
+});
+
+test("cancellation pairs all results and prevents subsequent side effects", async () => {
+  const controller = new AbortController(); let second = false;
+  script = res => sse(res, [toolCall(0, "a", "first"), toolCall(1, "b", "second")]);
+  const messages = [];
+  await assert.rejects(runAgent({ target: target(), messages, signal: controller.signal, tools: [
+    { name: "first", mutating: true, run: () => { controller.abort(new Error("stop")); return "first complete"; } },
+    { name: "second", mutating: true, run: () => { second = true; } },
+  ] }), /stop/);
+  assert.equal(second, false); assert.equal(messages.filter(m => m.role === "tool").length, 2); assert.match(messages[2].content, /cancelled/);
+});
+
+test("auth failures do not send the transcript to fallback providers", async () => {
+  let calls = 0;
+  script = res => { calls++; res.writeHead(401); res.end("no key"); };
+  await assert.rejects(runAgent({ target: target(), fallbacks: [target()], messages: [], tools: [] }), /401/);
+  assert.equal(calls, 1);
+});

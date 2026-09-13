@@ -1,3 +1,4 @@
+import { bitcodeHome } from "../paths.mjs";
 // Resolves Wavelength config from config.wavelength. Wavelength is Lightning
 // Labs' self-custodial Bitcoin/Lightning/Ark wallet toolkit: no node, no
 // channels, keys stay on this machine. Entirely optional — if the key is
@@ -72,7 +73,7 @@ export function resolveWavelength(config = {}) {
 
   const dataDir = w.dataDir
     ? path.resolve(w.dataDir.replace(/^~/, homedir()))
-    : path.join(homedir(), ".bitcode", "wavelength", network);
+    : path.join(bitcodeHome(), "wavelength", network);
 
   return {
     network,

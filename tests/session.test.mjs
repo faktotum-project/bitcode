@@ -8,6 +8,7 @@ const { saveSession, loadSession, listSessions, exportSession, newSessionId } = 
   "../src/session.mjs"
 );
 
+process.env.BITCODE_HOME = mkdtempSync(path.join(os.tmpdir(), "bc-session-home-"));
 const cwd = mkdtempSync(path.join(os.tmpdir(), "bc-sess-"));
 
 const messages = [
@@ -43,4 +44,9 @@ test("exportSession renders markdown and json", () => {
   assert.match(md, /btc_fees/);
   const json = JSON.parse(exportSession(cwd, id, "json"));
   assert.equal(json.messages.length, 4);
+});
+
+test("session IDs cannot escape the session directory", () => {
+  assert.throws(() => loadSession(cwd, "../../config"), /invalid session id/);
+  assert.throws(() => saveSession(cwd, { id: "../escape", messages: [] }), /invalid session id/);
 });

@@ -79,6 +79,9 @@ export function label(text) {
 // Map an agent tool to its reasoning stage (color + name), echoing the
 // design system's tx-lifecycle palette.
 export function stageForTool(name) {
+  if (["exec_command", "write_stdin", "terminate_process"].includes(name)) return { hex: STAGE.relayed, name: "running" };
+  if (["grep", "glob", "web_fetch", "git_status", "git_diff", "git_log", "read_plan", "read_skill", "list_skills", "list_processes"].includes(name)) return { hex: STAGE.mempool, name: "reading" };
+  if (["patch", "update_plan"].includes(name)) return { hex: STAGE.confirming, name: "drafting" };
   // chain queries → "querying" (relayed/green)
   if (name === "bash" || name === "btc_tx" || name === "btc_address" || name === "btc_block" || name === "bitcoin_rpc") {
     return { hex: STAGE.relayed, name: name === "bash" ? "running" : "querying" };
@@ -106,7 +109,7 @@ export function stageLegend() {
   return seq.map(([hex, name]) => fg(hex, "●") + " " + faint(name)).join(faint("  →  "));
 }
 
-const BOLT = "⚡";
+export const BOLT = "⚡";
 
 // Network badge: mainnet is highlighted in Bitcoin orange (real funds);
 // test networks are calm green.

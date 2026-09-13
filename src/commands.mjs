@@ -1,3 +1,4 @@
+import { bitcodeHome } from "./paths.mjs";
 // Custom slash commands: markdown files, each becoming its own /<name>
 // command in the interactive REPL. The body is a prompt template —
 // "$ARGUMENTS" is replaced with whatever the user typed after the command
@@ -10,13 +11,12 @@
 // /fees); a file one directory down becomes /<dir>:<name> (e.g.
 // btc/fees.md -> /btc:fees), mirroring pi's "/skill:name" namespacing.
 import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { loadMarkdownDir } from "./markdown-config.mjs";
 
 export function commandsDir() {
-  return path.join(homedir(), ".bitcode", "commands");
+  return path.join(bitcodeHome(), "commands");
 }
 
 function bundledCommandsDir() {
@@ -39,7 +39,7 @@ function loadCommandsFrom(dir) {
 
 export function loadCommands() {
   const bundled = loadCommandsFrom(bundledCommandsDir());
-  const user = loadCommandsFrom(commandsDir());
+  const user = [...loadCommandsFrom(commandsDir()), ...loadCommandsFrom(path.join(process.cwd(), ".bitcode", "commands"))];
   const byName = new Map(bundled.map((c) => [c.name, c]));
   for (const c of user) byName.set(c.name, c);
   return [...byName.values()];

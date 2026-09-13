@@ -28,7 +28,7 @@ export function cashuTools(config) {
       description: "Mint (receive) ecash tokens by paying a BOLT11 Lightning invoice. amount in sats. Returns a quote; pay the invoice to finalise, then run cashu_mint_pending.",
       parameters: {
         type: "object",
-        properties: { amount: { type: "number", description: "Amount in satoshis to mint." } },
+        properties: { amount: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: "Amount in satoshis to mint." } },
         required: ["amount"],
       },
       run: async ({ amount }) => {
@@ -67,7 +67,7 @@ export function cashuTools(config) {
       parameters: {
         type: "object",
         properties: {
-          amount: { type: "number", description: "Amount in satoshis to send." },
+          amount: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: "Amount in satoshis to send." },
           locktime_seconds: { type: "number", description: "Optional locktime in seconds from now." },
         },
         required: ["amount"],
@@ -120,7 +120,7 @@ export function cashuTools(config) {
     },
     {
       name: "cashu_restore",
-      mutating: false,
+      mutating: true,
       description: "Restore proofs from seed by scanning the mint for unspent proofs.",
       parameters: { type: "object", properties: {} },
       run: async () => {
@@ -131,7 +131,7 @@ export function cashuTools(config) {
     {
       name: "cashu_list_proofs",
       mutating: false,
-      description: "List all proofs (unspent ecash tokens) the wallet knows about across all mints.",
+      description: "List proof amounts and states across mints, with bearer secrets redacted.",
       parameters: { type: "object", properties: {} },
       run: async () => {
         const r = await w.listProofs();
@@ -145,7 +145,7 @@ export function cashuTools(config) {
       parameters: {
         type: "object",
         properties: {
-          amount: { type: "number", description: "Amount in satoshis." },
+          amount: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: "Amount in satoshis." },
           description: { type: "string", description: "Optional description." },
         },
         required: ["amount"],
@@ -195,7 +195,7 @@ export function cashuTools(config) {
         },
       },
       run: async ({ config, seed_file }) => {
-        const r = m.start({ config, seedFile: seed_file });
+        const r = await m.start({ config, seedFile: seed_file });
         return `local mint at ${ctx.mintUrl}\nstatus ${r.status}${r.pid ? ` · pid ${r.pid}` : ""}`;
       },
     },
@@ -205,7 +205,7 @@ export function cashuTools(config) {
       description: "Stop the local Cashu mint daemon.",
       parameters: { type: "object", properties: {} },
       run: async () => {
-        const r = m.stop();
+        const r = await m.stop();
         return `mintd ${r.status}`;
       },
     },

@@ -2,6 +2,7 @@
 // Esplora/RPC, Liquid Esplora, Lightning LND/tapd REST).
 import http from "node:http";
 import https from "node:https";
+import { currentToolSignal } from "./runtime.mjs";
 
 const TIMEOUT_MS = 20_000;
 
@@ -10,7 +11,7 @@ const TIMEOUT_MS = 20_000;
 // `ndjson: true` is for gRPC-gateway server-streaming endpoints (e.g. LND's
 // SendPaymentV2), which reply with newline-delimited JSON objects instead of
 // one JSON body; resolves with the *last* parsed object (the terminal state).
-export function httpRequest(method, urlString, { body, headers = {}, json = true, ndjson = false, tls } = {}) {
+export function httpRequest(method, urlString, { body, headers = {}, json = true, ndjson = false, tls, signal = currentToolSignal(), timeoutMs = TIMEOUT_MS, maxBytes = 10 * 1024 * 1024 } = {}) {
   return new Promise((resolve, reject) => {
     let u;
     try {
@@ -18,12 +19,14 @@ export function httpRequest(method, urlString, { body, headers = {}, json = true
     } catch {
       return reject(new Error(`bad URL: ${urlString}`));
     }
+    if (!["http:", "https:"].includes(u.protocol)) return reject(new Error("unsupported URL protocol"));
     const lib = u.protocol === "https:" ? https : http;
     const h = { ...headers };
     if (body != null) h["content-length"] = Buffer.byteLength(body);
     const req = lib.request(
       {
         method,
+        signal,
         hostname: u.hostname,
         port: u.port || (u.protocol === "https:" ? 443 : 80),
         path: u.pathname + u.search,
@@ -33,7 +36,10 @@ export function httpRequest(method, urlString, { body, headers = {}, json = true
       async (res) => {
         res.setEncoding("utf8");
         let data = "";
-        for await (const c of res) data += c;
+        try {
+          let bytes = 0;
+          for await (const c of res) { bytes += Buffer.byteLength(c); if (bytes > maxBytes) { res.destroy(); throw new Error("HTTP response exceeds size limit"); } data += c; }
+        } catch (err) { reject(err); return; }
         if (res.statusCode < 200 || res.statusCode >= 300) {
           return reject(new Error(`HTTP ${res.statusCode} ${method} ${u.pathname}: ${data.slice(0, 300)}`));
         }
@@ -55,7 +61,7 @@ export function httpRequest(method, urlString, { body, headers = {}, json = true
       },
     );
     req.on("error", (e) => reject(new Error(`network error ${method} ${urlString}: ${e.code || e.message}`)));
-    req.setTimeout(TIMEOUT_MS, () => req.destroy(new Error(`timeout calling ${urlString}`)));
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`timeout calling ${urlString}`)));
     if (body != null) req.write(body);
     req.end();
   });

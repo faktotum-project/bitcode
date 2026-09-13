@@ -5,8 +5,7 @@ import { mkdtempSync, statSync } from "node:fs";
 import path from "node:path";
 
 // Isolate HOME so config writes never touch the real ~/.bitcode.
-process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "bc-home-"));
-process.env.USERPROFILE = process.env.HOME;
+process.env.BITCODE_HOME = mkdtempSync(path.join(os.tmpdir(), "bc-home-"));
 delete process.env.BITCODE_MODEL;
 delete process.env.ANTHROPIC_API_KEY;
 
@@ -59,4 +58,9 @@ test("saveConfig persists atomically and 0600", () => {
   if (process.platform !== "win32") {
     assert.equal(statSync(file).mode & 0o777, 0o600);
   }
+});
+
+test("config paths cannot modify object prototypes", () => {
+  for (const key of ["__proto__.polluted", "constructor.prototype.polluted", "a..b"]) assert.throws(() => configSet({}, key, true), /invalid config path/);
+  assert.equal({}.polluted, undefined);
 });

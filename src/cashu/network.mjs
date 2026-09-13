@@ -1,3 +1,4 @@
+import { bitcodeHome } from "../paths.mjs";
 // Cashu network / mint URL resolution.
 // Each "network" is just a well-known Cashu mint you can connect to, or a
 // placeholder for a local mintd instance.
@@ -28,11 +29,12 @@ export function resolveCashuNetwork(config = {}) {
   const mintUrl = c.mintUrl || base.mintUrl;
   const workDir = c.workDir
     ? path.resolve(c.workDir.replace(/^~/, homedir()))
-    : path.join(homedir(), ".bitcode", "cashu", name);
+    : path.join(bitcodeHome(), "cashu", name);
   return {
     name,
     mintUrl,
     workDir,
+    cliPath: c.cliPath || null,
     unit: c.unit || "sat",
     proxy: c.proxy || null,
   };

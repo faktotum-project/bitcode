@@ -1,0 +1,16 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:05.215
+Get the source. Node.js 22+, Git and Bash are required.
+
+00:00:05.215 --> 00:00:08.315
+Enter the project directory.
+
+00:00:08.315 --> 00:00:13.569
+Install the core agent. Optional wallet builds are skipped.
+
+00:00:13.569 --> 00:00:22.162
+Check providers, tools and optional dependencies.
+
+00:00:22.162 --> 00:00:29.696
+bitcode is installed. Next, choose your provider.

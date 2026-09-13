@@ -1,3 +1,4 @@
+import { bitcodeHome } from "./paths.mjs";
 // Plugin loader: every ~/.bitcode/plugins/*.mjs is imported and its default
 // (or `setup`) export is called with a small API surface. A plugin can add
 // tools and subscribe to lifecycle events:
@@ -10,14 +11,13 @@
 // A plugin that throws is reported and skipped — it never blocks startup.
 
 import { readdirSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { registerTool, unregisterTool } from "./tools.mjs";
 import { on, off, emit, EVENTS } from "./hooks.mjs";
 
 export function pluginsDir() {
-  return path.join(homedir(), ".bitcode", "plugins");
+  return path.join(bitcodeHome(), "plugins");
 }
 
 export async function loadPlugins(dir = pluginsDir()) {

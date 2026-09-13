@@ -1,10 +1,9 @@
-// Interactive-session persistence: save/resume REPL conversations to disk so
-// closing the terminal (or the power going out) doesn't lose the history.
-// One-shot mode (-p) never touches this module — it stays ephemeral.
+import { bitcodeHome } from "./paths.mjs";
+// Conversation checkpoints for interactive and one-shot runs, including
+// provider-native reasoning state and paired tool calls/results.
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
 import path from "node:path";
 
 export function slug(cwd) {
@@ -12,7 +11,7 @@ export function slug(cwd) {
 }
 
 export function sessionsDir(cwd) {
-  return path.join(homedir(), ".bitcode", "sessions", slug(cwd));
+  return path.join(bitcodeHome(), "sessions", slug(cwd));
 }
 
 export function newSessionId() {
@@ -21,6 +20,7 @@ export function newSessionId() {
 }
 
 function sessionFile(cwd, id) {
+  if (typeof id !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,159}$/.test(id)) throw new Error("invalid session id");
   return path.join(sessionsDir(cwd), `${id}.json`);
 }
 
@@ -81,7 +81,7 @@ export function saveSession(cwd, { id, model, network, messages, name }) {
   // Atomic write: a Ctrl+C mid-write must not corrupt an existing session.
   const file = sessionFile(cwd, id);
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(payload, null, 2));
+  writeFileSync(tmp, JSON.stringify(payload, null, 2), { mode: 0o600 });
   renameSync(tmp, file);
 }
 
