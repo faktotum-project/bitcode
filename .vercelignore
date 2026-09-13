@@ -1,8 +1,5 @@
-# Include only the page and its public demo media in a future deployment.
+# Include only the page and public media in a deployment.
 *
 !index.html
 !assets/
-!assets/demos/
-!assets/demos/**
-!assets/releases/
-!assets/releases/**
+!assets/**
