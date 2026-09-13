@@ -3,3 +3,4 @@ deps/cdk/target/
 deps/cdk/bin/
 deps/wavelength/
 .demo-archive/
+.vercel

@@ -1,5 +1,17 @@
-# Include only the page and public media in a deployment.
-*
-!index.html
-!assets/
-!assets/**
+# Development sources and local archives are not part of the static site.
+.git/
+.github/
+.vercel/
+.demo-archive/
+commands/
+deps/
+design/
+node_modules/
+scripts/
+src/
+tests/
+*.md
+*.mjs
+*.json
+package-lock.json
+package.json
