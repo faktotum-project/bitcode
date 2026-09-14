@@ -6,11 +6,25 @@ import { validateArgs, formatResult, isMutating, throwIfAborted, wait, withToolC
 
 const MAX_STEPS = 50;
 
-export function systemPrompt({ network = "signet", lightning = false } = {}) {
+export function systemPrompt({ profile = "code", network = "signet", lightning = false, project } = {}) {
+  const coding = [
+    "You are bitcode, a careful coding agent running on the user's machine.",
+    `Working directory: ${project?.root || process.cwd()}. OS: ${process.platform}. Date: ${new Date().toISOString().slice(0, 10)}.`,
+    project?.commands?.length ? `Project command suggestions (inspect before using; they are not automatic): ${project.commands.map(x => x.command).join(", ")}.` : "No project test, lint, or build commands were detected.",
+    "Tools are capability-scoped. Only call tools present in this request.",
+    "Guidelines:",
+    "- Inspect relevant files and existing conventions before changing anything.",
+    "- Keep changes small and focused; do not rewrite unrelated code.",
+    "- Verify work with a relevant command when practical, and report its actual output/result.",
+    "- At completion, summarize changed files, verification run, and any remaining limitation.",
+    "- Be concise and direct.",
+  ];
+  if (profile !== "bitcoin") return coding.join("\n");
   return [
-    "You are bitcode, a vertical AI agent for Bitcoin running on the user's machine.",
-    "You read the chain, the mempool and fees, drive a full Bitcoin Core node, and operate an HD wallet — and you can also do general coding tasks on this machine.",
-    `Active Bitcoin network: ${network}. Working directory: ${process.cwd()}.`,
+    ...coding,
+    "",
+    "Bitcoin profile additions:",
+    `Active Bitcoin network: ${network}.`,
     `OS: ${process.platform}. Date: ${new Date().toISOString().slice(0, 10)}.`,
     "",
     "Bitcoin tools:",
@@ -27,16 +41,13 @@ export function systemPrompt({ network = "signet", lightning = false } = {}) {
     "- Wallet: cashu_balance, cashu_mint, cashu_melt, cashu_send, cashu_receive, cashu_decode_token, cashu_list_proofs.",
     "- Mint: cashu_mint_info, cashu_mintd_start, cashu_mintd_stop, cashu_mintd_status.",
     "- Payment requests (NUT-18): cashu_create_request, cashu_pay_request, cashu_decode_request.",
-    "Coding tools: bash, exec_command/write_stdin/list_processes/terminate_process, read_file (line ranges), write_file, edit_file, list_dir, grep, glob, patch, git_status, git_diff, git_log, web_fetch, update_plan/read_plan, ask_user, list_skills/read_skill. MCP tools, resources and prompts are available when configured. Only call tools present in this request.",
     "",
-    "Guidelines:",
+    "Bitcoin safety rules:",
     "- Inspect before acting: query the chain/mempool and read files instead of guessing.",
     "- Money is irreversible. Before wallet_send, ln_invoice_pay, taproot_asset_send, cashu_melt, cashu_send, cashu_pay_request, or btc_broadcast, state network, destination, amount and fee, and let the user confirm. Never move funds the user did not ask for.",
     "- Default to test networks (signet/testnet). Treat mainnet spends as high-risk.",
     "- Amounts are in satoshis (1 BTC = 100,000,000 sats) or millisatoshis for Lightning. Show both when helpful.",
     "- Not your key, not your BTC: never suggest routing funds or keys through a custodial third party. Prefer self-hosted nodes (see /btc:node-install, /ln:node-install) over trusting a remote service for anything beyond public chain data.",
-    "- When the task is done, stop calling tools and give a short, plain summary that shows your work.",
-    "- Be concise and direct.",
   ].join("\n");
 }
 
@@ -66,6 +77,7 @@ export async function runAgent({ target, messages, system, tools, hooks = {}, li
     hooks.onDelta?.(text);
     hooks.onAssistantEnd?.(text);
     await hooks.onCheckpoint?.(messages);
+    await hooks.onTurnEnd?.();
     return text;
   };
   for (let step = 0; step < limits.maxSteps; step++) {
@@ -76,7 +88,7 @@ export async function runAgent({ target, messages, system, tools, hooks = {}, li
     messages.push({ role: "assistant", content: text || "", toolCalls, ...(providerState ? { providerState } : {}), ...(usage ? { usage } : {}) });
     hooks.onAssistantEnd?.(text);
     if (usage) hooks.onUsage?.(usage);
-    if (!toolCalls.length) { await hooks.onCheckpoint?.(messages); return text; }
+    if (!toolCalls.length) { await hooks.onCheckpoint?.(messages); await hooks.onTurnEnd?.(); return text; }
 
     const results = new Array(toolCalls.length);
     const context = { signal, hooks, limits, state, readOnly, target, fallbacks };
@@ -87,17 +99,22 @@ export async function runAgent({ target, messages, system, tools, hooks = {}, li
       try {
         throwIfAborted(signal);
         if (i >= limits.maxToolCallsPerTurn || state.totalToolCalls >= limits.maxTotalToolCalls) throw new Error("tool budget exceeded");
+        // Keep financial requests fail-closed even when a coding profile does
+        // not expose the wallet tool at all. This avoids turning an accidental
+        // payment request into a capability-discovery oracle.
+        if (!tool && /^(wallet_send|btc_broadcast|bitcoin_rpc|ln_invoice_pay|taproot_asset_send|cashu_(melt|send|pay_request)|cj_wallet_drain)$/.test(tc.name)) throw new Error("tool call denied by the user");
         if (!tool) throw new Error(`unknown or unavailable tool "${tc.name}"`);
         validateArgs(tool, tc.args ?? {});
         state.totalToolCalls++;
         if (isMutating(tool) && hooks.approve && !await hooks.approve(tc, tool)) throw new Error("tool call denied by the user");
+        if (isMutating(tool)) await hooks.onMutation?.(tc, tool);
         throwIfAborted(signal);
         result = await runToolWithRetry(tool, tc, limits, context);
       } catch (err) {
         result = `ERROR: ${signal?.aborted ? "cancelled; inspect state before retrying" : err.message}`;
       }
       results[i] = formatResult(result, limits.maxResultChars);
-      hooks.onToolEnd?.(tc, results[i]);
+      await hooks.onToolEnd?.(tc, results[i]);
     };
     // Only explicitly read-only tools may overlap. Approval is requested at
     // execution time, after preceding mutations and their results are known.

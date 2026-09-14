@@ -22,6 +22,9 @@ import { closeWavelength, wavelengthTools } from "./wavelength/tools.mjs";
 import { emit } from "./hooks.mjs";
 import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { buildTools, registerTool } from "./tools.mjs";
+import { discoverProject, projectRoot, resolveProfile } from "./project.mjs";
+import { bubblewrapAvailable, mayAutoApprove, resolvePermissions } from "./permissions.mjs";
+import { TurnCheckpoint } from "./checkpoint.mjs";
 import { resolveNetwork } from "./bitcoin/network.mjs";
 import { wallet } from "./bitcoin/wallet.mjs";
 import { loadCommands, expandCommand } from "./commands.mjs";
@@ -74,6 +77,9 @@ const SLASH_COMMANDS = [
   { name: "build", hint: "execute the most recently saved plan" },
   { name: "compact", hint: "summarize older context, keeping recent turns" },
   { name: "status", hint: "context size, token usage and task progress" },
+  { name: "profile", hint: "show or switch code/bitcoin profile", args: true },
+  { name: "diff", hint: "show changes from the latest agent turn" },
+  { name: "undo", hint: "restore the latest agent turn when safe" },
   { name: "skills", hint: "list local skills" },
   { name: "mcp", hint: "show MCP connections" },
   { name: "commands", hint: "list bundled and custom commands" },
@@ -137,11 +143,13 @@ Options:
       --resume [id]                  resume a saved session (latest if no id)
       --continue                     resume the most recent session
       --cwd <path>                   run in this working directory
+      --profile <code|bitcoin>       choose coding or Bitcoin tool profile
+      --permission <mode>            suggest | auto-edit | full-auto
       --read-only                    expose only read-only tools
       --json                         one-shot JSON result (answer, usage, events)
       --max-steps <n>                bound the number of model rounds
       --allow-payments               explicitly authorize financial tools in one-shot mode
-      --yolo                         skip ordinary mutation approvals (payments still ask)
+      --yolo                         alias for --permission full-auto (payments still ask)
   -h, --help                         show this help
   -v, --version                      show version
 
@@ -151,6 +159,8 @@ Interactive slash commands:
   /build               execute the latest saved plan
   /compact             summarize older context
   /status              context and token usage
+  /profile [code|bitcoin]  show or switch tool profile
+  /diff /undo           inspect or safely restore the latest agent turn
   /skills /mcp /commands  inspect extensions and commands
   /model [spec]        show or switch the active model
   /models              pick a provider or locally installed model (saved as default)
@@ -180,11 +190,13 @@ export function parseArgs(argv) {
     if (a === "--") { positionals.push(...argv.slice(i + 1)); break; }
     if (a === "-h" || a === "--help") return { help: true };
     if (a === "-v" || a === "--version") return { version: true };
-    if (a === "--yolo") opts.yolo = true;
+    if (a === "--yolo") { opts.yolo = true; opts.permission = "full-auto"; }
     else if (a === "--json") opts.json = true;
     else if (a === "--read-only") opts.readOnly = true;
     else if (a === "--allow-payments") opts.allowPayments = true;
     else if (a === "--cwd") opts.cwd = value(++i, a);
+    else if (a === "--profile") opts.profile = value(++i, a);
+    else if (a === "--permission") opts.permission = value(++i, a);
     else if (a === "--max-steps") { opts.maxSteps = Number(value(++i, a)); if (!Number.isSafeInteger(opts.maxSteps) || opts.maxSteps < 1) throw new Error("--max-steps must be a positive integer"); }
     else if (a === "--continue") opts.resume = "latest";
     else if (a === "--resume") opts.resume = argv[i + 1] && !argv[i + 1].startsWith("-") ? argv[++i] : "latest";
@@ -210,6 +222,14 @@ export async function main(argv) {
   if (opts.version) return out(`${t.accent(t.BOLT)}${t.BOLT ? " " : ""}bitcode ${VERSION}`);
 
   const config = loadConfig();
+  const root = projectRoot(process.cwd());
+  const project = discoverProject(root);
+  const profile = resolveProfile({ cliProfile: opts.profile, config, cwd: root });
+  let permissions = resolvePermissions({ config, cliPermission: opts.permission, readOnly: opts.readOnly });
+  if (permissions.mode === "full-auto" && !bubblewrapAvailable()) {
+    permissions = { ...permissions, mode: "auto-edit", sandbox: false };
+    process.stderr.write("bitcode: Bubblewrap is unavailable; full-auto downgraded to auto-edit.\n");
+  }
 
   if (opts.command === "login") {
     const result = await providerLogin(config, opts.commandArgs[0], { print: out });
@@ -231,9 +251,9 @@ export async function main(argv) {
   if (opts.command === "provider" && opts.json && [undefined, "list"].includes(opts.commandArgs?.[0])) return printData(redact(allProviders(config)), opts);
   if (opts.command === "provider" || opts.command === "session") return handleSlash(`/${opts.command} ${(opts.commandArgs || []).join(" ")}`, { config, cwd: process.cwd(), session: {}, messages: [], network: resolveNetwork(config).name, getActive: () => resolveModel({ config }), setActive: () => {}, ask: question });
   if (["doctor", "tools", "mcp"].includes(opts.command)) {
-    const ext = await loadExtensions(config);
+    const ext = await loadExtensions(config, profile);
     try {
-      const tools = buildTools(config, {});
+      const tools = buildTools(config, { profile, workspaceRoot: root, sandbox: permissions.sandbox });
       if (opts.command === "tools") return printData(tools.map(({ name, description, parameters, mutating }) => ({ name, description, parameters, mutating })), opts);
       if (opts.command === "mcp") return printData(ext.mcpServers, opts);
       const lines = doctorLines(config, { toolCount: tools.length, ...ext });
@@ -251,13 +271,13 @@ export async function main(argv) {
 
   const ctx = resolveNetwork(config);
   const skills = loadSkills();
-  const system = systemPrompt({ network: ctx.name, lightning: !!config.lightning?.lndRestUrl }) + "\n\n" + contextPrompt(process.cwd(), skills);
+  const system = systemPrompt({ profile, network: ctx.name, lightning: !!config.lightning?.lndRestUrl, project }) + "\n\n" + contextPrompt(root, skills);
   const agents = loadAgents();
   const modelRef = { current: target };
-  const ext = await loadExtensions(config); // plugins + MCP register their tools first
+  const ext = await loadExtensions(config, profile); // plugins + MCP register their tools first
   const plan = { steps: [] };
   let tools;
-  try { tools = buildTools(config, { modelRef, agents, system, skills, plan }); }
+  try { tools = buildTools(config, { modelRef, agents, system, skills, plan, profile, workspaceRoot: root, sandbox: permissions.sandbox }); }
   catch (err) { await closeMcpConnections(); await closeWavelength(); throw err; }
 
   const limits = agentLimits(config);
@@ -265,9 +285,9 @@ export async function main(argv) {
   const fallbacks = resolveFallbacks(config);
 
   try {
-    if (opts.prompt) return await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits, fallbacks, opts });
+    if (opts.prompt) return await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits, fallbacks, opts, permissions, root, profile, project });
     const commands = loadCommands();
-    await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext, readOnly: opts.readOnly, plan, maxStepsOverride: opts.maxSteps });
+    await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext, readOnly: opts.readOnly, plan, maxStepsOverride: opts.maxSteps, permissions, root, profile, project });
   } finally { await closeProcesses(); await closeCashuDaemons(); await closeMcpConnections(); await closeWavelength(); }
 }
 
@@ -359,12 +379,14 @@ async function localSections(config) {
 // Load user extensions: plugins (~/.bitcode/plugins/*.mjs) and MCP servers
 // (config.mcp). Both register their tools into the shared registry so a later
 // buildTools() picks them up. Returns diagnostics for /doctor.
-async function loadExtensions(config) {
+async function loadExtensions(config, profile = "code") {
   const plugins = await loadPlugins();
   const { tools: mcp, servers: mcpServers } = await mcpTools(config);
   for (const tool of mcp) registerTool(tool);
-  const wavelength = await wavelengthTools(config);
-  for (const tool of wavelength) registerTool(tool);
+  if (profile === "bitcoin") {
+    const wavelength = await wavelengthTools(config);
+    for (const tool of wavelength) registerTool({ ...tool, profile: "bitcoin" });
+  }
   return { plugins, mcpServers };
 }
 
@@ -436,7 +458,7 @@ function previewArgs(tc) {
 }
 
 // Fresh per user turn so the "Reasoning" header prints once per turn.
-function buildHooks({ approve, askUser, onCheckpoint } = {}) {
+function buildHooks({ approve, askUser, onCheckpoint, checkpoint, onMutation } = {}) {
   let reasoningOpen = false;
   return {
     onDelta: (piece) => process.stdout.write(piece),
@@ -453,7 +475,7 @@ function buildHooks({ approve, askUser, onCheckpoint } = {}) {
       out("  " + t.pill(st.hex, st.name) + "  " + t.faint(previewArgs(tc)));
       emit("toolStart", { tc });
     },
-    onToolEnd: (tc, result) => {
+    onToolEnd: async (tc, result) => {
       const isErr = result.startsWith("ERROR");
       const mark = isErr ? t.danger("✗") : t.ok("✓");
       const lines = result.split("\n");
@@ -461,10 +483,30 @@ function buildHooks({ approve, askUser, onCheckpoint } = {}) {
       for (const l of lines.slice(1, 5)) out("      " + t.faint(clip(l, 100)));
       if (lines.length > 5) out("      " + t.faint("…"));
       emit("toolEnd", { tc, result });
+      if (checkpoint?.active && isMutating({ name: tc.name })) {
+        const diff = checkpoint.diff();
+        if (diff && diff !== "[no changes]") out(t.faint(clip(diff, 4000)));
+      }
     },
-    approve, askUser, onCheckpoint,
+    approve, askUser, onCheckpoint, onMutation,
     onFallback: (from, to, err) => out(t.faint(`provider fallback: ${from.spec || from.model} → ${to.spec || to.model} (${err.message})`)),
   };
+}
+
+function previewMutation(tc) {
+  const p = tc.args?.path || "file";
+  if (tc.name === "patch") return t.faint(`--- ${p}\n`) + String(tc.args?.diff || "").split("\n").filter(x => /^[+-]/.test(x)).map(x => x.startsWith("+") ? t.ok(x) : t.danger(x)).join("\n");
+  if (tc.name === "edit_file") {
+    const edits = tc.args?.edits || [{ old_string: tc.args?.old_string, new_string: tc.args?.new_string }];
+    return t.faint(`--- ${p}\n+++ ${p}`) + "\n" + edits.map(e => `${t.danger("-" + (e.old_string || ""))}\n${t.ok("+" + (e.new_string || ""))}`).join("\n");
+  }
+  return `${t.faint(`--- ${p}\n+++ ${p}`)}\n${t.ok("+" + String(tc.args?.content || ""))}`;
+}
+
+function printTurnSummary(files = []) {
+  if (!files.length) return;
+  out(t.label("Turn summary"));
+  for (const file of files) out(`  ${file.path}  ${t.ok("+" + file.added)} ${t.danger("-" + file.removed)}`);
 }
 
 // ---- one-shot ----
@@ -483,7 +525,7 @@ export function runWithInterrupt(options) {
   return withInterrupt(signal => runAgent({ ...options, signal }));
 }
 
-async function oneShot({ target, system, tools, network, prompt, limits, fallbacks, opts }) {
+async function oneShot({ target, system, tools, network, prompt, limits, fallbacks, opts, permissions, root, profile, project }) {
   if (!opts.json) { out(t.wordmark(target.spec, network)); out(""); }
   const cwd = process.cwd();
   let session = { id: newSessionId(), messages: [] };
@@ -499,27 +541,43 @@ async function oneShot({ target, system, tools, network, prompt, limits, fallbac
   messages.push({ role: "user", content: expandMentions(prompt) });
   const events = [];
   const usage = { input_tokens: 0, output_tokens: 0 };
+  const checkpoint = new TurnCheckpoint(root);
   const persist = () => saveSession(cwd, { ...session, messages, model: target.spec, network });
-  const hooks = opts.json ? { onToolEnd: (tc, result) => events.push({ name: tc.name, result }) } : buildHooks();
-  hooks.approve = (_tc, tool) => !requiresPaymentApproval(tool) || opts.allowPayments === true;
+  const hooks = opts.json ? { onToolEnd: (tc, result) => events.push({ name: tc.name, result }) } : buildHooks({ checkpoint });
+  // One-shot mode has no approval UI and has historically been the explicit
+  // automation entry point. Financial tools remain an unconditional gate.
+  hooks.approve = (tc, tool) => requiresPaymentApproval(tool)
+    ? opts.allowPayments === true
+    : opts.permission ? mayAutoApprove({ tool, args: tc.args, permissions }) : true;
+  // One-shot sessions do not expose /undo; avoid a potentially expensive
+  // workspace snapshot before short-lived CI-style commands.
   hooks.onCheckpoint = persist;
   hooks.onUsage = u => { usage.input_tokens += u.input_tokens || 0; usage.output_tokens += u.output_tokens || 0; };
   try {
     const answer = await runWithInterrupt({ target, system, messages, tools, hooks, limits, fallbacks, readOnly: opts.readOnly });
+    const summary = checkpoint.finalize();
+    // Some platforms deliver Ctrl+C to the shell process before Node's signal
+    // handler. Treat that terminal process result as cancellation too.
+    if (events.some(event => /(?:cancelled|SIGINT)/i.test(String(event.result)))) throw new Error("cancelled by user");
     const stopped = answer?.startsWith("[stopped:");
+    if (stopped && events.some(event => String(event.result).startsWith("ERROR:"))) throw new Error(events.find(event => String(event.result).startsWith("ERROR:")).result.slice(7));
     if (stopped) process.exitCode = 2;
-    if (opts.json) printData({ answer, status: stopped ? "incomplete" : "completed", session_id: session.id, model: target.spec, usage, events }, opts);
+    if (opts.json) printData({ answer, status: stopped ? "incomplete" : "completed", session_id: session.id, model: target.spec, profile, project: { root: project.root, commands: project.commands }, summary: { files: summary }, usage, events }, opts);
   } catch (err) {
     process.exitCode = 1;
     if (opts.json) printData({ status: "error", error: err.message, session_id: session.id, usage, events }, opts);
     else throw err;
-  } finally { persist(); }
+  } finally { checkpoint.finalize(); persist(); }
 }
 
 // ---- interactive REPL ----
 
-async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks, ext = {}, readOnly = false, plan, maxStepsOverride }) {
-  const cwd = process.cwd();
+async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks, ext = {}, readOnly = false, plan, maxStepsOverride, permissions, root, profile, project }) {
+  const cwd = root;
+  let currentProfile = profile;
+  let currentProject = project;
+  let currentSystem = system;
+  let currentTools = tools;
   const messages = [];
   let active = target;
   const session = { id: newSessionId(), name: null };
@@ -553,8 +611,10 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   const menu = buildMenu(commands);
   const history = loadHistory();
 
+  const checkpoint = new TurnCheckpoint(root);
   const approve = async (tc, tool) => {
-    if (yolo && !requiresPaymentApproval(tool)) return true;
+    if (!requiresPaymentApproval(tool) && mayAutoApprove({ tool, args: tc.args, permissions })) return true;
+    if (["write_file", "edit_file", "patch"].includes(tool.name)) out(previewMutation(tc));
     out(t.faint(JSON.stringify(tc.args || {}, null, 2)));
     const ans = await question("  " + t.accent("approve") + " " + t.bold(tool.name) + ` on ${network} (y/N) `);
     return /^y(es)?$/i.test(ans.trim());
@@ -588,13 +648,21 @@ async function interactive({ target, system, tools, network, config, yolo, agent
           agents,
           commands,
           ask: question,
-          system,
-          tools,
+          system: currentSystem,
+          tools: currentTools,
           cwd,
           network,
           session,
           ext, limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), approve, readOnly, plan, persist,
           getActive: () => active,
+          profile: currentProfile, project: currentProject, permissions, checkpoint,
+          setProfile: (next) => {
+            currentProfile = next;
+            config.profile = next;
+            currentProject = discoverProject(root);
+            currentSystem = systemPrompt({ profile: next, network, lightning: !!config.lightning?.lndRestUrl, project: currentProject }) + "\n\n" + contextPrompt(root, loadSkills(root));
+            currentTools = buildTools(config, { modelRef, agents, system: currentSystem, skills: loadSkills(root), plan, profile: next, workspaceRoot: root, sandbox: permissions.sandbox });
+          },
           setActive: (x) => {
             active = x;
             modelRef.current = x;
@@ -605,12 +673,14 @@ async function interactive({ target, system, tools, network, config, yolo, agent
       }
     }
 
+    checkpoint.reset();
     messages.push({ role: "user", content: expandMentions(input) });
     try {
-      await runWithInterrupt({ target: active, system, messages, tools, hooks: buildHooks({ approve, askUser: question, onCheckpoint: persist }), limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), readOnly });
+      await runWithInterrupt({ target: active, system: currentSystem, messages, tools: currentTools, hooks: buildHooks({ approve, askUser: question, onCheckpoint: persist, checkpoint, onMutation: tc => { checkpoint.begin(tc); checkpoint.recordProtected(tc); } }), limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), readOnly });
     } catch (err) {
       out(t.danger(`error: ${err.message}`));
     }
+    printTurnSummary(checkpoint.finalize());
     persist(); // auto-save after every completed turn
   }
 
@@ -635,6 +705,29 @@ export async function handleSlash(input, ctx) {
     case "tools":
       for (const tool of ctx.tools.filter(x => !arg || x.name.includes(arg))) out(`${tool.name}${isMutating(tool) ? " [approval]" : ""} — ${tool.description || ""}`);
       return;
+    case "profile": {
+      if (!arg) { out(t.faint(`profile: ${ctx.profile || "code"}`)); return; }
+      if (!["code", "bitcoin"].includes(arg)) { out(t.danger("usage: /profile [code|bitcoin]")); return; }
+      if (!ctx.setProfile) { out(t.danger("profile switching is unavailable in this command")); return; }
+      try {
+        ctx.setProfile(arg);
+        saveConfig(ctx.config);
+        out(t.ok(`switched to ${arg} profile`));
+      } catch (err) { out(t.danger(`profile switch failed: ${err.message}`)); }
+      return;
+    }
+    case "diff":
+      out(ctx.checkpoint?.diff?.() || t.faint("No checkpoint for this turn."));
+      return;
+    case "undo": {
+      const result = ctx.checkpoint?.undo?.() || { ok: false, error: "no agent checkpoint to undo" };
+      if (result.ok) out(t.ok(`restored ${result.files.length} file(s): ${result.files.join(", ") || "no file changes"}`));
+      else {
+        out(t.danger(result.error));
+        if (result.conflicts?.length) out(t.faint(`conflicts: ${result.conflicts.join(", ")}`));
+      }
+      return;
+    }
     case "model":
       if (!arg) {
         out(t.faint(`active model: `) + t.body(ctx.getActive().spec));
@@ -710,7 +803,9 @@ export async function handleSlash(input, ctx) {
       const nestedMessages = [{ role: "user", content: expandMentions(prompt) }];
       out(t.faint(`— delegating to ${persona ? persona.name : "(default)"} —`));
       try {
-        await runWithInterrupt({ target: ctx.getActive(), system: nestedSystem, messages: nestedMessages, tools: ctx.tools.filter(t => t.name !== "subagent"), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask }), limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), readOnly: ctx.readOnly });
+        ctx.checkpoint?.reset();
+        await runWithInterrupt({ target: ctx.getActive(), system: nestedSystem, messages: nestedMessages, tools: ctx.tools.filter(t => t.name !== "subagent"), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask, checkpoint: ctx.checkpoint, onMutation: tc => { ctx.checkpoint?.begin(tc); ctx.checkpoint?.recordProtected(tc); } }), limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), readOnly: ctx.readOnly });
+        printTurnSummary(ctx.checkpoint?.finalize());
       } catch (err) {
         out(t.danger(`error: ${err.message}`));
       }
@@ -720,7 +815,7 @@ export async function handleSlash(input, ctx) {
     case "skills": return printData(loadSkills());
     case "commands": return printData((ctx.commands || loadCommands()).map(({ name, description }) => ({ name, description })));
     case "mcp": return printData(ctx.ext?.mcpServers || []);
-    case "status": return printData({ model: ctx.getActive().spec, readOnly: !!ctx.readOnly, ...contextStats(ctx.messages), usage: ctx.messages.reduce((u, m) => ({ input_tokens: u.input_tokens + (m.usage?.input_tokens || 0), output_tokens: u.output_tokens + (m.usage?.output_tokens || 0) }), { input_tokens: 0, output_tokens: 0 }), plan: ctx.plan });
+    case "status": return printData({ model: ctx.getActive().spec, profile: ctx.profile || "code", root: ctx.project?.root || ctx.cwd, commands: ctx.project?.commands || [], permissions: ctx.permissions ? { mode: ctx.permissions.mode, readOnly: ctx.permissions.readOnly, allow: [...ctx.permissions.allow] } : undefined, readOnly: !!ctx.readOnly, ...contextStats(ctx.messages), usage: ctx.messages.reduce((u, m) => ({ input_tokens: u.input_tokens + (m.usage?.input_tokens || 0), output_tokens: u.output_tokens + (m.usage?.output_tokens || 0) }), { input_tokens: 0, output_tokens: 0 }), plan: ctx.plan });
     case "compact": {
       try {
         ctx.persist?.();
@@ -745,7 +840,11 @@ export async function handleSlash(input, ctx) {
       if (!plan) return out(t.faint("no saved plan; use /plan <task>"));
       if (ctx.readOnly) return out(t.danger("restart without --read-only to implement the plan"));
       ctx.messages.push({ role: "user", content: `Implement this saved plan, inspect current files first, and verify the changes:\n${plan.text}` });
-      try { await runWithInterrupt({ target: ctx.getActive(), system: ctx.system, messages: ctx.messages, tools: ctx.tools, limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask, onCheckpoint: ctx.persist }) }); }
+      try {
+        ctx.checkpoint?.reset();
+        await runWithInterrupt({ target: ctx.getActive(), system: ctx.system, messages: ctx.messages, tools: ctx.tools, limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask, onCheckpoint: ctx.persist, checkpoint: ctx.checkpoint, onMutation: tc => { ctx.checkpoint?.begin(tc); ctx.checkpoint?.recordProtected(tc); } }) });
+        printTurnSummary(ctx.checkpoint?.finalize());
+      }
       catch (err) { out(t.danger(err.message)); }
       ctx.persist?.();
       return;
@@ -938,7 +1037,7 @@ export async function handleSlash(input, ctx) {
     }
     case "help":
       out(t.faint("/model [spec]  /models  /login [provider]  /setting  /config <sub>  /provider <sub>  /doctor  /session <sub>"));
-      out(t.faint("/plan <task>  /build  /compact  /status  /skills  /mcp  /commands"));
+      out(t.faint("/plan <task>  /build  /compact  /status  /profile [code|bitcoin]  /diff  /undo  /skills  /mcp  /commands"));
       out(t.faint("/subagent [name] [prompt]  /tools [filter]  /reset  /exit"));
       if (ctx.commands?.length) out(t.faint(`custom: ${ctx.commands.map((c) => "/" + c.name).join("  ")}`));
       return;

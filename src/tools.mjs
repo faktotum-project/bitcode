@@ -4,10 +4,11 @@
 // All paths resolve against process.cwd(). `mutating: true` marks tools that
 // change state, so the CLI can gate them behind an approval prompt.
 
-import { runShell, processTools } from "./processes.mjs";
+import { runShell, processToolsFor } from "./processes.mjs";
 import { workspaceTools } from "./workspace-tools.mjs";
 import { resolveLightning } from "./lightning/network.mjs";
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { bitcoinTools } from "./bitcoin/tools.mjs";
 import { liquidTools } from "./liquid/tools.mjs";
@@ -16,9 +17,11 @@ import { cashuTools } from "./cashu/tools.mjs";
 import { coinjoinTools } from "./coinjoin/tools.mjs";
 import { runAgent } from "./agent.mjs";
 import { findAgent } from "./agents.mjs";
+import { projectRoot, resolveWorkspacePath, relativeProjectPath } from "./project.mjs";
 
 const MAX_RESULT_CHARS = 100_000;
 const DEFAULT_BASH_TIMEOUT = 120_000;
+const readHashes = new Map();
 
 function clip(s) {
   s = String(s);
@@ -27,11 +30,9 @@ function clip(s) {
     : s;
 }
 
-function resolvePath(p) {
-  return path.resolve(process.cwd(), p);
-}
+function resolvePath(root, p) { return resolveWorkspacePath(root, p); }
 
-const bash = {
+function bashTool(processOptions) { return {
   name: "bash",
   mutating: true,
   description:
@@ -48,10 +49,10 @@ const bash = {
     },
     required: ["command"],
   },
-  run: runShell,
-};
+  run: (args, context) => runShell(args, context, processOptions),
+}; }
 
-const readFileTool = {
+function readFileTool(root) { return {
   name: "read_file",
   mutating: false,
   description: "Read a UTF-8 text file and return its contents.",
@@ -61,17 +62,18 @@ const readFileTool = {
     required: ["path"],
   },
   run: async ({ path: p, offset = 1, limit, line_numbers = false }) => {
-    const abs = resolvePath(p);
+    const abs = resolvePath(root, p);
     if ((await stat(abs)).size > 10 * 1024 * 1024) throw new Error("file exceeds 10 MiB; use a shell command to read a range");
     const content = await readFile(abs, "utf8");
     if (content.includes("\u0000")) throw new Error("binary file: use a suitable binary tool");
     const lines = content.split("\n");
     const selected = lines.slice(offset - 1, limit ? offset - 1 + limit : undefined);
+    readHashes.set(abs, fileHash(content));
     return clip(line_numbers ? selected.map((l, i) => `${offset + i}: ${l}`).join("\n") : selected.join("\n"));
   },
-};
+}; }
 
-const writeFileTool = {
+function writeFileTool(root) { return {
   name: "write_file",
   mutating: true,
   description: "Create or overwrite a file with the given contents. Creates parent dirs.",
@@ -79,48 +81,50 @@ const writeFileTool = {
     type: "object",
     properties: {
       path: { type: "string" },
-      content: { type: "string" },
+      content: { type: "string" }, expected_hash: { type: "string" },
     },
     required: ["path", "content"],
   },
-  run: async ({ path: p, content }) => {
-    const abs = resolvePath(p);
+  run: async ({ path: p, content, expected_hash }) => {
+    const abs = resolvePath(root, p);
+    await assertFresh(abs, expected_hash);
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, content ?? "", "utf8");
+    readHashes.set(abs, fileHash(content ?? ""));
     return `wrote ${abs} (${(content ?? "").length} chars)`;
   },
-};
+}; }
 
-const editFileTool = {
+function editFileTool(root) { return {
   name: "edit_file",
   mutating: true,
   description:
-    "Replace the first exact occurrence of old_string with new_string in a file. old_string must be unique enough to match once.",
+    "Apply sequential exact replacements in edits[]. Each replacement must be unique unless replace_all is true. A prior read_file hash protects against stale writes.",
   parameters: {
     type: "object",
-    properties: {
-      path: { type: "string" },
-      old_string: { type: "string" },
-      new_string: { type: "string" },
-    },
-    required: ["path", "old_string", "new_string"],
+    properties: { path: { type: "string" }, edits: { type: "array", minItems: 1, items: { type: "object", properties: { old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" } }, required: ["old_string", "new_string"], additionalProperties: false } }, old_string: { type: "string" }, new_string: { type: "string" }, expected_hash: { type: "string" } },
+    required: ["path"],
   },
-  run: async ({ path: p, old_string, new_string }) => {
-    const abs = resolvePath(p);
+  run: async ({ path: p, edits, old_string, new_string, expected_hash }) => {
+    const abs = resolvePath(root, p);
     const content = await readFile(abs, "utf8");
-    if (!old_string) throw new Error("old_string must be non-empty");
-    const idx = content.indexOf(old_string);
-    if (idx === -1) return `ERROR: old_string not found in ${abs}`;
-    if (content.indexOf(old_string, idx + 1) !== -1) {
-      return `ERROR: old_string is not unique in ${abs}; add more context`;
+    assertFreshContent(abs, content, expected_hash, p);
+    let updated = content;
+    for (const edit of edits || [{ old_string, new_string }]) {
+      const { old_string, new_string, replace_all = false } = edit;
+      if (!old_string) throw new Error("old_string must be non-empty");
+      const idx = updated.indexOf(old_string);
+      if (idx === -1) throw new Error(`old_string not found in ${abs}`);
+      if (!replace_all && updated.indexOf(old_string, idx + 1) !== -1) throw new Error(`old_string is not unique in ${abs}; add more context or set replace_all`);
+      updated = replace_all ? updated.split(old_string).join(new_string) : updated.slice(0, idx) + new_string + updated.slice(idx + old_string.length);
     }
-    const updated = content.slice(0, idx) + new_string + content.slice(idx + old_string.length);
     await writeFile(abs, updated, "utf8");
+    readHashes.set(abs, fileHash(updated));
     return `edited ${abs}`;
   },
-};
+}; }
 
-const listDirTool = {
+function listDirTool(root) { return {
   name: "list_dir",
   mutating: false,
   description: "List entries in a directory (defaults to the current directory).",
@@ -129,7 +133,7 @@ const listDirTool = {
     properties: { path: { type: "string", description: "Directory path (default '.')." } },
   },
   run: async ({ path: p }) => {
-    const abs = resolvePath(p || ".");
+    const abs = resolvePath(root, p || ".");
     const entries = await readdir(abs);
     const lines = await Promise.all(
       entries.sort().map(async (name) => {
@@ -143,7 +147,7 @@ const listDirTool = {
     );
     return clip(lines.join("\n") || "[empty]");
   },
-};
+}; }
 
 // ---- search & patch tools ----
 
@@ -213,7 +217,7 @@ function globToRegExp(glob) {
   return new RegExp("^" + re + "$");
 }
 
-const grepTool = {
+function grepTool(root) { return {
   name: "grep",
   mutating: false,
   description:
@@ -237,10 +241,10 @@ const grepTool = {
       return `ERROR: invalid regex: ${e.message}`;
     }
     const nameRe = glob ? globToRegExp(glob) : null;
-    const root = resolvePath(p);
+    const searchRoot = resolvePath(root, p);
     const results = [];
-    for await (const file of walkFiles(root)) {
-      if (nameRe && !nameRe.test(glob.includes("/") ? path.relative(root, file).split(path.sep).join("/") : path.basename(file))) continue;
+    for await (const file of walkFiles(searchRoot)) {
+      if (nameRe && !nameRe.test(glob.includes("/") ? path.relative(searchRoot, file).split(path.sep).join("/") : path.basename(file))) continue;
       let content;
       try {
         content = await readFile(file, "utf8");
@@ -248,7 +252,7 @@ const grepTool = {
         continue;
       }
       if (content.includes("\u0000")) continue; // binary
-      const rel = path.relative(process.cwd(), file) || file;
+      const rel = relativeProjectPath(root, file);
       const lines = content.split("\n");
       for (let i = 0; i < lines.length; i++) {
         if (re.test(lines[i])) {
@@ -261,9 +265,9 @@ const grepTool = {
     }
     return results.length ? clip(results.join("\n")) : "[no matches]";
   },
-};
+}; }
 
-const globTool = {
+function globTool(root) { return {
   name: "glob",
   mutating: false,
   description:
@@ -278,20 +282,20 @@ const globTool = {
     required: ["pattern"],
   },
   run: async ({ pattern, path: p = ".", max_results = 500 }) => {
-    const root = resolvePath(p);
+    const searchRoot = resolvePath(root, p);
     const re = globToRegExp(pattern);
     const found = [];
-    for await (const file of walkFiles(root)) {
-      const rel = path.relative(root, file);
+    for await (const file of walkFiles(searchRoot)) {
+      const rel = path.relative(searchRoot, file);
       if (re.test(rel)) {
-        found.push(path.relative(process.cwd(), file) || rel);
+        found.push(relativeProjectPath(root, file) || rel);
         if (found.length >= max_results) break;
       }
     }
     found.sort();
     return found.length ? clip(found.join("\n")) : "[no files matched]";
   },
-};
+}; }
 
 // Apply a unified diff to one file's content. Strictly verifies context and
 // removed lines against the source (no fuzzy matching), so a bad diff fails
@@ -358,7 +362,7 @@ function applyUnifiedDiff(content, diff) {
   return out.join("\n");
 }
 
-const patchTool = {
+function patchTool(root) { return {
   name: "patch",
   mutating: true,
   description:
@@ -367,18 +371,19 @@ const patchTool = {
     type: "object",
     properties: {
       path: { type: "string", description: "File to patch." },
-      diff: { type: "string", description: "Unified diff text with @@ hunks." },
+      diff: { type: "string", description: "Unified diff text with @@ hunks." }, expected_hash: { type: "string" },
     },
     required: ["path", "diff"],
   },
-  run: async ({ path: p, diff }) => {
-    const abs = resolvePath(p);
+  run: async ({ path: p, diff, expected_hash }) => {
+    const abs = resolvePath(root, p);
     let content;
     try {
       content = await readFile(abs, "utf8");
     } catch (e) {
       return `ERROR: cannot read ${abs}: ${e.message}`;
     }
+    assertFreshContent(abs, content, expected_hash, p);
     let updated;
     try {
       updated = applyUnifiedDiff(content, diff || "");
@@ -386,20 +391,23 @@ const patchTool = {
       return `ERROR: patch does not apply: ${e.message}`;
     }
     await writeFile(abs, updated, "utf8");
+    readHashes.set(abs, fileHash(updated));
     return `patched ${abs}`;
   },
-};
+}; }
 
-const GENERIC_TOOLS = [
-  bash,
-  readFileTool,
-  writeFileTool,
-  editFileTool,
-  listDirTool,
-  grepTool,
-  globTool,
-  patchTool,
-];
+function fileHash(content) { return createHash("sha256").update(content).digest("hex"); }
+async function assertFresh(abs, expectedHash) {
+  let content = null;
+  try { content = await readFile(abs, "utf8"); } catch (err) { if (err.code !== "ENOENT") throw err; }
+  if (content != null) assertFreshContent(abs, content, expectedHash, abs);
+  else if (expectedHash || readHashes.has(abs)) throw new Error(`stale file hash for ${abs}; read the file again before editing`);
+}
+function assertFreshContent(abs, content, expectedHash, label) {
+  const actualHash = fileHash(content);
+  if ((expectedHash && expectedHash !== actualHash) || (readHashes.has(abs) && readHashes.get(abs) !== actualHash)) throw new Error(`stale file hash for ${label}; read the file again before editing`);
+}
+function genericTools(root, processOptions) { return [bashTool(processOptions), readFileTool(root), writeFileTool(root), editFileTool(root), listDirTool(root), grepTool(root), globTool(root), patchTool(root)]; }
 
 // ---- external tool registry (for plugins / future MCP) ----
 // A mutable box of extra tools folded into every session. Kept separate from
@@ -472,19 +480,18 @@ function subagentTool({ modelRef, agents, system, realTools }) {
 // a local `waved` daemon, which is inherently async. They're wired in by
 // loadExtensions() in cli.mjs (same async stage as plugins/config.mcp) and
 // land in `registeredTools()` before this function runs.
-export function buildTools(config = {}, { modelRef, agents = [], system = "", lightning = resolveLightning(config), skills, plan } = {}) {
+export function buildTools(config = {}, { modelRef, agents = [], system = "", lightning = resolveLightning(config), skills, plan, profile = "bitcoin", workspaceRoot = process.cwd(), sandbox = false } = {}) {
+  const root = projectRoot(workspaceRoot);
   const base = [
-    ...GENERIC_TOOLS,
-    ...processTools,
-    ...workspaceTools({ skills, plan }),
-    ...bitcoinTools(config),
-    ...liquidTools(config),
-    bolt11Tool,
-    ...(lightning ? lightningTools(lightning) : []),
-    ...cashuTools(config),
-    ...coinjoinTools(config),
-    ...registeredTools(),
+    ...genericTools(root, { workspaceRoot: root, sandbox }),
+    ...processToolsFor({ workspaceRoot: root, sandbox }),
+    ...workspaceTools({ skills, plan, workspaceRoot: root }),
+    ...registeredTools().filter(tool => !tool.profile || tool.profile === profile),
   ];
+  if (profile === "bitcoin") base.push(
+    ...bitcoinTools(config), ...liquidTools(config), bolt11Tool,
+    ...(lightning ? lightningTools(lightning) : []), ...cashuTools(config), ...coinjoinTools(config),
+  );
   // Dedup by name, last wins — a registered tool may override a built-in.
   const realTools = [...new Map(base.map((t) => [t.name, t])).values()];
   if (!modelRef) return realTools;
