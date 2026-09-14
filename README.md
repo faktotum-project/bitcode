@@ -46,6 +46,9 @@ State lives in `~/.bitcode`; set `BITCODE_HOME` to use a separate directory.
 ```bash
 bitcode -p "fix the failing test"       # one-shot, ordinary mutations approved
 bitcode --read-only -p "review code"    # read-only tool catalog
+bitcode --profile code -p "fix the failing test"
+bitcode --profile bitcoin -p "check signet fees"
+bitcode --permission auto-edit
 bitcode --json -p "inspect README.md"   # machine-readable answer/usage/events
 bitcode --max-steps 10 -p "inspect src"
 bitcode --continue -p "continue the task"
@@ -75,6 +78,8 @@ and `session list`.
 | `/build` | Execute the latest saved plan with the active approval policy |
 | `/compact` | Summarize older context; retain the latest two user turns and tool/result pairs |
 | `/status` | Show model, context size, reported token usage and current task plan |
+| `/profile [code\|bitcoin]` | Inspect or switch the active tool profile; the switch is saved in config |
+| `/diff`, `/undo` | Show the latest agent-turn diff or safely restore that complete turn |
 | `/model [spec]`, `/models` | Inspect/switch provider and model |
 | `/login [provider]` | Choose a provider and save its API key with masked input |
 | `/provider add <name>`, `list`, `health` | Set a masked API key, list providers, probe endpoints |
@@ -138,8 +143,20 @@ first, mutations run sequentially, and later reads observe the updated state.
 Unknown mutation metadata defaults to requiring approval. Mutating tools are
 never automatically retried, including payments whose response was lost.
 
-Interactive mode asks before mutations. `--yolo` skips ordinary mutation
-prompts. Built-in financial tools still require confirmation. One-shot mode
+The default `code` profile exposes coding, file, Git, process, workspace,
+subagent and configured MCP/plugin tools. It is selected unless the project
+has explicit Bitcoin configuration/dependency signals; a README mention alone
+does not switch profiles. `bitcoin` adds the wallet, chain, Lightning, Cashu,
+Liquid, CoinJoin and Wavelength capabilities.
+
+`permissions.mode` accepts `suggest`, `auto-edit` (default), or `full-auto`.
+In `auto-edit`, file writes inside the initial project root are approved, while
+shell commands need confirmation unless they are in a narrow read-only grammar
+or exactly match `permissions.allow`. `full-auto` runs shell tools in a
+Bubblewrap sandbox (project root and `/tmp` writable, network disabled); if it
+is unavailable Bitcode falls back to `auto-edit`. `--read-only` always wins and
+`--yolo` remains an alias for `--permission full-auto`. Built-in financial
+tools still require confirmation. One-shot mode
 rejects those financial tools unless `--allow-payments` was explicitly passed.
 Plugins can mark their tools `financial: true` to use the same gate. This gate
 is tool policy, not an OS sandbox: shell commands and trusted plugins can
@@ -149,6 +166,12 @@ Subagents inherit approvals, cancellation, read-only restrictions and a shared
 total tool-call budget. They cannot recursively delegate. `/plan` and
 `--read-only` expose only tools classified as read-only; plugin/server trust
 still matters.
+
+Bitcode creates a checkpoint at the first mutation in an interactive turn.
+`/diff` compares the current tree to it; `/undo` restores the complete last
+turn when no affected file (or Git index) has changed since. Git checkpoints
+cover tracked, staged and non-ignored untracked changes. Outside Git, file-tool
+writes are restorable while shell side effects remain visible in the diff.
 
 ```json
 {
