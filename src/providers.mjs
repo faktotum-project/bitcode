@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 import { wait, throwIfAborted } from "./runtime.mjs";
+import { isLocalProvider, isOllama } from "./local-models.mjs";
 
 const ANTHROPIC_VERSION = "2023-06-01";
 const REQUEST_TIMEOUT_MS = 600_000;
@@ -220,7 +221,15 @@ async function callOpenAI({ provider, model, apiKey, system, messages, tools, on
     body.tool_choice = "auto";
   }
 
-  const res = await openStreamRetry(`${provider.baseURL}/chat/completions`, headers, body, signal);
+  let res;
+  try {
+    res = await openStreamRetry(`${provider.baseURL}/chat/completions`, headers, body, signal);
+  } catch (err) {
+    // Local servers answer 404 for a model that was never pulled/loaded.
+    if (err.statusCode === 404 && isLocalProvider(provider)) err.message = `model "${model}" is not installed on ${provider.baseURL} — pick an installed one with /models${isOllama(undefined, provider) ? ` or run \`ollama pull ${model}\`` : ""}\n${err.message}`;
+    if (err.code === "ECONNREFUSED" && isLocalProvider(provider)) err.message = `local model server not reachable at ${provider.baseURL}${isOllama(undefined, provider) ? " — start Ollama with `ollama serve`" : " — start your local inference server and check its address"}\n${err.message}`;
+    throw err;
+  }
 
   let text = "";
   let complete = false, usage;
@@ -332,7 +341,7 @@ function toAnthropicMessages(messages) {
 
 async function callAnthropic({ provider, model, apiKey, system, messages, tools, onDelta, signal }) {
   if (!apiKey) {
-    throw new Error(`missing API key: set ${provider.keyEnv} for the anthropic provider`);
+    throw new Error(`missing API key for anthropic: run \`bitcode login anthropic\`, set ${provider.keyEnv}, or pick a local model with /models`);
   }
   const headers = { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION };
 

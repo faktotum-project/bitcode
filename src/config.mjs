@@ -44,10 +44,32 @@ export const BUILTIN_PROVIDERS = {
     api: "openai",
     baseURL: "http://127.0.0.1:11434/v1",
     keyEnv: null,
+    local: true,
+    discovery: "ollama",
     defaultModel: "gpt-oss:20b",
+  },
+  lmstudio: {
+    api: "openai",
+    baseURL: "http://127.0.0.1:1234/v1",
+    keyEnv: null,
+    local: true,
+    defaultModel: null,
   },
 };
 
+// OLLAMA_HOST follows Ollama's own conventions: "host", "host:port" or a URL,
+// where 0.0.0.0 means "all interfaces" and is reached through loopback.
+export function ollamaBaseURL(host) {
+  let value = String(host || "").trim();
+  if (!value) return "http://127.0.0.1:11434/v1";
+  // Without a scheme Ollama assumes its own port; with one, the scheme's default.
+  const schemeless = !/^https?:\/\//i.test(value);
+  if (schemeless) value = `http://${value}`;
+  const u = new URL(value);
+  if (u.hostname === "0.0.0.0") u.hostname = "127.0.0.1";
+  if (schemeless && !u.port) u.port = "11434";
+  return `${u.origin}${u.pathname.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1`;
+}
 const FALLBACK_MODEL = "anthropic/claude-sonnet-4-6";
 
 export function configPath() {
@@ -104,6 +126,13 @@ export function configSet(config, key, value) {
 // top of a built-in without discarding its api/baseURL/keyEnv/defaultModel.
 export function allProviders(config) {
   const merged = { ...BUILTIN_PROVIDERS };
+  if (process.env.OLLAMA_HOST) {
+    try {
+      merged.ollama = { ...merged.ollama, baseURL: ollamaBaseURL(process.env.OLLAMA_HOST) };
+    } catch {
+      // malformed OLLAMA_HOST: keep the default loopback address
+    }
+  }
   for (const [name, p] of Object.entries(config.providers || {})) {
     merged[name] = { ...(merged[name] || {}), ...p };
   }

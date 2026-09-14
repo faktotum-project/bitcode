@@ -8,6 +8,7 @@ import path from "node:path";
 import { loadConfig, resolveModel, allProviders, configPath, configGet, configSet, saveConfig } from "./config.mjs";
 import { providerRows, providerAdd, providerLogin } from "./settings.mjs";
 import { providerHealth } from "./providers.mjs";
+import { discoverLocalModels, isLocalProvider, pickLocalModel, describeLocalModel, localSetupHint } from "./local-models.mjs";
 import { loadPlugins } from "./plugins.mjs";
 import { dependencyReport } from "./diagnostics.mjs";
 import { VERSION } from "./version.mjs";
@@ -77,7 +78,7 @@ const SLASH_COMMANDS = [
   { name: "mcp", hint: "show MCP connections" },
   { name: "commands", hint: "list bundled and custom commands" },
   { name: "model", hint: "show or switch the active model", args: true },
-  { name: "models", hint: "pick a model from a list" },
+  { name: "models", hint: "pick a provider or an installed local model" },
   { name: "setting", hint: "provider status & active model" },
   { name: "config", hint: "get · set config values", args: true },
   { name: "provider", hint: "add an API key · list providers", args: true },
@@ -118,7 +119,7 @@ Usage:
   bitcode [options]                  start interactive session
   bitcode [options] "<prompt>"       one-shot: run a single request and exit
   bitcode -p "<prompt>"              same as above (explicit)
-  bitcode models                     list known providers and default models
+  bitcode models                     list providers and the models installed locally
   bitcode login [provider]            choose a provider and save a masked API key
   bitcode tools|commands|skills       inspect available capabilities (supports --json)
   bitcode provider list|health        inspect provider configuration/connectivity
@@ -152,7 +153,7 @@ Interactive slash commands:
   /status              context and token usage
   /skills /mcp /commands  inspect extensions and commands
   /model [spec]        show or switch the active model
-  /models              pick a model interactively from a numbered list
+  /models              pick a provider or locally installed model (saved as default)
   /setting             provider key status + active model + config path
   /config <sub>        get [key] · set <key> <value>  (persisted, chmod 600)
   /provider <sub>      add <name> (masked key entry) · list · health
@@ -217,7 +218,11 @@ export async function main(argv) {
     return;
   }
   if (opts.command === "config") return out(configPath());
-  if (opts.command === "models") return opts.json ? printData(redact(allProviders(config)), opts) : printModels(config);
+  if (opts.command === "models") {
+    if (!opts.json) return printModels(config);
+    const local = await discoverLocalModels(config);
+    return printData({ providers: redact(allProviders(config)), local: local.map(({ name, provider, running, models }) => ({ name, baseURL: provider.baseURL, running, models })) }, opts);
+  }
   if (opts.command === "wallet") return walletCommand(opts.walletSub, config);
   if (opts.command === "commands") return printData(loadCommands().map(({ name, description }) => ({ name, description })), opts);
   if (opts.command === "skills") return printData(loadSkills(), opts);
@@ -238,7 +243,7 @@ export async function main(argv) {
 
   let target;
   try {
-    target = resolveModel({ cliModel: opts.model, config });
+    target = resolveModel({ cliModel: await startupModel(opts, config), config });
   } catch (err) {
     out(t.danger(`config error: ${err.message}`));
     process.exit(1);
@@ -264,6 +269,21 @@ export async function main(argv) {
     const commands = loadCommands();
     await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext, readOnly: opts.readOnly, plan, maxStepsOverride: opts.maxSteps });
   } finally { await closeProcesses(); await closeCashuDaemons(); await closeMcpConnections(); await closeWavelength(); }
+}
+
+// With no model chosen anywhere (flag, BITCODE_MODEL, config) and no key for
+// the built-in fallback, start on a model this machine actually has installed
+// instead of failing on a missing API key.
+async function startupModel(opts, config) {
+  if (opts.model || process.env.BITCODE_MODEL || config.model) return opts.model;
+  const fallback = resolveModel({ config });
+  if (fallback.apiKey || isLocalProvider(fallback.provider)) return undefined;
+  const spec = pickLocalModel(await discoverLocalModels(config));
+  if (!spec) return undefined;
+  const note = t.faint(`no model configured and no ${fallback.providerName} key — using local ${spec} (change with /models)`);
+  if (opts.json || opts.prompt) process.stderr.write(note + "\n");
+  else out(note);
+  return spec;
 }
 
 // ---- wallet command (human-only; never exposed as an agent tool) ----
@@ -301,20 +321,39 @@ async function walletCommand(sub, config) {
   process.exit(1);
 }
 
-// One entry per known provider: { spec, name, line } where `spec` is the
-// default-model spec ("provider/model") ready to hand to resolveModel().
-// Shared by `bitcode models` and the interactive /models picker.
+// Remote (API) providers: one selectable entry per provider, using its default
+// model. Local providers are listed separately with the models they really have.
 function providerLines(config) {
   const providers = allProviders(config);
-  return Object.entries(providers).map(([name, p]) => {
-    const key = p.keyEnv
-      ? p.keyEnv + (process.env[p.keyEnv] ? " " + t.ok("✓") : t.faint(" (unset)"))
-      : t.faint("local");
+  return Object.entries(providers).filter(([, p]) => !isLocalProvider(p)).map(([name, p]) => {
+    const key = !p.keyEnv
+      ? (p.apiKey ? t.ok("saved key ✓") : t.faint("no key"))
+      : process.env[p.keyEnv]
+        ? `${p.keyEnv} ${t.ok("✓")}`
+        : p.apiKey
+          ? t.ok("saved key ✓")
+          : t.faint(`${p.keyEnv} (unset)`);
     const line =
       `${t.accent(name)}  ${t.faint(`[${p.api}]`)}  ${t.body("default:")} ${p.defaultModel || "-"}  ${key}\n` +
       "  " + t.faint(`  ${p.baseURL}`);
     return { spec: p.defaultModel ? `${name}/${p.defaultModel}` : name, name, line };
   });
+}
+
+// Query this machine's local servers and render them as selectable entries:
+// { header, hint?, entries: [{ spec, line }] } per local provider.
+async function localSections(config) {
+  const discovered = await discoverLocalModels(config);
+  // Ollama is always shown (with setup help); other local servers only when
+  // they answer or the user configured them explicitly.
+  return discovered.filter(({ name, running }) => running || name === "ollama" || config.providers?.[name]).map(({ name, provider, running, models }) => ({
+    header: `${t.accent(name)}  ${t.faint(provider.baseURL)}`,
+    hint: models.length ? null : localSetupHint(name, running),
+    entries: models.map(m => ({
+      spec: `${name}/${m.id}`,
+      line: `${t.body(`${name}/${m.id}`)}  ${t.faint(describeLocalModel(m))}`,
+    })),
+  }));
 }
 
 // Load user extensions: plugins (~/.bitcode/plugins/*.mjs) and MCP servers
@@ -368,11 +407,18 @@ function resolveFallbacks(config) {
   return out;
 }
 
-function printModels(config) {
+async function printModels(config) {
   out(t.label("Providers"));
   for (const { line } of providerLines(config)) out(`  ${line}`);
   out("");
-  out(t.faint("use:  bitcode -m <provider>/<model>   e.g.  bitcode -m ollama/gpt-oss:20b"));
+  out(t.label("Local models (this machine)"));
+  for (const section of await localSections(config)) {
+    out(`  ${section.header}`);
+    for (const { line } of section.entries) out(`    ${line}`);
+    if (section.hint) out(t.faint(`    ${section.hint}`));
+  }
+  out("");
+  out(t.faint("use:  bitcode -m <provider>/<model>   or pick interactively with /models"));
 }
 
 // ---- output hooks: stream tokens + render the reasoning timeline ----
@@ -603,10 +649,23 @@ export async function handleSlash(input, ctx) {
       }
       return;
     case "models": {
-      const entries = providerLines(ctx.config);
-      entries.forEach(({ line }, i) => out(`  ${t.faint(String(i + 1).padStart(2))}  ${line}`));
+      const entries = [];
+      const active = ctx.getActive()?.spec;
+      const row = (e, indent = "") => {
+        entries.push(e);
+        const mark = e.spec === active ? t.ok("●") : " ";
+        out(`  ${t.faint(String(entries.length).padStart(2))} ${mark} ${indent}${e.line}`);
+      };
+      out(t.label("Providers"));
+      for (const e of providerLines(ctx.config)) row(e);
+      out(t.label("Local models (this machine)"));
+      for (const section of await localSections(ctx.config)) {
+        out(`       ${section.header}`);
+        for (const e of section.entries) row(e, "  ");
+        if (section.hint) out(t.faint(`         ${section.hint}`));
+      }
       out("");
-      const ans = (await ctx.ask(t.faint("select # or type provider/model: "))).trim();
+      const ans = (await ctx.ask(t.faint("select # or type provider/model (enter to cancel): "))).trim();
       if (!ans) return;
       const spec = /^\d+$/.test(ans) ? entries[Number(ans) - 1]?.spec : ans;
       if (!spec) {
@@ -615,8 +674,14 @@ export async function handleSlash(input, ctx) {
       }
       try {
         const next = resolveModel({ cliModel: spec, config: ctx.config });
+        const nextConfig = { ...ctx.config, model: next.spec };
+        const file = saveConfig(nextConfig);
+        ctx.config.model = next.spec;
         ctx.setActive(next);
         out(t.ok(`switched to ${next.spec}`));
+        // Remember the choice, like a normal settings change, so the next start uses it.
+        out(t.faint(`saved as default model (${file})`));
+        if (process.env.BITCODE_MODEL) out(t.faint("note: BITCODE_MODEL is set and still takes precedence at startup"));
       } catch (err) {
         out(t.danger(err.message));
       }

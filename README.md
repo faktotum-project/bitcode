@@ -37,7 +37,7 @@ OAuth or a subscription login, and does not validate the key over the network.
 Environment variables take precedence over saved keys. Login preserves the
 selected model; use `-m <provider>/<model>` or `/model` to switch.
 `/login [provider]` and `/provider add <name>` are also available interactively.
-Ollama needs no login; configured custom providers appear in the selection list.
+Ollama and LM Studio need no login; `/models` lists the models installed on your machine.
 State lives in `~/.bitcode`; set `BITCODE_HOME` to use a separate directory.
 `--cwd <path>` changes the project before loading instructions and extensions.
 
@@ -181,7 +181,30 @@ Explicit model names and custom provider settings are preserved.
 | `openai` | Responses | `OPENAI_API_KEY` | `gpt-6-astra` |
 | `openrouter` | Chat Completions | `OPENROUTER_API_KEY` | `anthropic/claude-sonnet-4.6` |
 | `groq` | Chat Completions | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
-| `ollama` | Chat Completions | none | `gpt-oss:20b` |
+| `ollama` | Chat Completions | none | `gpt-oss:20b` (or pick an installed one with `/models`) |
+| `lmstudio` | Chat Completions | none | models loaded in LM Studio |
+
+### Local models
+
+Local models are discovered at runtime on each user's own machine — nothing is
+hard-coded. `bitcode models` and `/models` ask the local servers what they have
+(Ollama via `/api/tags`, any other OpenAI-compatible server via `/v1/models`)
+and list exactly those models, with size and quantization when available.
+Picking one with `/models` switches immediately and saves it as the default
+`model` in `~/.bitcode/config.json`.
+
+- Ollama honours `OLLAMA_HOST` (`host`, `host:port` or a full URL).
+- LM Studio is listed when its server is running on `127.0.0.1:1234`.
+- Any provider with `"api": "openai"` on a loopback address, or marked
+  `"local": true` (e.g. llama.cpp, vLLM on another box), is discovered the same way.
+- Local servers requiring authentication must be marked `"local": true`;
+  discovery uses the provider's API key, with environment variables taking precedence.
+- With no model configured and no Anthropic key, bitcode starts on an installed
+  local model instead of failing.
+- Asking for a model that is not installed reports it and suggests
+  `ollama pull <model>` or `/models`.
+
+`bitcode models --json` returns `{ providers, local: [{ name, baseURL, running, models }] }`.
 
 The built-in fallback remains Anthropic. Add any compatible endpoint:
 
