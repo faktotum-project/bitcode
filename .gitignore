@@ -6,3 +6,6 @@ deps/wavelength/
 .vercel
 artifacts/sats/
 .sats-build/
+desktop/dist/
+desktop/release/
+artifacts/desktop/

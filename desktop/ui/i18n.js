@@ -1,0 +1,64 @@
+// UI strings only: tool names, commands, identifiers and file content are never translated.
+const it = {
+  coding: 'Coding', bitcoin: 'Bitcoin', activity: 'Attività', settings: 'Impostazioni',
+  projects: 'Progetti', sessions: 'Sessioni', files: 'File', git: 'Git', openFolder: 'Apri cartella…', newSession: 'Nuova sessione',
+  noProject: 'Apri una cartella per iniziare.', noSession: 'Crea una sessione per chattare con Bitcode.', noFile: 'Apri un file dall\'albero a sinistra.',
+  terminal: 'Terminale · tuo', agent: 'Agente', diff: 'Diff', send: 'Invia', stop: 'Ferma', placeholder: 'Scrivi a Bitcode… (/approve, /deny, /cancel, /mode, /pending)',
+  manual: 'Manuale', assisted: 'Assistita', unattended: 'Senza supervisione', idle: 'riposo', waiting: 'attende ✋',
+  approveOnce: 'Approva una volta', deny: 'Nega', addPolicy: 'Aggiungi alla policy', addDestination: 'Autorizza destinazione',
+  project: 'progetto', session: 'sessione', agentL: 'agente', sandbox: 'sandbox', reason: 'motivo', id: 'id', expires: 'scade', mode: 'modalità',
+  kind_command: 'chiede di eseguire un comando', kind_patch: 'chiede di modificare un file', kind_network: 'chiede di contattare una destinazione di rete',
+  kind_egress: 'chiede di inviare il contesto a un modello cloud', kind_tool: 'chiede di usare uno strumento',
+  diskChanged: 'modificato su disco. Il tuo buffer ha modifiche non salvate.', compare: 'Confronta', reload: 'Ricarica', keepMine: 'Mantieni il mio',
+  stale: 'Il file è cambiato su disco dopo l\'apertura.', overwrite: 'Sovrascrivi', saved: 'Salvato', branch: 'ramo', changes: 'modifiche',
+  stage: 'Aggiungi', unstage: 'Rimuovi', commit: 'Commit', commitMsg: 'Messaggio di commit', notRepo: 'Non è un repository Git.',
+  runs: 'Esecuzioni', pendingReq: 'Richieste in attesa', worktrees: 'Worktree da integrare', state: 'stato', prompt: 'richiesta', model: 'modello', tokens: 'token',
+  cancel: 'Annulla', open: 'Apri', integrate: 'Integra', discard: 'Scarta', none: 'Nessuna.',
+  bitcoinLead: 'Area finanziaria. Produzione in sola consultazione, operazioni solo su ambienti di test verificati dal backend, ogni operazione confermata da te.',
+  adapterMissing: 'Adapter non ancora disponibile in questa build (fase D4). Nessuna connessione e nessuna operazione finanziaria.',
+  language: 'Lingua', theme: 'Tema', light: 'Chiaro', dark: 'Scuro', system: 'Sistema', maxActive: 'Attività simultanee', maxLocal: 'Inferenze locali simultanee',
+  defaultModel: 'Modello predefinito', satModel: 'Modello di', inherit: 'eredita dalla sessione', localOnly: 'Solo modelli locali', credentials: 'Credenziali provider',
+  save: 'Salva', saveKey: 'Salva chiave', secretInsecure: 'Portachiavi non sicuro: le chiavi restano solo in memoria fino all\'uscita.', secretSecure: 'Chiavi cifrate nel portachiavi di sistema',
+  diagnostics: 'Diagnostica', sandboxOk: 'bwrap disponibile', sandboxMissing: 'bwrap non disponibile: nessun agente può essere avviato.', dataDir: 'Cartella dati',
+  keep: 'Conserva', kept: 'Conservata', expiresIn: 'scade il', export: 'Esporta', welcome: 'Benvenuto in Bitcode Desktop', step1: 'Scegli un modello in Impostazioni (locale o cloud).', step2: 'Apri la cartella di un progetto.', step3: 'Crea una sessione e scrivi la tua richiesta.',
+  hasKey: 'chiave presente', noKey: 'chiave mancante', local: 'locale', cloud: 'cloud', quit: 'Esci', run_queued: 'in coda', run_starting: 'avvio', run_running: 'in corso',
+  run_awaiting_approval: 'attende approvazione', run_success: 'completata', run_error: 'errore', run_cancelled: 'annullata', run_interrupted: 'interrotta',
+  E_STALE_VERSION: 'Il file è cambiato nel frattempo.', E_LEASE_HELD: 'Un agente sta modificando il progetto: riprova tra poco.', E_SANDBOX_UNAVAILABLE: 'Sandbox bwrap non disponibile.',
+  E_BUSY: 'Un\'esecuzione è già attiva in questa sessione.', E_APPROVAL_CONSUMED: 'Richiesta già decisa.', E_APPROVAL_EXPIRED: 'Richiesta scaduta.',
+  E_APPROVAL_DIGEST_MISMATCH: 'La richiesta non corrisponde più a quanto mostrato.', E_APPROVAL_WRONG_SESSION: 'Richiesta di un\'altra sessione.', E_LOCAL_ONLY: 'Modalità solo locale: modello cloud rifiutato.',
+  E_PROVIDER_UNAVAILABLE: 'Modello non configurato.', E_PTY_UNAVAILABLE: 'Terminale non disponibile.', E_FORBIDDEN_ORIGIN: 'Origine non autorizzata.', E_WORKTREE_UNAVAILABLE: 'La modalità senza supervisione richiede un repository Git.'
+};
+const en = {
+  coding: 'Coding', bitcoin: 'Bitcoin', activity: 'Activity', settings: 'Settings',
+  projects: 'Projects', sessions: 'Sessions', files: 'Files', git: 'Git', openFolder: 'Open folder…', newSession: 'New session',
+  noProject: 'Open a folder to start.', noSession: 'Create a session to chat with Bitcode.', noFile: 'Open a file from the tree on the left.',
+  terminal: 'Terminal · yours', agent: 'Agent', diff: 'Diff', send: 'Send', stop: 'Stop', placeholder: 'Message Bitcode… (/approve, /deny, /cancel, /mode, /pending)',
+  manual: 'Manual', assisted: 'Assisted', unattended: 'Unattended', idle: 'idle', waiting: 'waiting ✋',
+  approveOnce: 'Approve once', deny: 'Deny', addPolicy: 'Add to policy', addDestination: 'Authorise destination',
+  project: 'project', session: 'session', agentL: 'agent', sandbox: 'sandbox', reason: 'reason', id: 'id', expires: 'expires', mode: 'mode',
+  kind_command: 'wants to run a command', kind_patch: 'wants to change a file', kind_network: 'wants to reach a network destination',
+  kind_egress: 'wants to send context to a cloud model', kind_tool: 'wants to use a tool',
+  diskChanged: 'changed on disk. Your buffer has unsaved changes.', compare: 'Compare', reload: 'Reload', keepMine: 'Keep mine',
+  stale: 'The file changed on disk after it was opened.', overwrite: 'Overwrite', saved: 'Saved', branch: 'branch', changes: 'changes',
+  stage: 'Stage', unstage: 'Unstage', commit: 'Commit', commitMsg: 'Commit message', notRepo: 'Not a Git repository.',
+  runs: 'Runs', pendingReq: 'Pending requests', worktrees: 'Worktrees to integrate', state: 'state', prompt: 'request', model: 'model', tokens: 'tokens',
+  cancel: 'Cancel', open: 'Open', integrate: 'Integrate', discard: 'Discard', none: 'None.',
+  bitcoinLead: 'Financial area. Production is read-only; operations only on backend-verified test environments, each one confirmed by you.',
+  adapterMissing: 'Adapter not yet available in this build (phase D4). No connection and no financial operation.',
+  language: 'Language', theme: 'Theme', light: 'Light', dark: 'Dark', system: 'System', maxActive: 'Concurrent runs', maxLocal: 'Concurrent local inferences',
+  defaultModel: 'Default model', satModel: 'Model for', inherit: 'inherit from session', localOnly: 'Local models only', credentials: 'Provider credentials',
+  save: 'Save', saveKey: 'Save key', secretInsecure: 'Keyring not secure: keys stay in memory until exit.', secretSecure: 'Keys encrypted in the system keyring',
+  diagnostics: 'Diagnostics', sandboxOk: 'bwrap available', sandboxMissing: 'bwrap unavailable: no agent can start.', dataDir: 'Data folder',
+  keep: 'Keep', kept: 'Kept', expiresIn: 'expires', export: 'Export', welcome: 'Welcome to Bitcode Desktop', step1: 'Pick a model in Settings (local or cloud).', step2: 'Open a project folder.', step3: 'Create a session and type your request.',
+  hasKey: 'key present', noKey: 'key missing', local: 'local', cloud: 'cloud', quit: 'Quit', run_queued: 'queued', run_starting: 'starting', run_running: 'running',
+  run_awaiting_approval: 'awaiting approval', run_success: 'done', run_error: 'error', run_cancelled: 'cancelled', run_interrupted: 'interrupted',
+  E_STALE_VERSION: 'The file changed in the meantime.', E_LEASE_HELD: 'An agent is changing the project: try again shortly.', E_SANDBOX_UNAVAILABLE: 'bwrap sandbox unavailable.',
+  E_BUSY: 'A run is already active in this session.', E_APPROVAL_CONSUMED: 'Request already decided.', E_APPROVAL_EXPIRED: 'Request expired.',
+  E_APPROVAL_DIGEST_MISMATCH: 'The request no longer matches what was shown.', E_APPROVAL_WRONG_SESSION: 'Request belongs to another session.', E_LOCAL_ONLY: 'Local-only mode: cloud model rejected.',
+  E_PROVIDER_UNAVAILABLE: 'Model not configured.', E_PTY_UNAVAILABLE: 'Terminal unavailable.', E_FORBIDDEN_ORIGIN: 'Origin not allowed.', E_WORKTREE_UNAVAILABLE: 'Unattended mode needs a Git repository.'
+};
+const dicts = { it, en };
+let lang = 'it';
+export const setLang = l => { lang = dicts[l] ? l : 'it'; document.documentElement.lang = lang; };
+export const t = key => dicts[lang][key] ?? dicts.it[key] ?? key;
+export const errorText = e => (e?.code && dicts[lang][`E_${e.code}`]) || e?.message || String(e);

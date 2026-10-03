@@ -10,6 +10,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "desktop": "npm --prefix desktop start",
+    "build:desktop": "npm --prefix desktop run build",
+    "dist:desktop": "npm --prefix desktop run dist",
+    "test:desktop": "npm --prefix desktop test",
     "start": "node bitcode.mjs",
     "test": "node --test --test-timeout=30000 tests/*.test.mjs",
     "test:browser": "node scripts/sats/browser-check.mjs",

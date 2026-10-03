@@ -20,3 +20,5 @@ bitcode sats/
 bitcode design system/
 bitcode-slides/
 *.tgz
+desktop/
+design/desktop-mockups.html

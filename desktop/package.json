@@ -1,0 +1,73 @@
+{
+  "name": "bitcode-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bitcode desktop workspace for coding and Bitcoin",
+  "author": {
+    "name": "FAKTOTUM",
+    "email": "maintainers@faktotum-project.org"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/main.mjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --linux dir",
+    "dist": "npm run build && electron-builder --linux deb",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "build": {
+    "appId": "org.faktotum.bitcode",
+    "productName": "Bitcode",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "dist/ui/icon.png",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "Bitcode"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnss3",
+        "libxss1",
+        "libasound2t64 | libasound2",
+        "libgbm1",
+        "bubblewrap",
+        "git",
+        "libsecret-1-0"
+      ]
+    },
+    "electronDist": "node_modules/electron/dist"
+  },
+  "dependencies": {
+    "node-pty": "1.1.0"
+  },
+  "devDependencies": {
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/lang-python": "6.2.1",
+    "@codemirror/theme-one-dark": "6.1.3",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "codemirror": "6.0.2",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2"
+  }
+}

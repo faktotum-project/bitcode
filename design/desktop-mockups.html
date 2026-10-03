@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitcode Desktop — mockup D0</title>
+<style>
+@font-face { font-family: Inter; src: url("../ui/sats/fonts/InterVariable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "JetBrains Mono"; src: url("../ui/sats/fonts/JetBrainsMono-Regular.woff2") format("woff2"); }
+:root {
+  --canvas: #f7f7f4; --canvasSoft: #fafaf7; --card: #fff; --ink: #26251e; --body: #5a5852;
+  --muted: #807d72; --hairline: #e6e5e0; --hairlineSoft: #efeee8; --hairlineStrong: #cfcdc4;
+  --orange: #f7931a; --orangeActive: #d97b0f; --success: #1f8a65; --error: #cf2d56;
+  --pending: #dfa88f; --relayed: #9fc9a2; --mempool: #9fbbe0; --confirming: #c0a8dd;
+  --codeBg: #fafaf7; --warnBg: #fff4e5; --errBg: #fdecef; --okBg: #e8f4ee;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --canvas: #1b1a16; --canvasSoft: #201f1a; --card: #26251e; --ink: #f2f1ec; --body: #cfcdc4;
+  --muted: #a09c92; --hairline: #35342c; --hairlineSoft: #2d2c25; --hairlineStrong: #4a483f;
+  --codeBg: #201f1a; --warnBg: #3a2c17; --errBg: #3b1f26; --okBg: #1d3329;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 13px/1.45 Inter, system-ui, sans-serif; letter-spacing: -0.01em; }
+.mono, code, pre { font-family: "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* page chrome */
+.top { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 16px; background: var(--canvas); border-bottom: 1px solid var(--hairline); }
+.top h1 { font-size: 15px; margin: 0 12px 0 0; }
+.top .tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.pill { border: 1px solid var(--hairline); background: var(--card); border-radius: 999px; padding: 6px 12px; }
+.pill[aria-selected="true"] { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
+.top .spacer { flex: 1; }
+.note { max-width: 1280px; margin: 16px auto 0; padding: 0 16px; color: var(--muted); }
+.screen { display: none; max-width: 1280px; margin: 12px auto 40px; padding: 0 16px; }
+.screen.on { display: block; }
+.caption { color: var(--body); margin: 0 0 10px; }
+
+/* window */
+.win { border: 1px solid var(--hairlineStrong); border-radius: 12px; overflow: hidden; background: var(--canvas); box-shadow: 0 10px 30px rgba(38,37,30,.08); }
+.titlebar { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-bottom: 1px solid var(--hairline); background: var(--canvasSoft); }
+.dots { display: flex; gap: 6px; } .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--hairlineStrong); }
+.titlebar .t { font-weight: 600; } .titlebar .s { color: var(--muted); }
+.app { display: grid; grid-template-columns: 56px 220px 1fr 340px; height: 720px; }
+.rail { border-right: 1px solid var(--hairline); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; background: var(--canvasSoft); }
+.rail button { width: 40px; height: 40px; border-radius: 10px; border: 0; background: transparent; display: grid; place-items: center; font-size: 16px; position: relative; }
+.rail button.on { background: var(--card); box-shadow: inset 0 0 0 1px var(--hairline); }
+.rail .badge { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--orange); color: #fff; font-size: 10px; display: grid; place-items: center; padding: 0 4px; }
+.rail .grow { flex: 1; }
+.side { border-right: 1px solid var(--hairline); overflow: auto; padding: 10px; }
+.side h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 12px 4px 6px; }
+.item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; color: var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item.on { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 1px var(--hairline); }
+.item .m { margin-left: auto; font-size: 11px; color: var(--muted); }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.main { display: grid; grid-template-rows: 34px 1fr 230px; min-width: 0; }
+.etabs { display: flex; border-bottom: 1px solid var(--hairline); background: var(--canvasSoft); }
+.etab { padding: 0 14px; display: flex; align-items: center; gap: 6px; border-right: 1px solid var(--hairline); color: var(--muted); }
+.etab.on { background: var(--canvas); color: var(--ink); }
+.etab .mod { color: var(--orange); }
+.editor { overflow: hidden; padding: 10px 0; font-size: 12px; background: var(--canvas); }
+.ln { display: grid; grid-template-columns: 44px 1fr; white-space: pre; }
+.ln span:first-child { color: var(--mutedSoft, var(--muted)); text-align: right; padding-right: 12px; opacity: .7; }
+.ln.add { background: var(--okBg); } .ln.del { background: var(--errBg); }
+.kw { color: #8a4fbf; } .str { color: var(--success); } .cm { color: var(--muted); }
+.banner { font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; margin: 0 12px 8px; padding: 6px 10px; border-radius: 6px; background: var(--warnBg); color: var(--ink); display: flex; gap: 8px; align-items: center; }
+.banner .act { margin-left: auto; display: flex; gap: 6px; }
+.btn { border: 1px solid var(--hairlineStrong); background: var(--card); border-radius: 6px; padding: 4px 10px; min-height: 28px; }
+.btn.primary { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
+.btn.orange { background: var(--orange); color: #fff; border-color: var(--orangeActive); }
+.btn.ghost { background: transparent; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.bottom { border-top: 1px solid var(--hairline); display: grid; grid-template-rows: 30px 1fr; min-height: 0; }
+.btabs { display: flex; gap: 2px; padding: 0 8px; align-items: end; border-bottom: 1px solid var(--hairline); }
+.btab { padding: 5px 10px; border-radius: 6px 6px 0 0; color: var(--muted); }
+.btab.on { color: var(--ink); background: var(--card); box-shadow: inset 0 1px 0 var(--hairline), inset 1px 0 0 var(--hairline), inset -1px 0 0 var(--hairline); }
+.term { padding: 8px 12px; font-size: 12px; background: var(--card); overflow: hidden; white-space: pre; }
+.term .p { color: var(--success); }
+.chat { border-left: 1px solid var(--hairline); display: grid; grid-template-rows: auto 1fr auto; min-height: 0; background: var(--canvasSoft); }
+.sats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 10px; border-bottom: 1px solid var(--hairline); }
+.sat { background: var(--card); border: 1px solid var(--hairline); border-radius: 8px; padding: 6px; text-align: center; font-size: 11px; }
+.sat img { width: 40px; height: 40px; display: block; margin: 0 auto 2px; }
+.sat.active { border-color: var(--ink); }
+.sat .st { color: var(--muted); font-size: 10px; }
+.msgs { overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.msg { background: var(--card); border: 1px solid var(--hairline); border-radius: 8px; padding: 8px 10px; }
+.msg.user { background: var(--ink); color: var(--canvas); border-color: var(--ink); align-self: flex-end; max-width: 85%; }
+.msg .who { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.tool { font-size: 11px; color: var(--body); border-left: 2px solid var(--relayed); padding-left: 8px; }
+.approval { border: 1px solid var(--orange); border-radius: 8px; background: var(--card); padding: 10px; }
+.approval h4 { margin: 0 0 6px; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.kv { display: grid; grid-template-columns: 82px 1fr; gap: 2px 8px; font-size: 11px; margin: 6px 0; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+.cmd { background: var(--codeBg); border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 8px; font-size: 12px; overflow-wrap: anywhere; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.composer { border-top: 1px solid var(--hairline); padding: 10px; display: grid; gap: 6px; }
+.composer .box { background: var(--card); border: 1px solid var(--hairlineStrong); border-radius: 8px; padding: 8px; min-height: 56px; color: var(--muted); }
+.chip { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--hairline); background: var(--card); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--body); }
+.chip.warn { border-color: var(--orange); }
+.chip.ok { color: var(--success); border-color: var(--success); }
+.chip.err { color: var(--error); border-color: var(--error); }
+.chip.ro { color: var(--muted); }
+.status { display: flex; gap: 12px; align-items: center; height: 24px; padding: 0 12px; border-top: 1px solid var(--hairline); color: var(--muted); font-size: 11px; background: var(--canvasSoft); }
+
+/* generic panes */
+.pane { padding: 16px; overflow: auto; }
+.grid { display: grid; gap: 12px; }
+.card { background: var(--card); border: 1px solid var(--hairline); border-radius: 10px; padding: 14px; }
+.card h3 { margin: 0 0 8px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.muted { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--hairlineSoft); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 11px; }
+.big { font-size: 22px; font-weight: 600; }
+.modal-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.modal { background: var(--card); border: 1px solid var(--hairlineStrong); border-radius: 12px; padding: 18px; box-shadow: 0 20px 50px rgba(38,37,30,.12); }
+.modal h2 { margin: 0 0 4px; font-size: 16px; }
+.diff { font-size: 11.5px; border: 1px solid var(--hairline); border-radius: 6px; overflow: hidden; }
+.steps { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.steps span { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--hairline); color: var(--muted); font-size: 12px; }
+.steps span.on { border-color: var(--ink); color: var(--ink); }
+.steps span.done { color: var(--success); border-color: var(--success); }
+.choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.opt { border: 1px solid var(--hairline); border-radius: 10px; padding: 12px; background: var(--card); }
+.opt.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.field { display: grid; gap: 4px; margin: 10px 0; }
+.input { border: 1px solid var(--hairlineStrong); border-radius: 6px; padding: 7px 9px; background: var(--canvas); }
+.tray { width: 280px; background: var(--card); border: 1px solid var(--hairlineStrong); border-radius: 8px; padding: 6px 0; box-shadow: 0 10px 30px rgba(38,37,30,.12); }
+.tray div { padding: 6px 14px; } .tray hr { border: 0; border-top: 1px solid var(--hairline); margin: 4px 0; }
+.tray .h { color: var(--muted); font-size: 11px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-top: 10px; }
+@media (max-width: 900px) {
+  .app { grid-template-columns: 48px 1fr; height: auto; }
+  .side, .chat { display: none; }
+  .modal-wrap, .choice { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Bitcode Desktop · mockup D0</h1>
+  <div class="tabs" role="tablist">
+    <button class="pill" role="tab" data-s="coding" aria-selected="true">1 · Coding</button>
+    <button class="pill" role="tab" data-s="approve">2 · Approvazioni</button>
+    <button class="pill" role="tab" data-s="bitcoin">3 · Bitcoin</button>
+    <button class="pill" role="tab" data-s="activity">4 · Attività e tray</button>
+    <button class="pill" role="tab" data-s="onboarding">5 · Avvio guidato</button>
+    <button class="pill" role="tab" data-s="settings">6 · Impostazioni</button>
+  </div>
+  <span class="spacer"></span>
+  <button class="pill" id="theme">Tema scuro</button>
+</header>
+<p class="note">Mockup statici, non approvati. Dati di esempio. Riferimenti: <span class="mono">docs/desktop-plan.md</span> e <span class="mono">docs/desktop-d0-contracts.md</span> (§ citati nelle didascalie).</p>
+
+<!-- ============ 1 CODING ============ -->
+<section class="screen on" id="coding">
+  <p class="caption">Layout di lavoro: navigazione a sinistra, editor e pannelli in basso ridimensionabili, chat e Sats a destra. L'approvazione compare nella chat della sessione che l'ha generata (§5). Il file modificato dall'agente non sovrascrive il buffer utente (§7).</p>
+  <div class="win">
+    <div class="titlebar"><span class="dots"><i></i><i></i><i></i></span><span class="t">bitcode</span><span class="s">· wallet-tools · sessione «fix fee estimator»</span></div>
+    <div class="app">
+      <nav class="rail" aria-label="Aree">
+        <button class="on" title="Coding">⌨</button>
+        <button title="Bitcoin">₿</button>
+        <button title="Attività">≡<span class="badge">2</span></button>
+        <span class="grow"></span>
+        <button title="Impostazioni">⚙</button>
+      </nav>
+      <aside class="side">
+        <h3>Progetti</h3>
+        <div class="item on"><span class="dot" style="background:var(--relayed)"></span>wallet-tools<span class="m">2 run</span></div>
+        <div class="item"><span class="dot" style="background:var(--orange)"></span>lnd-dashboard<span class="m">attende</span></div>
+        <div class="item"><span class="dot" style="background:var(--hairlineStrong)"></span>bitcode</div>
+        <h3>Sessioni</h3>
+        <div class="item on">fix fee estimator<span class="m">Assistita</span></div>
+        <div class="item">refactor psbt<span class="m">Manuale</span></div>
+        <h3>File</h3>
+        <div class="item">▾ src</div>
+        <div class="item" style="padding-left:22px">fees.mjs <span class="m" style="color:var(--orange)">M</span></div>
+        <div class="item" style="padding-left:22px">psbt.mjs</div>
+        <div class="item" style="padding-left:22px">wallet.mjs</div>
+        <div class="item">▸ tests</div>
+        <div class="item">package.json</div>
+        <h3>Git</h3>
+        <div class="item">⎇ fix/fee-rounding<span class="m">2 mod.</span></div>
+      </aside>
+      <main class="main">
+        <div class="etabs">
+          <div class="etab on">fees.mjs <span class="mod">●</span></div>
+          <div class="etab">psbt.mjs</div>
+          <div class="etab">Diff · 2 file</div>
+        </div>
+        <div class="editor mono">
+          <div class="banner">⚠ <span><b>fees.mjs</b> modificato su disco dall'agente <i>Script</i>. Il tuo buffer ha modifiche non salvate.</span><span class="act"><button class="btn">Confronta</button><button class="btn">Ricarica</button><button class="btn ghost">Mantieni il mio</button></span></div>
+          <div class="ln"><span>12</span><span><span class="kw">export function</span> feeFor(vbytes, rate) {</span></div>
+          <div class="ln"><span>13</span><span>  <span class="cm">// sat/vB → sats, never fractional</span></span></div>
+          <div class="ln del"><span>14</span><span>  <span class="kw">return</span> vbytes * rate;</span></div>
+          <div class="ln add"><span>14</span><span>  <span class="kw">return</span> Math.ceil(vbytes * rate);</span></div>
+          <div class="ln"><span>15</span><span>}</span></div>
+          <div class="ln"><span>16</span><span></span></div>
+          <div class="ln"><span>17</span><span><span class="kw">export function</span> clampRate(rate, { min = <span class="str">1</span>, max = <span class="str">1000</span> } = {}) {</span></div>
+          <div class="ln"><span>18</span><span>  <span class="kw">if</span> (!Number.isFinite(rate)) <span class="kw">throw new</span> Error(<span class="str">"invalid fee rate"</span>);</span></div>
+          <div class="ln"><span>19</span><span>  <span class="kw">return</span> Math.min(max, Math.max(min, rate));</span></div>
+          <div class="ln"><span>20</span><span>}</span></div>
+        </div>
+        <div class="bottom">
+          <div class="btabs"><span class="btab on">Terminale · tuo</span><span class="btab">Agente · Script ●</span><span class="btab">Problemi</span></div>
+<div class="term mono"><span class="p">edi@host</span> ~/wallet-tools (fix/fee-rounding) $ git status --short
+ M src/fees.mjs
+ M tests/fees.test.mjs
+<span class="p">edi@host</span> ~/wallet-tools (fix/fee-rounding) $ █</div>
+        </div>
+      </main>
+      <aside class="chat">
+        <div class="sats">
+          <div class="sat"><img src="../assets/sats/node/avatar-96.png" alt="">Node<div class="st">riposo</div></div>
+          <div class="sat active"><img src="../assets/sats/script/avatar-96.png" alt="">Script<div class="st">attende ✋</div></div>
+          <div class="sat"><img src="../assets/sats/hash/avatar-96.png" alt="">Hash<div class="st">riposo</div></div>
+          <div class="sat"><img src="../assets/sats/merkle/avatar-96.png" alt="">Merkle<div class="st">riposo</div></div>
+        </div>
+        <div class="msgs">
+          <div class="msg user">Il fee estimator arrotonda per difetto, sistemalo e fai girare i test.</div>
+          <div class="msg"><div class="who">Bitcode · ollama/qwen3-coder · locale</div>Delego a Script la correzione; poi i test.</div>
+          <div class="tool mono">✓ read_file · src/fees.mjs · 12 ms<br>✓ edit_file · src/fees.mjs · auto (policy v7)</div>
+          <div class="approval" role="group" aria-label="Richiesta di approvazione">
+            <h4>✋ Script chiede di eseguire un comando</h4>
+            <div class="cmd mono">npm test -- --test-name-pattern=fee</div>
+            <dl class="kv mono">
+              <dt>progetto</dt><dd>wallet-tools</dd>
+              <dt>sessione</dt><dd>fix fee estimator</dd>
+              <dt>agente</dt><dd>Script · ollama/qwen3-coder</dd>
+              <dt>sandbox</dt><dd>bwrap · rete negata</dd>
+              <dt>motivo</dt><dd>argomenti non coperti dalla policy v7</dd>
+              <dt>id</dt><dd>apr_7k2m9q · scade 14:52</dd>
+            </dl>
+            <div class="row"><button class="btn primary">Approva una volta</button><button class="btn">Nega</button><button class="btn ghost">Aggiungi alla policy…</button></div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="row"><span class="chip">@src/fees.mjs</span><span class="chip">Assistita ▾</span><span class="chip">ollama/qwen3-coder · locale ▾</span></div>
+          <div class="box mono">Scrivi un messaggio, @ per i file, /approve apr_7k2m9q…</div>
+          <div class="row"><button class="btn">Annulla run</button><span class="spacer" style="flex:1"></span><button class="btn primary">Invia</button></div>
+        </div>
+      </aside>
+    </div>
+    <div class="status"><span>● 2 run attivi · 1 in coda</span><span>worker 2/3</span><span>token sessione 41.2k · costo n/d</span><span style="margin-left:auto">IT · tema chiaro</span></div>
+  </div>
+</section>
+
+<!-- ============ 2 APPROVALS ============ -->
+<section class="screen" id="approve">
+  <p class="caption">Dettaglio approvazione (§5). Mostra l'azione concreta, il digest e la scadenza. Solo «una volta»: nessun «approva tutto». Per la finanza la revisione dei campi precede la firma; in produzione il pulsante non esiste perché il backend non espone l'operazione (§13).</p>
+  <div class="modal-wrap">
+    <div class="modal">
+      <div class="row"><span class="chip warn">Patch · 2 file</span><span class="chip">Manuale</span><span class="muted mono" style="margin-left:auto">apr_c81f0d</span></div>
+      <h2>Script vuole modificare 2 file</h2>
+      <p class="muted">wallet-tools · refactor psbt · Script · openai/gpt (cloud)</p>
+      <div class="diff mono">
+        <div class="ln" style="background:var(--hairlineSoft)"><span></span><span>src/psbt.mjs  · base 3f9a…e1 → 77c0…4b</span></div>
+        <div class="ln del"><span>41</span><span>  const fee = inputs - outputs;</span></div>
+        <div class="ln add"><span>41</span><span>  const fee = sum(inputs) - sum(outputs);</span></div>
+        <div class="ln add"><span>42</span><span>  if (fee &lt; 0n) throw new Error("negative fee");</span></div>
+        <div class="ln" style="background:var(--hairlineSoft)"><span></span><span>tests/psbt.test.mjs · nuovo file · +38</span></div>
+      </div>
+      <dl class="kv mono"><dt>digest</dt><dd>sha256 9be4…0a17</dd><dt>scadenza</dt><dd>15 min (14:58)</dd><dt>effetto</dt><dd>versione base verificata al clic; se il file cambia la richiesta decade</dd></dl>
+      <div class="row"><button class="btn primary">Applica una volta</button><button class="btn">Nega</button><button class="btn ghost">Apri nel diff</button></div>
+    </div>
+    <div class="modal">
+      <div class="row"><span class="chip warn">Pagamento</span><span class="chip ok">signet · verificato</span><span class="muted mono" style="margin-left:auto">prop 5e21…c9</span></div>
+      <h2>Inviare 25 000 sats su Bitcoin signet</h2>
+      <p class="muted">Connessione «bitcoind-signet» · prova: genesi 00000008819873e9… · policy finanziaria v3</p>
+      <table class="mono">
+        <tr><th>Destinatario</th><td>tb1q9h7…x4kz (P2WPKH)</td></tr>
+        <tr><th>Importo</th><td>25 000 sats</td></tr>
+        <tr><th>Commissione</th><td>282 sats · 2 sat/vB (limite 1 000)</td></tr>
+        <tr><th>Input</th><td>a3f1…:0 · 61 200 sats</td></tr>
+        <tr><th>Riserva dopo</th><td>35 918 sats (minimo 10 000)</td></tr>
+        <tr><th>Limite giornaliero</th><td>25 282 / 100 000 sats</td></tr>
+        <tr><th>Scadenza</th><td>14:55 · poi la proposta è respinta</td></tr>
+      </table>
+      <p class="muted">L'agente ha solo preparato la PSBT; la firma avviene nel servizio finanziario dopo la tua conferma. Esito ambiguo → «da riconciliare», nessun nuovo invio.</p>
+      <div class="row"><button class="btn orange">Firma e invia</button><button class="btn">Respingi</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 BITCOIN ============ -->
+<section class="screen" id="bitcoin">
+  <p class="caption">Dashboard per protocollo e ambiente (piano §2.3, contratti §13). Stato reale o «non disponibile», mai zero inventati. Produzione in sola consultazione; le operazioni attive compaiono solo su connessioni verificate di test.</p>
+  <div class="win">
+    <div class="titlebar"><span class="dots"><i></i><i></i><i></i></span><span class="t">bitcode</span><span class="s">· Bitcoin</span></div>
+    <div class="app" style="grid-template-columns:56px 220px 1fr">
+      <nav class="rail"><button>⌨</button><button class="on">₿</button><button>≡</button><span class="grow"></span><button>⚙</button></nav>
+      <aside class="side">
+        <h3>Protocolli</h3>
+        <div class="item on">Bitcoin<span class="m">2</span></div>
+        <div class="item">Lightning<span class="m">1</span></div>
+        <div class="item">Cashu<span class="m">1</span></div>
+        <div class="item">Liquid<span class="m">0</span></div>
+        <div class="item">Taproot Assets<span class="m">1</span></div>
+        <h3>Connessioni</h3>
+        <div class="item on"><span class="dot" style="background:var(--success)"></span>bitcoind-signet</div>
+        <div class="item"><span class="dot" style="background:var(--muted)"></span>esplora-mainnet</div>
+        <div style="padding:8px"><button class="btn" style="width:100%">+ Aggiungi connessione</button></div>
+      </aside>
+      <div class="pane grid" style="grid-template-columns:1fr 1fr;align-content:start">
+        <div class="card">
+          <h3>bitcoind-signet <span class="chip ok">test · verificato</span></h3>
+          <div class="muted">Bitcoin Core 28 · RPC locale · verificato 14:31</div>
+          <div class="big" style="margin-top:10px">61 200 sats</div>
+          <div class="muted">confermati · 0 in attesa · 1 UTXO</div>
+          <div class="row" style="margin-top:12px"><button class="btn">Ricevi</button><button class="btn">Prepara invio</button><button class="btn ghost">Riconcilia</button></div>
+        </div>
+        <div class="card">
+          <h3>esplora-mainnet <span class="chip ro">produzione · sola lettura</span></h3>
+          <div class="muted">Esplora · watch-only descriptor · verificato 14:30</div>
+          <div class="big" style="margin-top:10px">1 204 330 sats</div>
+          <div class="muted">osservati da 3 indirizzi</div>
+          <div class="row" style="margin-top:12px"><span class="chip ro">Firma, invio e RPC mutanti non disponibili in produzione</span></div>
+        </div>
+        <div class="card" style="grid-column:1/-1">
+          <h3>Proposte e operazioni · signet</h3>
+          <table>
+            <tr><th>Stato</th><th>Operazione</th><th>Importo</th><th>Commissione</th><th>Origine</th><th>Aggiornata</th></tr>
+            <tr><td><span class="chip warn">da approvare</span></td><td class="mono">invio → tb1q9h7…x4kz</td><td>25 000</td><td>282</td><td>Bitcode · sessione «faucet test»</td><td>14:40</td></tr>
+            <tr><td><span class="chip ok">confermata</span></td><td class="mono">invio → tb1qz…8m2</td><td>10 000</td><td>141</td><td>tu</td><td>ieri</td></tr>
+            <tr><td><span class="chip err">da riconciliare</span></td><td class="mono">invio → tb1q…a9</td><td>5 000</td><td>200</td><td>Bitcode</td><td>ieri · esito ambiguo</td></tr>
+          </table>
+        </div>
+        <div class="card"><h3>Lightning · lnd-regtest <span class="chip ok">test</span></h3><div class="muted">2 canali · 480 000 sats locali</div></div>
+        <div class="card"><h3>Liquid <span class="chip">nessuna connessione</span></h3><div class="muted">Dati non disponibili. Aggiungi elementsd o Esplora Liquid testnet.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ACTIVITY ============ -->
+<section class="screen" id="activity">
+  <p class="caption">Attività globale fra progetti (piano §2.5, contratti §9). Ogni riga identifica progetto, sessione, agente e modello. Dal tray si riapre, si vedono le richieste e si annulla, senza approvare alla cieca.</p>
+  <div class="grid" style="grid-template-columns:1fr 300px;align-items:start">
+    <div class="card">
+      <h3>Attività <span class="chip">worker 2/3</span><span class="chip">coda 1</span></h3>
+      <table>
+        <tr><th>Stato</th><th>Progetto · sessione</th><th>Agente · modello</th><th>Modalità</th><th>Durata</th><th></th></tr>
+        <tr><td><span class="chip warn">attende approvazione</span></td><td>wallet-tools · fix fee estimator</td><td class="mono">Script · ollama/qwen3-coder</td><td>Assistita</td><td>3m 12s</td><td><button class="btn">Apri</button></td></tr>
+        <tr><td><span class="chip">in esecuzione</span></td><td>lnd-dashboard · grafico canali</td><td class="mono">Bitcode · openai/gpt</td><td>Senza supervisione</td><td>11m 40s</td><td><button class="btn">Annulla</button></td></tr>
+        <tr><td><span class="chip">in coda #1</span></td><td>bitcode · docs D1</td><td class="mono">Node · anthropic/claude</td><td>Manuale</td><td>—</td><td><button class="btn">Rimuovi</button></td></tr>
+        <tr><td><span class="chip err">interrotto</span></td><td>wallet-tools · refactor psbt</td><td class="mono">Merkle · ollama/qwen3-coder</td><td>Manuale</td><td>crash worker</td><td><button class="btn">Riavvia…</button></td></tr>
+        <tr><td><span class="chip ok">completato</span></td><td>bitcode · lint</td><td class="mono">Script · ollama/qwen3-coder</td><td>Assistita</td><td>48s</td><td></td></tr>
+      </table>
+      <div class="legend"><span>«Interrotto» non riparte da solo.</span><span>«Annulla» ferma il lavoro residuo, non annulla modifiche o pagamenti già avvenuti.</span></div>
+    </div>
+    <div>
+      <p class="muted" style="margin:0 0 6px">Menu area di notifica</p>
+      <div class="tray">
+        <div><b>Bitcode</b> · 2 attivi · 1 in coda</div><hr>
+        <div class="h">Richieste in attesa</div>
+        <div>✋ Script · npm test… · wallet-tools →</div><hr>
+        <div>Apri Bitcode</div>
+        <div>Attività…</div>
+        <div>Annulla un'attività…</div><hr>
+        <div>Esci (chiede conferma se ci sono run attivi)</div>
+      </div>
+      <p class="muted">Notifica: «Script attende un'approvazione in wallet-tools». Nessun comando, argomento o importo nel testo.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ONBOARDING ============ -->
+<section class="screen" id="onboarding">
+  <p class="caption">Avvio guidato (piano §5): termina aprendo un progetto con un provider disponibile; nodi e wallet sono facoltativi e separati. Nessun account Bitcode, nessuna telemetria.</p>
+  <div class="card" style="max-width:760px">
+    <div class="steps"><span class="done">✓ Lingua e tema</span><span class="on">2 · Modello</span><span>3 · Progetto</span><span>4 · Connessioni (facoltative)</span><span>5 · Diagnosi</span></div>
+    <h3>Dove deve girare il modello?</h3>
+    <div class="choice">
+      <div class="opt on"><b>Locale</b><p class="muted">Rilevati: Ollama su 127.0.0.1:11434 · qwen3-coder, llama3.3. Il codice resta su questa macchina.</p><label class="row"><input type="checkbox" checked> Solo locale: rifiuta Sats e fallback cloud</label></div>
+      <div class="opt"><b>Cloud</b><p class="muted">Serve la credenziale del provider scelto. Il contesto del progetto viene inviato al provider.</p></div>
+    </div>
+    <div class="field"><label>Modello predefinito</label><div class="input mono">ollama/qwen3-coder ▾</div></div>
+    <div class="banner" style="margin:10px 0">🔐 Secret store di sistema: <b>gnome-libsecret</b> disponibile. Se fosse «basic_text», le chiavi non verrebbero salvate.</div>
+    <div class="row"><button class="btn">Indietro</button><span style="flex:1"></span><button class="btn primary">Continua</button></div>
+  </div>
+</section>
+
+<!-- ============ 6 SETTINGS ============ -->
+<section class="screen" id="settings">
+  <p class="caption">Impostazioni (piano §2.6, contratti §6 e §8). Le modifiche valgono per i nuovi run; quelli in corso mostrano la configurazione con cui sono partiti.</p>
+  <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+    <div class="card">
+      <h3>Modelli dei Sats · sessione «fix fee estimator»</h3>
+      <table>
+        <tr><th>Agente</th><th>Modello effettivo</th><th>Località</th></tr>
+        <tr><td>Bitcode</td><td class="mono">ollama/qwen3-coder</td><td>locale</td></tr>
+        <tr><td>Node</td><td class="mono">eredita</td><td>locale</td></tr>
+        <tr><td>Script</td><td class="mono">eredita</td><td>locale</td></tr>
+        <tr><td>Hash</td><td class="mono">openai/gpt ▾</td><td><span class="chip warn">cloud · richiede consenso egress</span></td></tr>
+        <tr><td>Merkle</td><td class="mono">eredita</td><td>locale</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Policy progetto · wallet-tools <span class="chip">v7</span></h3>
+      <dl class="kv mono" style="grid-template-columns:120px 1fr">
+        <dt>scrivibili</dt><dd>src/**, tests/**</dd>
+        <dt>comandi</dt><dd>npm test · node --test …</dd>
+        <dt>rete</dt><dd>negata in sandbox</dd>
+        <dt>limiti</dt><dd>60 passi · 200 tool · 60 min</dd>
+        <dt>sandbox</dt><dd>bwrap 0.9 disponibile</dd>
+        <dt>scadenza</dt><dd>nessuna</dd>
+      </dl>
+      <div class="row"><button class="btn">Proponi modifica…</button><span class="muted">Ogni modifica crea una richiesta da approvare.</span></div>
+    </div>
+    <div class="card">
+      <h3>Esecuzioni simultanee</h3>
+      <dl class="kv mono" style="grid-template-columns:200px 1fr"><dt>worker attivi</dt><dd>3</dd><dt>per provider cloud</dt><dd>2</dd><dt>per modello locale</dt><dd>1</dd><dt>coda massima</dt><dd>20</dd></dl>
+    </div>
+    <div class="card">
+      <h3>Dati e privacy</h3>
+      <dl class="kv mono" style="grid-template-columns:200px 1fr"><dt>telemetria</dt><dd>disattivata</dd><dt>cronologia</dt><dd>locale · conserva 90 giorni</dd><dt>esporta</dt><dd>sessioni (senza wallet/token)</dd><dt>avvio al login</dt><dd>no</dd></dl>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll('[role="tab"]');
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(x => x.setAttribute('aria-selected', String(x === t)));
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === t.dataset.s));
+}));
+const btn = document.getElementById('theme');
+btn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  btn.textContent = dark ? 'Tema chiaro' : 'Tema scuro';
+});
+</script>
+</body>
+</html>
