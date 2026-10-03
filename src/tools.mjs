@@ -15,8 +15,7 @@ import { liquidTools } from "./liquid/tools.mjs";
 import { lightningTools, bolt11Tool } from "./lightning/tools.mjs";
 import { cashuTools } from "./cashu/tools.mjs";
 import { coinjoinTools } from "./coinjoin/tools.mjs";
-import { runAgent } from "./agent.mjs";
-import { findAgent } from "./agents.mjs";
+import { runSubagent } from "./subagents.mjs";
 import { projectRoot, resolveWorkspacePath, relativeProjectPath } from "./project.mjs";
 
 const MAX_RESULT_CHARS = 100_000;
@@ -445,23 +444,23 @@ function subagentTool({ modelRef, agents, system, realTools }) {
     name: "subagent",
     mutating: true,
     description:
-      "Delegate a focused sub-task to a fresh nested agent with its own context window; returns only its final answer, not the full transcript. Optionally pick a persona with `agent` (a name from ~/.bitcode/agents/*.md). The subagent inherits approvals, cancellation and budgets; it cannot delegate recursively.",
+      "Delegate one focused task; returns only the final answer. Personas: " + agents.map(a => `${a.name}: ${a.description}`).join("; ") + ". Named Sats have fixed tool allowlists. Every internal mutation uses the parent approval gate. Cancellation and budgets are shared; recursive delegation is unavailable.",
     parameters: {
       type: "object",
       properties: {
-        agent: { type: "string", description: "Name of a persona loaded from ~/.bitcode/agents/*.md (optional)." },
+        agent: { type: "string", description: "Bundled or user persona name (optional). Available: " + agents.map(a => a.name).join(", ") },
         prompt: { type: "string", description: "The sub-task to delegate." },
       },
       required: ["prompt"],
     },
-    run: async ({ agent, prompt }, context = {}) => {
-      const persona = agent ? findAgent(agents, agent) : null;
-      if (agent && !persona) {
-        return `ERROR: unknown agent "${agent}". Known: ${agents.map((a) => a.name).join(", ") || "(none)"}`;
-      }
-      const nestedSystem = persona ? `${system}\n\n${persona.body}` : system;
-      const messages = [{ role: "user", content: prompt }];
-      const text = await runAgent({ target: modelRef.current, messages, system: nestedSystem, tools: realTools.filter(t => t.name !== "subagent"), ...context, hooks: { ...context.hooks, onCheckpoint: undefined } });
+    serial: true,
+    run: async ({ agent, prompt }, execution = {}) => {
+      const { context: parentContext, limits, fallbacks, signal, state, readOnly, callModelImpl } = execution;
+      const approve = execution.approve ?? execution.hooks?.approve;
+      const text = await runSubagent({ agent, prompt, agents, target: modelRef.current, system, tools: realTools, parentContext, approve, limits, fallbacks, signal, state, readOnly, callModelImpl,
+        // Autonomous child output stays in the child context. Mutation tracking
+        // and user questions still belong to the parent interaction.
+        hooks: { onMutation: execution.hooks?.onMutation, askUser: execution.hooks?.askUser, onFallback: execution.hooks?.onFallback, onUsage: execution.hooks?.onUsage } });
       return clip(text || "[subagent returned no text]");
     },
   };

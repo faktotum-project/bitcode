@@ -3,6 +3,7 @@
 
 import { callModel, isRetryable } from "./providers.mjs";
 import { validateArgs, formatResult, isMutating, throwIfAborted, wait, withToolContext } from "./runtime.mjs";
+import { createRunContext, observe, toolSummary } from "./runtime/events.mjs";
 
 const MAX_STEPS = 50;
 
@@ -68,85 +69,132 @@ export function agentLimits(config = {}) {
   }));
 }
 
-export async function runAgent({ target, messages, system, tools, hooks = {}, limits = DEFAULT_LIMITS, fallbacks = [], signal, state = { totalToolCalls: 0 }, readOnly = false }) {
+export async function runAgent({ target, messages, system, tools, hooks = {}, limits = DEFAULT_LIMITS, fallbacks = [], signal, state = { totalToolCalls: 0 }, readOnly = false, context, callModelImpl = callModel }) {
   limits = { ...DEFAULT_LIMITS, ...limits };
-  const available = readOnly ? tools.filter(t => !isMutating(t)) : tools;
+  signal ??= context?.signal;
+  context = createRunContext({ ...context, signal });
+  // Read-only investigations cannot delegate or create invoices, even when a
+  // legacy adapter labels such operations as non-mutating.
+  const available = readOnly ? tools.filter(t => !isMutating(t) && !["subagent", "ln_invoice_create"].includes(t.name)) : tools;
   const schemas = available.map(t => ({ name: t.name, description: t.description || t.name, parameters: t.parameters || { type: "object", properties: {} } }));
-  const finish = async text => {
-    messages.push({ role: "assistant", content: text, toolCalls: [] });
-    hooks.onDelta?.(text);
-    hooks.onAssistantEnd?.(text);
-    await hooks.onCheckpoint?.(messages);
-    await hooks.onTurnEnd?.();
-    return text;
-  };
-  for (let step = 0; step < limits.maxSteps; step++) {
-    throwIfAborted(signal);
-    const response = await callWithFallback([target, ...fallbacks], { system, messages, tools: schemas, onDelta: hooks.onDelta, signal }, hooks);
-    const { text, toolCalls = [], usage, providerState } = response;
-    if (toolCalls.some(tc => !tc.id || !tc.name) || new Set(toolCalls.map(tc => tc.id)).size !== toolCalls.length) throw new Error("model returned missing or duplicate tool call IDs");
-    messages.push({ role: "assistant", content: text || "", toolCalls, ...(providerState ? { providerState } : {}), ...(usage ? { usage } : {}) });
-    hooks.onAssistantEnd?.(text);
-    if (usage) hooks.onUsage?.(usage);
-    if (!toolCalls.length) { await hooks.onCheckpoint?.(messages); await hooks.onTurnEnd?.(); return text; }
-
-    const results = new Array(toolCalls.length);
-    const context = { signal, hooks, limits, state, readOnly, target, fallbacks };
-    const execute = async (tc, i) => {
-      const tool = available.find(t => t.name === tc.name);
-      hooks.onToolStart?.(tc);
-      let result;
-      try {
-        throwIfAborted(signal);
-        if (i >= limits.maxToolCallsPerTurn || state.totalToolCalls >= limits.maxTotalToolCalls) throw new Error("tool budget exceeded");
-        // Keep financial requests fail-closed even when a coding profile does
-        // not expose the wallet tool at all. This avoids turning an accidental
-        // payment request into a capability-discovery oracle.
-        if (!tool && /^(wallet_send|btc_broadcast|bitcoin_rpc|ln_invoice_pay|taproot_asset_send|cashu_(melt|send|pay_request)|cj_wallet_drain)$/.test(tc.name)) throw new Error("tool call denied by the user");
-        if (!tool) throw new Error(`unknown or unavailable tool "${tc.name}"`);
-        validateArgs(tool, tc.args ?? {});
-        state.totalToolCalls++;
-        if (isMutating(tool) && hooks.approve && !await hooks.approve(tc, tool)) throw new Error("tool call denied by the user");
-        if (isMutating(tool)) await hooks.onMutation?.(tc, tool);
-        throwIfAborted(signal);
-        result = await runToolWithRetry(tool, tc, limits, context);
-      } catch (err) {
-        result = `ERROR: ${signal?.aborted ? "cancelled; inspect state before retrying" : err.message}`;
-      }
-      results[i] = formatResult(result, limits.maxResultChars);
-      await hooks.onToolEnd?.(tc, results[i]);
+  const started = performance.now();
+  let outcome = "error";
+  context.bus?.enter(context);
+  observe(context, "run.started", { model: target.spec || target.model });
+  try {
+    const finish = async text => {
+      messages.push({ role: "assistant", content: text, toolCalls: [] });
+      hooks.onDelta?.(text);
+      hooks.onAssistantEnd?.(text);
+      await hooks.onCheckpoint?.(messages);
+      await hooks.onTurnEnd?.();
+      return text;
     };
-    // Only explicitly read-only tools may overlap. Approval is requested at
-    // execution time, after preceding mutations and their results are known.
-    let reads = [];
-    const flush = async () => { await Promise.all(reads); reads = []; };
-    for (let i = 0; i < toolCalls.length; i++) {
-      const tc = toolCalls[i];
-      const tool = available.find(t => t.name === tc.name);
-      if (isMutating(tool) || tool?.serial) { await flush(); await execute(tc, i); }
-      else { reads.push(execute(tc, i)); if (reads.length >= limits.maxParallelTools) await flush(); }
+    for (let step = 0; step < limits.maxSteps; step++) {
+      throwIfAborted(signal);
+      observe(context, "model.started");
+      const response = await callWithFallback([target, ...fallbacks], { system, messages, tools: schemas, onDelta: hooks.onDelta, signal }, hooks, callModelImpl);
+      throwIfAborted(signal);
+      observe(context, "model.finished");
+      const { text, toolCalls = [], usage, providerState } = response;
+      if (toolCalls.some(tc => !tc.id || !tc.name) || new Set(toolCalls.map(tc => tc.id)).size !== toolCalls.length) throw new Error("model returned missing or duplicate tool call IDs");
+      messages.push({ role: "assistant", content: text || "", toolCalls, ...(providerState ? { providerState } : {}), ...(usage ? { usage } : {}) });
+      hooks.onAssistantEnd?.(text);
+      if (usage) hooks.onUsage?.(usage);
+      if (!toolCalls.length) { await hooks.onCheckpoint?.(messages); await hooks.onTurnEnd?.(); outcome = "ok"; return text; }
+
+      const results = new Array(toolCalls.length);
+      const execution = { signal, hooks, limits, state, readOnly, target, fallbacks, context, approve: hooks.approve, callModelImpl };
+      const execute = async (tc, i) => {
+        const tool = available.find(t => t.name === tc.name);
+        const publicTool = { ...toolSummary(tc, context.cwd), toolCallId: tc.id };
+        const toolStarted = performance.now();
+        let toolOutcome = tool ? "error" : "unknown_tool";
+        observe(context, "tool.requested", publicTool);
+        hooks.onToolStart?.(tc);
+        let result;
+        try {
+          throwIfAborted(signal);
+          if (i >= limits.maxToolCallsPerTurn || state.totalToolCalls >= limits.maxTotalToolCalls) throw new Error("tool budget exceeded");
+          // Keep financial requests fail-closed even when a coding profile does
+          // not expose the wallet tool at all. This avoids turning an accidental
+          // payment request into a capability-discovery oracle.
+          if (!tool && /^(wallet_send|btc_broadcast|bitcoin_rpc|ln_invoice_pay|taproot_asset_send|cashu_(melt|send|pay_request)|cj_wallet_drain)$/.test(tc.name)) throw new Error("tool call denied by the user");
+          if (!tool) throw new Error(`unknown or unavailable tool "${tc.name}"`);
+          validateArgs(tool, tc.args ?? {});
+          state.totalToolCalls++;
+          if (isMutating(tool) && hooks.approve) {
+            observe(context, "approval.requested", publicTool);
+            let approved = false;
+            try { approved = await awaitApproval(() => hooks.approve(tc, tool, { signal }), signal) === true; }
+            catch (err) { if (signal?.aborted) throw err; }
+            observe(context, "approval.resolved", { ...publicTool, outcome: approved ? "approved" : "denied" });
+            if (!approved) { toolOutcome = "denied"; throw new Error("tool call denied by the user"); }
+          }
+          if (isMutating(tool)) await hooks.onMutation?.(tc, tool);
+          throwIfAborted(signal);
+          observe(context, "tool.started", publicTool);
+          result = await runToolWithRetry(tool, tc, limits, execution);
+          toolOutcome = typeof result === "string" && result.startsWith("ERROR") ? "error" : "ok";
+        } catch (err) {
+          if (signal?.aborted) toolOutcome = "cancelled";
+          result = `ERROR: ${signal?.aborted ? "cancelled; inspect state before retrying" : err.message}`;
+        }
+        results[i] = formatResult(result, limits.maxResultChars);
+        observe(context, "tool.finished", { ...publicTool, outcome: toolOutcome, durationMs: performance.now() - toolStarted });
+        await hooks.onToolEnd?.(tc, results[i], { outcome: toolOutcome, text: results[i] });
+      };
+      // Only explicitly read-only tools may overlap. Approval is requested at
+      // execution time, after preceding mutations and their results are known.
+      let reads = [];
+      const flush = async () => { await Promise.all(reads); reads = []; };
+      for (let i = 0; i < toolCalls.length; i++) {
+        const tc = toolCalls[i];
+        const tool = available.find(t => t.name === tc.name);
+        if (isMutating(tool) || tool?.serial) { await flush(); await execute(tc, i); }
+        else { reads.push(execute(tc, i)); if (reads.length >= limits.maxParallelTools) await flush(); }
+      }
+      await flush();
+      toolCalls.forEach((tc, i) => messages.push({ role: "tool", toolCallId: tc.id, name: tc.name, content: results[i] }));
+      await hooks.onCheckpoint?.(messages);
+      throwIfAborted(signal);
+      if (state.totalToolCalls >= limits.maxTotalToolCalls) { outcome = "max_steps"; return await finish(`[stopped: reached tool budget of ${limits.maxTotalToolCalls}; task may be incomplete]`); }
     }
-    await flush();
-    toolCalls.forEach((tc, i) => messages.push({ role: "tool", toolCallId: tc.id, name: tc.name, content: results[i] }));
-    await hooks.onCheckpoint?.(messages);
-    throwIfAborted(signal);
-    if (state.totalToolCalls >= limits.maxTotalToolCalls) return finish(`[stopped: reached tool budget of ${limits.maxTotalToolCalls}; task may be incomplete]`);
+    outcome = "max_steps";
+    return await finish(`[stopped: reached ${limits.maxSteps} steps without a final answer]`);
+  } catch (err) {
+    outcome = "error";
+    throw err;
+  } finally {
+    observe(context, "run.finished", { outcome: signal?.aborted ? "cancelled" : outcome, durationMs: performance.now() - started });
+    context.bus?.leave(context);
   }
-  return finish(`[stopped: reached ${limits.maxSteps} steps without a final answer]`);
 }
 
-async function callWithFallback(targets, req, hooks) {
+async function callWithFallback(targets, req, hooks, callModelImpl) {
   for (let i = 0; i < targets.length; i++) {
     const target = targets[i];
     let streamed = false;
     try {
-      return await callModel({ provider: target.provider, model: target.model, apiKey: target.apiKey, ...req,
+      return await callModelImpl({ provider: target.provider, model: target.model, apiKey: target.apiKey, ...req,
         onDelta: piece => { streamed = true; req.onDelta?.(piece); } });
     } catch (err) {
       if (req.signal?.aborted || streamed || !isRetryable(err) || i === targets.length - 1) throw err;
       hooks.onFallback?.(target, targets[i + 1], err);
     }
   }
+}
+
+async function awaitApproval(approve, signal) {
+  throwIfAborted(signal);
+  if (!signal) return approve();
+  let abort;
+  const cancelled = new Promise((_, reject) => {
+    abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+  });
+  try { return await Promise.race([Promise.resolve().then(approve), cancelled]); }
+  finally { signal.removeEventListener("abort", abort); }
 }
 
 async function runToolWithRetry(tool, tc, limits, context) {

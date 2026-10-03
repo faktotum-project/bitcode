@@ -1,0 +1,129 @@
+{
+  "sourceCellPixels": 512,
+  "masterPixels": 1024,
+  "note": "Non-idle masters are normalised/resampled from 512px cells; retain source atlases.",
+  "runtimeWebpBytes": 977926,
+  "initialIdleBytes": 165650,
+  "files": [
+    {
+      "agent": "node",
+      "pose": "idle",
+      "bytes": 36550
+    },
+    {
+      "agent": "node",
+      "pose": "focus",
+      "bytes": 38708
+    },
+    {
+      "agent": "node",
+      "pose": "working",
+      "bytes": 35994
+    },
+    {
+      "agent": "node",
+      "pose": "ask",
+      "bytes": 40926
+    },
+    {
+      "agent": "node",
+      "pose": "happy",
+      "bytes": 41306
+    },
+    {
+      "agent": "node",
+      "pose": "concerned",
+      "bytes": 37640
+    },
+    {
+      "agent": "script",
+      "pose": "idle",
+      "bytes": 44992
+    },
+    {
+      "agent": "script",
+      "pose": "focus",
+      "bytes": 44022
+    },
+    {
+      "agent": "script",
+      "pose": "working",
+      "bytes": 44334
+    },
+    {
+      "agent": "script",
+      "pose": "ask",
+      "bytes": 45666
+    },
+    {
+      "agent": "script",
+      "pose": "happy",
+      "bytes": 46506
+    },
+    {
+      "agent": "script",
+      "pose": "concerned",
+      "bytes": 41492
+    },
+    {
+      "agent": "hash",
+      "pose": "idle",
+      "bytes": 48140
+    },
+    {
+      "agent": "hash",
+      "pose": "focus",
+      "bytes": 48332
+    },
+    {
+      "agent": "hash",
+      "pose": "working",
+      "bytes": 47468
+    },
+    {
+      "agent": "hash",
+      "pose": "ask",
+      "bytes": 42426
+    },
+    {
+      "agent": "hash",
+      "pose": "happy",
+      "bytes": 37484
+    },
+    {
+      "agent": "hash",
+      "pose": "concerned",
+      "bytes": 37876
+    },
+    {
+      "agent": "merkle",
+      "pose": "idle",
+      "bytes": 35968
+    },
+    {
+      "agent": "merkle",
+      "pose": "focus",
+      "bytes": 35830
+    },
+    {
+      "agent": "merkle",
+      "pose": "working",
+      "bytes": 35420
+    },
+    {
+      "agent": "merkle",
+      "pose": "ask",
+      "bytes": 37816
+    },
+    {
+      "agent": "merkle",
+      "pose": "happy",
+      "bytes": 37382
+    },
+    {
+      "agent": "merkle",
+      "pose": "concerned",
+      "bytes": 35648
+    }
+  ]
+}

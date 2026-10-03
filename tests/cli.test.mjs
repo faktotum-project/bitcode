@@ -80,6 +80,25 @@ test("CLI one-shot refuses financial tool execution and returns rejection to the
   assert.match(requests[1].input.find(x => x.type === "function_call_output").output, /denied/);
 });
 
+test("finance mode uses only the local proposal catalog and saves no transcript", async t => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "bc-finance-cli-"));
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    let body = ""; for await (const chunk of req) body += chunk;
+    requests.push(JSON.parse(body));
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.end('data: {"choices":[{"delta":{"content":"Prepare only."},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/v1`;
+  writeFileSync(path.join(home, "config.json"), JSON.stringify({ model: "local/m", providers: { local: { api: "openai", baseURL: url } } }));
+  const { stdout } = await run(process.execPath, [entry, "--finance", "--json", "-p", "Can I pay?"], { env: { ...process.env, BITCODE_HOME: home, BITCODE_MODEL: "" }, timeout: 10000 });
+  assert.equal(JSON.parse(stdout).answer, "Prepare only.");
+  assert.deepEqual(requests[0].tools.map(tool => tool.function.name), ["finance_status", "finance_prepare"]);
+  assert.equal(existsSync(path.join(home, "sessions")), false);
+});
+
 test("project instructions and skills load without executing skill contents", () => {
   const cwd = mkdtempSync(path.join(os.tmpdir(), "bc-context-"));
   mkdirSync(path.join(cwd, ".bitcode", "skills", "review"), { recursive: true });

@@ -21,16 +21,22 @@ import { closeMcpConnections, mcpTools } from "./mcp.mjs";
 import { closeWavelength, wavelengthTools } from "./wavelength/tools.mjs";
 import { emit } from "./hooks.mjs";
 import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
+import { runSubagent } from "./subagents.mjs";
+import { createEventBus, createRunContext } from "./runtime/events.mjs";
+import { startSatsServer } from "./sats/server.mjs";
 import { buildTools, registerTool } from "./tools.mjs";
 import { discoverProject, projectRoot, resolveProfile } from "./project.mjs";
 import { bubblewrapAvailable, mayAutoApprove, resolvePermissions } from "./permissions.mjs";
 import { TurnCheckpoint } from "./checkpoint.mjs";
 import { resolveNetwork } from "./bitcoin/network.mjs";
 import { wallet } from "./bitcoin/wallet.mjs";
+import { executeBitcoin, financeStatus, prepareBitcoin, reconcileBitcoin, recoverBitcoinOperation, setFinancePolicy } from "./finance/bitcoin.mjs";
+import { assertFinanceModel, financeAgentTools } from "./finance/agent.mjs";
+import { recoverFinanceLock } from "./finance/store.mjs";
 import { loadCommands, expandCommand } from "./commands.mjs";
 import { loadAgents, findAgent, agentsDir } from "./agents.mjs";
 import { expandMentions } from "./mentions.mjs";
-import { readLine, question } from "./tui.mjs";
+import { readLine, question, closeInput } from "./tui.mjs";
 import {
   saveSession,
   loadSession,
@@ -134,6 +140,14 @@ Usage:
   bitcode config                     print the config file path
   bitcode doctor                     print a diagnostics report
   bitcode wallet seed                reveal the wallet's mnemonic (human only)
+  bitcode finance status             show protected signet/testnet proposals
+  bitcode finance policy <payment> <daily> <fee> <reserve>  set limits in sats
+  bitcode finance prepare <address> <sats> [sat/vB]         prepare a proposal
+  bitcode finance execute <id>      review and approve one exact proposal
+  bitcode finance reconcile <id>    check transaction status
+  bitcode finance recover <id>      mark an interrupted execution for review
+  bitcode finance unlock            clear a lock left by a dead process
+  bitcode --finance -m <local/model> -p "..."  local proposal assistant
 
 Options:
   -m, --model <provider>/<model>     model to use (e.g. ollama/gpt-oss:20b,
@@ -149,6 +163,9 @@ Options:
       --json                         one-shot JSON result (answer, usage, events)
       --max-steps <n>                bound the number of model rounds
       --allow-payments               explicitly authorize financial tools in one-shot mode
+      --finance                      local, restricted proposal-only assistant
+      --sats                         local Sats observer (interactive only)
+      --no-session                   disable automatic transcript saving
       --yolo                         alias for --permission full-auto (payments still ask)
   -h, --help                         show this help
   -v, --version                      show version
@@ -170,8 +187,9 @@ Interactive slash commands:
   /login [provider]    choose a provider and save a masked API key
   /session <sub>       save [name] · load <id> · list · export [md|json]
   /subagent [name] [prompt]
-                       list personas (~/.bitcode/agents/*.md), or delegate
-                       a sub-task to one and print just its final answer
+                       list bundled Sats and user personas, or delegate
+                       (-- selects a generic agent); child mutations use the
+                       same approval mode as the parent
   /tools               list available tools
   /reset               clear conversation history
   /exit, /quit         leave
@@ -182,7 +200,7 @@ Config: ${configPath()}
 `;
 
 export function parseArgs(argv) {
-  const opts = { yolo: false, print: false, model: null, prompt: null, command: null, resume: null };
+  const opts = { yolo: false, print: false, sats: false, model: null, prompt: null, command: null, resume: null };
   const positionals = [];
   const value = (i, flag) => { const v = argv[i]; if (!v || v.startsWith("--")) throw new Error(`${flag} requires a value`); return v; };
   for (let i = 0; i < argv.length; i++) {
@@ -194,6 +212,9 @@ export function parseArgs(argv) {
     else if (a === "--json") opts.json = true;
     else if (a === "--read-only") opts.readOnly = true;
     else if (a === "--allow-payments") opts.allowPayments = true;
+    else if (a === "--finance") opts.finance = true;
+    else if (a === "--sats") opts.sats = true;
+    else if (a === "--no-session") opts.noSession = true;
     else if (a === "--cwd") opts.cwd = value(++i, a);
     else if (a === "--profile") opts.profile = value(++i, a);
     else if (a === "--permission") opts.permission = value(++i, a);
@@ -203,7 +224,7 @@ export function parseArgs(argv) {
     else if (a === "-m" || a === "--model") opts.model = value(++i, a);
     else if (a === "-p" || a === "--print") { opts.print = true; opts.prompt = value(++i, a); }
     else if (a.startsWith("-")) throw new Error(`unknown option: ${a}`);
-    else if (!opts.command && !opts.prompt && !positionals.length && ["models", "config", "doctor", "wallet", "tools", "commands", "skills", "mcp", "provider", "login", "session"].includes(a)) {
+    else if (!opts.command && !opts.prompt && !positionals.length && ["models", "config", "doctor", "wallet", "finance", "tools", "commands", "skills", "mcp", "provider", "login", "session"].includes(a)) {
       opts.command = a;
       if (a === "wallet") opts.walletSub = argv[++i];
     } else positionals.push(a);
@@ -212,6 +233,8 @@ export function parseArgs(argv) {
   else if (!opts.prompt && positionals.length) opts.prompt = positionals.join(" ");
   if (opts.command === "login" && (positionals.length > 1 || opts.json || opts.prompt)) throw new Error("usage: bitcode login [provider]; enter the API key only at the prompt");
   if (opts.json && !opts.prompt && !opts.command) throw new Error("--json requires a one-shot prompt or command");
+  if (opts.sats && (opts.prompt || opts.print || opts.command || opts.finance || opts.json)) throw new Error("--sats requires interactive mode; omit one-shot prompts and commands");
+  if (opts.noSession && opts.resume) throw new Error("--no-session cannot be combined with --resume or --continue");
   return opts;
 }
 
@@ -244,6 +267,7 @@ export async function main(argv) {
     return printData({ providers: redact(allProviders(config)), local: local.map(({ name, provider, running, models }) => ({ name, baseURL: provider.baseURL, running, models })) }, opts);
   }
   if (opts.command === "wallet") return walletCommand(opts.walletSub, config);
+  if (opts.command === "finance") return financeCommand(opts.commandArgs || [], config, opts);
   if (opts.command === "commands") return printData(loadCommands().map(({ name, description }) => ({ name, description })), opts);
   if (opts.command === "skills") return printData(loadSkills(), opts);
   if (opts.command === "session" && ![undefined, "list"].includes(opts.commandArgs?.[0])) throw new Error("use /session in interactive mode for save/load/export, or --resume for one-shot continuation");
@@ -269,6 +293,19 @@ export async function main(argv) {
     process.exit(1);
   }
 
+  if (opts.finance) {
+    if (!opts.prompt || opts.resume || opts.allowPayments || opts.command) throw new Error("--finance requires a fresh one-shot prompt and does not accept --resume or --allow-payments");
+    assertFinanceModel(target);
+    const ctx = resolveNetwork(config);
+    const messages = [{ role: "user", content: opts.prompt }];
+    const system = `You are Bitcode's local financial proposal assistant on Bitcoin ${ctx.name}. You can inspect policy and prepare unsigned proposals only. Never claim a payment has been sent. For execution, tell the human to review and run bitcode finance execute <proposal-id> in an interactive terminal. Do not ask for seeds, keys, macaroons or credentials.`;
+    const tools = financeAgentTools(config, root);
+    const answer = await runWithInterrupt({ target, system, messages, tools, fallbacks: [], hooks: { approve: () => true }, limits: agentLimits(config), readOnly: opts.readOnly });
+    if (opts.json) return printData({ status: "completed", answer, payment_status: "not_sent", model: target.spec, profile: "finance", events: messages.filter(m => m.role === "tool").map(m => ({ name: m.name, result: m.content })) }, opts);
+    out(answer);
+    return out("No payment was signed or sent. Review and execute a proposal separately.");
+  }
+
   const ctx = resolveNetwork(config);
   const skills = loadSkills();
   const system = systemPrompt({ profile, network: ctx.name, lightning: !!config.lightning?.lndRestUrl, project }) + "\n\n" + contextPrompt(root, skills);
@@ -284,11 +321,17 @@ export async function main(argv) {
   if (opts.maxSteps) limits.maxSteps = opts.maxSteps;
   const fallbacks = resolveFallbacks(config);
 
+  const bus = opts.sats ? createEventBus() : undefined;
+  let satsServer;
   try {
     if (opts.prompt) return await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits, fallbacks, opts, permissions, root, profile, project });
+    if (opts.sats) {
+      satsServer = await startSatsServer({ bus, network: ctx.name });
+      out(`Sats · apri ${satsServer.url}`);
+    }
     const commands = loadCommands();
-    await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext, readOnly: opts.readOnly, plan, maxStepsOverride: opts.maxSteps, permissions, root, profile, project });
-  } finally { await closeProcesses(); await closeCashuDaemons(); await closeMcpConnections(); await closeWavelength(); }
+    await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext, readOnly: opts.readOnly, plan, maxStepsOverride: opts.maxSteps, permissions, root, profile, project, bus, noSession: opts.noSession });
+  } finally { closeInput(); await satsServer?.close(); await closeProcesses(); await closeCashuDaemons(); await closeMcpConnections(); await closeWavelength(); }
 }
 
 // With no model chosen anywhere (flag, BITCODE_MODEL, config) and no key for
@@ -339,6 +382,58 @@ async function walletCommand(sub, config) {
   out(t.danger(`unknown wallet subcommand: ${sub || "(none)"}`));
   out(t.faint("usage: bitcode wallet seed"));
   process.exit(1);
+}
+
+async function financeCommand(args, config, opts) {
+  const [sub, ...values] = args;
+  if (sub === "status") return printData(financeStatus(), opts);
+  if (sub === "policy") {
+    if (!process.stdin.isTTY || opts.json || values.length !== 4) throw new Error("usage (interactive terminal): bitcode finance policy <max-payment-sats> <daily-limit-sats> <max-fee-sats> <min-reserve-sats>");
+    const [maxPaymentSats, dailyLimitSats, maxFeeSats, minReserveSats] = values;
+    const policy = { maxPaymentSats, dailyLimitSats, maxFeeSats, minReserveSats };
+    out(`Financial policy (sats): ${JSON.stringify(policy)}`);
+    if ((await question('Type "SET POLICY" to apply: ')).trim() !== "SET POLICY") return out("cancelled");
+    return printData(setFinancePolicy(policy), opts);
+  }
+  if (sub === "prepare") {
+    if (values.length < 2 || values.length > 3) throw new Error("usage: bitcode finance prepare <address> <amount-sats> [fee-rate-sat/vB]");
+    return printData(await prepareBitcoin(config, { to: values[0], amountSats: values[1], feeRate: values[2] }), opts);
+  }
+  if (sub === "execute") {
+    if (!process.stdin.isTTY || opts.json || values.length !== 1) throw new Error("finance execute requires an interactive terminal and a proposal id");
+    const result = await executeBitcoin(config, values[0], { approve: async proposal => {
+      out(`\nReview Bitcoin ${proposal.network} payment:`);
+      out(`  Wallet: ${proposal.wallet}`);
+      out(`  Recipient: ${proposal.to}`);
+      out(`  Amount: ${proposal.amountSats} sats`);
+      out(`  Fee: ${proposal.feeSats} sats (${proposal.feeRate} sat/vB)`);
+      out(`  Policy version: ${proposal.policyVersion}`);
+      out(`  Expires: ${proposal.expiresAt}`);
+      out(`  Proposal ID: ${proposal.id}`);
+      out("Signing and broadcasting can move funds. An uncertain result will not be retried automatically.");
+      const answer = await question("Type the full proposal ID to approve: ");
+      return answer.trim() === proposal.id;
+    } });
+    return printData(result, opts);
+  }
+  if (sub === "reconcile") {
+    if (values.length !== 1) throw new Error("usage: bitcode finance reconcile <proposal-id>");
+    return printData(await reconcileBitcoin(config, values[0]), opts);
+  }
+  if (sub === "recover") {
+    if (!process.stdin.isTTY || opts.json || values.length !== 1) throw new Error("finance recover requires an interactive terminal and a proposal id");
+    const proposal = financeStatus().proposals.find(p => p.id === values[0]);
+    if (!proposal || proposal.status !== "executing") throw new Error("proposal is not in executing state");
+    out(`Interrupted proposal ${proposal.id}\nTxid: ${proposal.txid || "none recorded"}`);
+    if ((await question("Type the full proposal ID to recover its state: ")).trim() !== proposal.id) return out("cancelled");
+    return printData(recoverBitcoinOperation(proposal.id), opts);
+  }
+  if (sub === "unlock") {
+    if (!process.stdin.isTTY || opts.json || values.length) throw new Error("finance unlock requires an interactive terminal");
+    if ((await question('Type "UNLOCK" after inspecting the process: ')).trim() !== "UNLOCK") return out("cancelled");
+    return out(recoverFinanceLock() ? "stale lock removed; inspect finance status and reconcile uncertain payments" : "no lock present");
+  }
+  throw new Error("usage: bitcode finance <status|policy|prepare|execute|reconcile|recover|unlock>");
 }
 
 // Remote (API) providers: one selectable entry per provider, using its default
@@ -475,9 +570,9 @@ function buildHooks({ approve, askUser, onCheckpoint, checkpoint, onMutation } =
       out("  " + t.pill(st.hex, st.name) + "  " + t.faint(previewArgs(tc)));
       emit("toolStart", { tc });
     },
-    onToolEnd: async (tc, result) => {
+    onToolEnd: async (tc, result, metadata) => {
       const isErr = result.startsWith("ERROR");
-      const mark = isErr ? t.danger("✗") : t.ok("✓");
+      const mark = metadata?.outcome === "denied" ? t.danger("⊘ Rifiutato") : isErr ? t.danger("✗") : t.ok("✓");
       const lines = result.split("\n");
       out("    " + mark + " " + t.body(clip(lines[0] ?? "", 100)));
       for (const l of lines.slice(1, 5)) out("      " + t.faint(clip(l, 100)));
@@ -542,7 +637,7 @@ async function oneShot({ target, system, tools, network, prompt, limits, fallbac
   const events = [];
   const usage = { input_tokens: 0, output_tokens: 0 };
   const checkpoint = new TurnCheckpoint(root);
-  const persist = () => saveSession(cwd, { ...session, messages, model: target.spec, network });
+  const persist = () => { if (!opts.noSession) saveSession(cwd, { ...session, messages, model: target.spec, network }); };
   const hooks = opts.json ? { onToolEnd: (tc, result) => events.push({ name: tc.name, result }) } : buildHooks({ checkpoint });
   // One-shot mode has no approval UI and has historically been the explicit
   // automation entry point. Financial tools remain an unconditional gate.
@@ -562,17 +657,17 @@ async function oneShot({ target, system, tools, network, prompt, limits, fallbac
     const stopped = answer?.startsWith("[stopped:");
     if (stopped && events.some(event => String(event.result).startsWith("ERROR:"))) throw new Error(events.find(event => String(event.result).startsWith("ERROR:")).result.slice(7));
     if (stopped) process.exitCode = 2;
-    if (opts.json) printData({ answer, status: stopped ? "incomplete" : "completed", session_id: session.id, model: target.spec, profile, project: { root: project.root, commands: project.commands }, summary: { files: summary }, usage, events }, opts);
+    if (opts.json) printData({ answer, status: stopped ? "incomplete" : "completed", session_id: opts.noSession ? null : session.id, model: target.spec, profile, project: { root: project.root, commands: project.commands }, summary: { files: summary }, usage, events }, opts);
   } catch (err) {
     process.exitCode = 1;
-    if (opts.json) printData({ status: "error", error: err.message, session_id: session.id, usage, events }, opts);
+    if (opts.json) printData({ status: "error", error: err.message, session_id: opts.noSession ? null : session.id, usage, events }, opts);
     else throw err;
   } finally { checkpoint.finalize(); persist(); }
 }
 
 // ---- interactive REPL ----
 
-async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks, ext = {}, readOnly = false, plan, maxStepsOverride, permissions, root, profile, project }) {
+async function interactive({ target, system, tools, network, config, yolo, agents, commands, modelRef, resume, limits, fallbacks, ext = {}, readOnly = false, plan, maxStepsOverride, permissions, root, profile, project, bus, noSession = false }) {
   const cwd = root;
   let currentProfile = profile;
   let currentProject = project;
@@ -581,6 +676,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   const messages = [];
   let active = target;
   const session = { id: newSessionId(), name: null };
+  const createContext = () => createRunContext({ bus, sessionId: session.id, cwd: root });
 
   if (resume) {
     try {
@@ -612,15 +708,16 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   const history = loadHistory();
 
   const checkpoint = new TurnCheckpoint(root);
-  const approve = async (tc, tool) => {
+  const approve = async (tc, tool, { signal } = {}) => {
     if (!requiresPaymentApproval(tool) && mayAutoApprove({ tool, args: tc.args, permissions })) return true;
     if (["write_file", "edit_file", "patch"].includes(tool.name)) out(previewMutation(tc));
     out(t.faint(JSON.stringify(tc.args || {}, null, 2)));
-    const ans = await question("  " + t.accent("approve") + " " + t.bold(tool.name) + ` on ${network} (y/N) `);
+    const ans = await question("  " + t.accent("approve") + " " + t.bold(tool.name) + ` on ${network} (y/N) `, { signal });
     return /^y(es)?$/i.test(ans.trim());
   };
 
   const persist = () => {
+    if (noSession) return;
     try {
       saveSession(cwd, { id: session.id, model: active.spec, network, messages, name: session.name });
     } catch (err) {
@@ -653,7 +750,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
           cwd,
           network,
           session,
-          ext, limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), approve, readOnly, plan, persist,
+          ext, limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), approve, readOnly, plan, persist, createContext,
           getActive: () => active,
           profile: currentProfile, project: currentProject, permissions, checkpoint,
           setProfile: (next) => {
@@ -676,7 +773,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
     checkpoint.reset();
     messages.push({ role: "user", content: expandMentions(input) });
     try {
-      await runWithInterrupt({ target: active, system: currentSystem, messages, tools: currentTools, hooks: buildHooks({ approve, askUser: question, onCheckpoint: persist, checkpoint, onMutation: tc => { checkpoint.begin(tc); checkpoint.recordProtected(tc); } }), limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), readOnly });
+      await runWithInterrupt({ target: active, system: currentSystem, messages, tools: currentTools, hooks: buildHooks({ approve, askUser: question, onCheckpoint: persist, checkpoint, onMutation: tc => { checkpoint.begin(tc); checkpoint.recordProtected(tc); } }), limits: { ...agentLimits(config), ...(maxStepsOverride ? { maxSteps: maxStepsOverride } : {}) }, fallbacks: resolveFallbacks(config), readOnly, context: createContext() });
     } catch (err) {
       out(t.danger(`error: ${err.message}`));
     }
@@ -790,21 +887,21 @@ export async function handleSlash(input, ctx) {
         return;
       }
       const [name, ...promptParts] = rest;
-      const persona = findAgent(ctx.agents, name);
-      const prompt = persona ? promptParts.join(" ") : arg;
-      if (name && !persona) {
-        out(t.faint(`no agent "${name}" — running with the base system prompt`));
+      const persona = name === "--" ? null : findAgent(ctx.agents, name);
+      const prompt = promptParts.join(" ");
+      if (name !== "--" && !persona) {
+        out(t.danger(`unknown agent "${name}"; use /subagent to list personas, or /subagent -- <prompt>`));
+        return;
       }
       if (!prompt) {
         out(t.danger("usage: /subagent [name] <prompt>"));
         return;
       }
-      const nestedSystem = persona ? `${ctx.system}\n\n${persona.body}` : ctx.system;
-      const nestedMessages = [{ role: "user", content: expandMentions(prompt) }];
       out(t.faint(`— delegating to ${persona ? persona.name : "(default)"} —`));
       try {
         ctx.checkpoint?.reset();
-        await runWithInterrupt({ target: ctx.getActive(), system: nestedSystem, messages: nestedMessages, tools: ctx.tools.filter(t => t.name !== "subagent"), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask, checkpoint: ctx.checkpoint, onMutation: tc => { ctx.checkpoint?.begin(tc); ctx.checkpoint?.recordProtected(tc); } }), limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), readOnly: ctx.readOnly });
+        await withInterrupt(signal => runSubagent({ agent: persona?.name, prompt: expandMentions(prompt), agents: ctx.agents, target: ctx.getActive(), system: ctx.system, tools: ctx.tools, parentContext: { ...(ctx.createContext?.() || {}), runId: undefined }, approve: ctx.approve,
+          signal, hooks: buildHooks({ askUser: ctx.ask, checkpoint: ctx.checkpoint, onMutation: tc => { ctx.checkpoint?.begin(tc); ctx.checkpoint?.recordProtected(tc); } }), limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), readOnly: ctx.readOnly }));
         printTurnSummary(ctx.checkpoint?.finalize());
       } catch (err) {
         out(t.danger(`error: ${err.message}`));
@@ -830,7 +927,7 @@ export async function handleSlash(input, ctx) {
     case "plan": {
       if (!arg) return out(t.faint("usage: /plan <task>"));
       try {
-        const text = await runWithInterrupt({ target: ctx.getActive(), system: `${ctx.system}\nInvestigate the task using read-only tools. Return a concrete implementation plan with files, steps and verification. Do not implement changes.`, messages: [{ role: "user", content: expandMentions(arg) }], tools: ctx.tools, limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), readOnly: true, hooks: buildHooks({ askUser: ctx.ask }) });
+        const text = await runWithInterrupt({ target: ctx.getActive(), system: `${ctx.system}\nInvestigate the task using read-only tools. Return a concrete implementation plan with files, steps and verification. Do not implement changes.`, messages: [{ role: "user", content: expandMentions(arg) }], tools: ctx.tools, limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), readOnly: true, hooks: buildHooks({ askUser: ctx.ask }), context: ctx.createContext?.() });
         if (!text?.startsWith("[stopped:")) out(t.ok(`plan saved: ${savePlan(ctx.cwd, { task: arg, text })}`));
       } catch (err) { out(t.danger(err.message)); }
       return;
@@ -842,7 +939,7 @@ export async function handleSlash(input, ctx) {
       ctx.messages.push({ role: "user", content: `Implement this saved plan, inspect current files first, and verify the changes:\n${plan.text}` });
       try {
         ctx.checkpoint?.reset();
-        await runWithInterrupt({ target: ctx.getActive(), system: ctx.system, messages: ctx.messages, tools: ctx.tools, limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask, onCheckpoint: ctx.persist, checkpoint: ctx.checkpoint, onMutation: tc => { ctx.checkpoint?.begin(tc); ctx.checkpoint?.recordProtected(tc); } }) });
+        await runWithInterrupt({ target: ctx.getActive(), system: ctx.system, messages: ctx.messages, tools: ctx.tools, limits: ctx.limits || agentLimits(ctx.config), fallbacks: ctx.fallbacks || resolveFallbacks(ctx.config), hooks: buildHooks({ approve: ctx.approve, askUser: ctx.ask, onCheckpoint: ctx.persist, checkpoint: ctx.checkpoint, onMutation: tc => { ctx.checkpoint?.begin(tc); ctx.checkpoint?.recordProtected(tc); } }), context: ctx.createContext?.() });
         printTurnSummary(ctx.checkpoint?.finalize());
       }
       catch (err) { out(t.danger(err.message)); }

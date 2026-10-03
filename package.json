@@ -12,6 +12,9 @@
   "scripts": {
     "start": "node bitcode.mjs",
     "test": "node --test --test-timeout=30000 tests/*.test.mjs",
+    "test:browser": "node scripts/sats/browser-check.mjs",
+    "test:package": "node scripts/sats/package-check.mjs",
+    "build:sats": "node scripts/sats/build-assets.mjs",
     "lint": "node scripts/lint.mjs",
     "build:cdk": "bash scripts/build-cdk.sh",
     "build:wavelength": "bash scripts/build-wavelength.sh",

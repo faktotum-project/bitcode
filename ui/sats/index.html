@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Sats · Bitcode</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+    <script type="module" src="/ui/app.mjs"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M18.5 3 8 18h7l-2 11 11-16h-7z" /></svg
+        ><strong>bitcode</strong><span class="family">sats</span>
+      </div>
+      <div class="connection">
+        <span id="connection-dot"></span
+        ><span id="connection-label" role="status">Collegamento…</span>
+      </div>
+    </header>
+    <main>
+      <div id="error" class="notice error" role="alert" hidden></div>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">Sats · by bitcode</p>
+          <h1>Quattro volti. Un solo Bitcode.</h1>
+          <p class="subtitle">
+            Node esplora. Script costruisce. Hash analizza. Merkle revisiona.
+          </p>
+        </div>
+        <div class="session">
+          <span id="network" class="badge mono"></span
+          ><span id="mode-label"></span>
+        </div>
+      </section>
+      <section
+        id="sats"
+        class="sats-grid"
+        aria-label="I quattro Sats"
+      ></section>
+      <div class="work-status">
+        <span id="parent-status">In attesa di una delega.</span
+        ><label class="motion"
+          ><input type="checkbox" id="motion-off" /> Riduci movimento</label
+        >
+      </div>
+      <section class="panel activity-panel" aria-label="Registro attività">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Reasoning · operazioni osservabili</p>
+            <h2 id="activity-title">Attività dei Sats</h2>
+          </div>
+          <button
+            id="all-activity"
+            class="secondary small"
+            type="button"
+            hidden
+          >
+            Tutte le attività
+          </button>
+        </div>
+        <ol id="activity" class="activity">
+          <li class="empty">Avvia una delega per seguirne le operazioni.</li>
+        </ol>
+        <p id="observer-note" class="panel-note">
+          Richieste e conferme rimangono nel terminale.
+        </p>
+      </section>
+      <div
+        id="announcer"
+        class="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      ></div>
+    </main>
+    <footer>
+      <span>Locale · nessuna telemetria</span
+      ><span>Un esito “Completato” indica la fine della delega.</span>
+    </footer>
+  </body>
+</html>

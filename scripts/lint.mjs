@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const roots = ["bitcode.mjs", "src", "tests", "scripts"];
+const roots = ["bitcode.mjs", "src", "tests", "scripts", "ui"];
 const files = [];
 
 function walk(p) {

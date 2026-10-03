@@ -163,12 +163,30 @@ function ensureRL() {
   });
 }
 
-function fallbackLine(prompt) {
+// Release stdin on REPL exit as well as EOF. A persistent readline interface
+// otherwise keeps piped/embedded CLI processes alive after /exit.
+export function closeInput() {
+  sharedRL?.close();
+  stdin.pause();
+  setMouse(false);
+}
+
+function fallbackLine(prompt, signal) {
+  if (signal?.aborted) return Promise.resolve(null);
   if (prompt) stdout.write(prompt);
   ensureRL();
   if (lineBuffer.length) return Promise.resolve(lineBuffer.shift());
   if (rlClosed) return Promise.resolve(null);
-  return new Promise((resolve) => lineWaiters.push(resolve));
+  return new Promise(resolve => {
+    const waiter = value => { signal?.removeEventListener("abort", abort); resolve(value); };
+    const abort = () => {
+      const index = lineWaiters.indexOf(waiter);
+      if (index >= 0) lineWaiters.splice(index, 1);
+      waiter(null);
+    };
+    lineWaiters.push(waiter);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 // ---- interactive line editor with dropdown ----
@@ -178,8 +196,9 @@ function fallbackLine(prompt) {
 //   hint:   dim description on the right
 //   insert: what accepting the row puts in the buffer
 //   submit: true → Enter on the row runs it immediately
-export function readLine({ prompt = "", menu = null, history = [] } = {}) {
-  if (!stdin.isTTY) return fallbackLine(prompt);
+export function readLine({ prompt = "", menu = null, history = [], signal } = {}) {
+  if (signal?.aborted) return Promise.resolve(null);
+  if (!stdin.isTTY) return fallbackLine(prompt, signal);
 
   return new Promise((resolve) => {
     let buf = "";
@@ -240,6 +259,7 @@ export function readLine({ prompt = "", menu = null, history = [] } = {}) {
     }
 
     function finish(value) {
+      signal?.removeEventListener("abort", abort);
       items = [];
       render(true);
       stdout.write("\n");
@@ -386,6 +406,8 @@ export function readLine({ prompt = "", menu = null, history = [] } = {}) {
     const stop = withRaw((data) => {
       for (const ev of parseEvents(data)) onEvent(ev);
     });
+    const abort = () => finish(null);
+    signal?.addEventListener("abort", abort, { once: true });
 
     refreshMenu(true);
     render();
@@ -393,8 +415,8 @@ export function readLine({ prompt = "", menu = null, history = [] } = {}) {
 }
 
 // Plain one-line question (no menu). Returns "" if cancelled.
-export async function question(prompt) {
-  const ans = await readLine({ prompt });
+export async function question(prompt, { signal } = {}) {
+  const ans = await readLine({ prompt, signal });
   return ans == null ? "" : ans;
 }
 

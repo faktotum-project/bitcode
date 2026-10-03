@@ -120,6 +120,7 @@ export function wallet(ctx) {
         feeSats: Number(fee),
         feeRate: rate,
         inputs: selected.length,
+        outpoints: selected.map(u => `${u.txid}:${u.vout}`),
         changeSats: Number(change),
       },
     };

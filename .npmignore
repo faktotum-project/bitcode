@@ -1,0 +1,22 @@
+.git/
+.github/
+.agents/
+.codex/
+.aws/
+.opencode/
+.swarm/
+.demo-archive/
+.vercel/
+.sats-build/
+artifacts/
+tests/
+assets/sats/sources/
+assets/sats/*/masters/
+assets/sats/*/brand-*.png
+assets/sats/*/working.gif
+docs/sats-preview.png
+docs/sats-poses.png
+bitcode sats/
+bitcode design system/
+bitcode-slides/
+*.tgz

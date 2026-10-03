@@ -4,3 +4,5 @@ deps/cdk/bin/
 deps/wavelength/
 .demo-archive/
 .vercel
+artifacts/sats/
+.sats-build/

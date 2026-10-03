@@ -53,6 +53,8 @@ bitcode --json -p "inspect README.md"   # machine-readable answer/usage/events
 bitcode --max-steps 10 -p "inspect src"
 bitcode --continue -p "continue the task"
 bitcode --resume <session-id>
+bitcode --sats                        # local animated subagent observer
+bitcode --no-session                  # disable automatic transcript saving
 bitcode models
 bitcode login
 bitcode login anthropic
@@ -71,6 +73,54 @@ bitcode doctor --json
 and 2 when a runtime budget stops the task. JSON catalogs are also supported
 by `tools`, `commands`, `skills`, `models`, `mcp`, `doctor`, `provider list`
 and `session list`.
+
+## Financial proposals (Phase 1 testnet path)
+
+The protected proposal path currently supports **Bitcoin signet, testnet and
+testnet4**. It requires an explicitly configured local Esplora-compatible HTTP
+endpoint in `bitcoin.esploraUrl`. Mainnet, remote indexers and implicit public
+endpoints are refused. Keep `BITCODE_HOME` outside the project so `/undo` cannot
+restore payment state. The local wallet and indexer must already be ready.
+For example, set `bitcoin.esploraUrl` to the actual endpoint in
+`~/.bitcode/config.json`; `http://127.0.0.1:3000/api` is only an example.
+
+Set the four limits explicitly, all in satoshis. The policy command requires an
+interactive terminal and typed confirmation. The daily window is UTC, and fees
+count toward the daily limit and reserve. Prepared and uncertain payments reserve budget until
+resolved or a policy change invalidates unexecuted proposals. A wallet UTXO
+cannot be reserved by two active proposals.
+
+```bash
+bitcode finance policy 20000 50000 1000 40000
+bitcode finance prepare <testnet-address> 10000 2
+bitcode finance status
+bitcode finance execute <full-proposal-id>
+bitcode finance reconcile <full-proposal-id>
+bitcode finance recover <full-proposal-id>   # interrupted execution only
+```
+
+`execute` displays the exact network, wallet, recipient, amount, fee and policy
+version, then requires the full proposal ID typed at a terminal. It signs the
+stored unsigned PSBT once and records an `executing` state before broadcast.
+After an ambiguous broadcast error the status becomes `unknown`; it does not
+retry. `reconcile` looks up the recorded transaction ID. `recover` marks an
+interrupted execution with no recorded transaction as rejected, or one with a
+transaction ID as unknown pending reconciliation. If a crash leaves a
+stale state lock, `bitcode finance unlock` requires a terminal and refuses to
+unlock a live process. Inspect the resulting state before any new payment.
+
+For local model assistance, run `bitcode --finance -m ollama/<installed-model>
+-p "prepare 10000 sats to <testnet-address>"`. This fresh one-shot session has
+only `finance_status` and `finance_prepare` tools, no plugins, shell, file,
+payment execution or model fallback, and saves no transcript. It rejects
+non-loopback model endpoints. The model's proposal is **not** human approval;
+execute it separately with the terminal command above.
+
+This path does not yet provide OS-isolated signing, private-chain verification,
+Lightning proposals, RGB, QVAC or WDK. Legacy Bitcoin/Lightning/Cashu tools
+outside `--finance` retain their older approval behavior and do not gain these
+financial guarantees. Use only testnet funds until the remaining boundaries
+have been implemented and reviewed.
 
 | Slash command | Behavior |
 | --- | --- |
@@ -279,8 +329,48 @@ Bundled namespaces include `/repo:review`, `/repo:test`, `/repo:fix`,
 `/repo:explain`, plus `/btc:*`, `/ln:*`, `/liquid:*`, `/cashu:*`, and `/wl:*`.
 Run `bitcode commands` for the complete catalog and descriptions.
 
-Personas live in the user's `agents/<name>.md` directory. Their body extends
-the base prompt for a delegated run.
+Four Sats personas are bundled: **Node** (research), **Script** (implementation),
+**Hash** (security analysis) and **Merkle** (review). Run `/subagent` to list them,
+then `/subagent script <task>` to delegate. `/subagent -- <task>` explicitly
+selects a generic agent; an unknown named persona returns an error.
+The user's `agents/<name>.md` overrides the description and persona body.
+Named Sats retain their code-enforced tool allowlists after an override.
+
+## Sats companion
+
+```bash
+bitcode --sats
+# Open the local URL printed in the terminal, then enter:
+# /subagent node explain the architecture
+# /subagent script implement the requested change
+```
+
+The browser shows four characters, six expressions each, and actual model,
+tool, approval and completion events. Requests and approvals happen in the
+terminal. Selecting a card filters the activity log. The observer binds to
+`127.0.0.1` on a random port and requires the ephemeral link printed at startup.
+It serves its fonts and assets locally, without telemetry or remote UI services.
+`--sats` is interactive-only; one-shot prompts and commands cannot use it.
+
+Node, Hash and Merkle receive read/query tools only. Script receives the exact
+coding allowlist; its shell follows the normal permission mode. All four exclude
+wallet, payment, signing, broadcast, arbitrary RPC and recursive delegation tools.
+Each child mutation uses the parent's approval callback; approving a delegation
+does not grant blanket permission to its later operations. `--permission`,
+`--yolo` and one-shot automation keep their documented approval semantics.
+
+The panel distinguishes pending approval, denial, execution, errors and runtime
+limits. “Completato” means the agent loop finished; the CLI answer contains the
+actual findings and verification. Reduced motion, hidden tabs and offscreen cards
+pause animation. Closing the browser leaves the CLI task running. `/exit` and EOF
+close the local server; Ctrl+C during a task requests cancellation.
+
+`--no-session` disables automatic transcript saving, including with the companion.
+It cannot be combined with `--resume` or `--continue`. Interactive command history
+and an explicit `/session save` remain available.
+
+See [the Sats guide](docs/sats.md) and [validation evidence](docs/sats-validation.md)
+for the exact policies, event boundary, asset measurements and test coverage.
 
 ## MCP
 

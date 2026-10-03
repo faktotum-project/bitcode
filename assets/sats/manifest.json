@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "id": "node",
+      "name": "Node",
+      "role": "Ricerca e contesto",
+      "color": "#3297ff",
+      "poses": {
+        "idle": "/assets/sats/node/idle-256.webp",
+        "focus": "/assets/sats/node/focus-256.webp",
+        "working": "/assets/sats/node/working-256.webp",
+        "ask": "/assets/sats/node/ask-256.webp",
+        "happy": "/assets/sats/node/happy-256.webp",
+        "concerned": "/assets/sats/node/concerned-256.webp"
+      },
+      "poster": "/assets/sats/node/idle-256.png",
+      "avatar": "/assets/sats/node/avatar-96.png"
+    },
+    {
+      "id": "script",
+      "name": "Script",
+      "role": "Implementazione",
+      "color": "#f7931a",
+      "poses": {
+        "idle": "/assets/sats/script/idle-256.webp",
+        "focus": "/assets/sats/script/focus-256.webp",
+        "working": "/assets/sats/script/working-256.webp",
+        "ask": "/assets/sats/script/ask-256.webp",
+        "happy": "/assets/sats/script/happy-256.webp",
+        "concerned": "/assets/sats/script/concerned-256.webp"
+      },
+      "poster": "/assets/sats/script/idle-256.png",
+      "avatar": "/assets/sats/script/avatar-96.png"
+    },
+    {
+      "id": "hash",
+      "name": "Hash",
+      "role": "Analisi di sicurezza",
+      "color": "#b6f500",
+      "poses": {
+        "idle": "/assets/sats/hash/idle-256.webp",
+        "focus": "/assets/sats/hash/focus-256.webp",
+        "working": "/assets/sats/hash/working-256.webp",
+        "ask": "/assets/sats/hash/ask-256.webp",
+        "happy": "/assets/sats/hash/happy-256.webp",
+        "concerned": "/assets/sats/hash/concerned-256.webp"
+      },
+      "poster": "/assets/sats/hash/idle-256.png",
+      "avatar": "/assets/sats/hash/avatar-96.png"
+    },
+    {
+      "id": "merkle",
+      "name": "Merkle",
+      "role": "Revisione",
+      "color": "#c96bff",
+      "poses": {
+        "idle": "/assets/sats/merkle/idle-256.webp",
+        "focus": "/assets/sats/merkle/focus-256.webp",
+        "working": "/assets/sats/merkle/working-256.webp",
+        "ask": "/assets/sats/merkle/ask-256.webp",
+        "happy": "/assets/sats/merkle/happy-256.webp",
+        "concerned": "/assets/sats/merkle/concerned-256.webp"
+      },
+      "poster": "/assets/sats/merkle/idle-256.png",
+      "avatar": "/assets/sats/merkle/avatar-96.png"
+    }
+  ]
+}

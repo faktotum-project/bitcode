@@ -5,31 +5,8 @@
 const COLOR = process.stdout.isTTY && process.env.NO_COLOR == null;
 
 // Design tokens (name → hex), straight from the design system.
-export const TOKEN = {
-  bitcoinOrange: "#f7931a",
-  orangeActive: "#d97b0f",
-  canvas: "#f7f7f4",
-  canvasSoft: "#fafaf7",
-  surfaceStrong: "#e6e5e0",
-  hairlineStrong: "#cfcdc4",
-  onPrimary: "#ffffff",
-  ink: "#26251e",
-  body: "#5a5852",
-  muted: "#807d72",
-  mutedSoft: "#a09c92",
-  success: "#1f8a65",
-  error: "#cf2d56",
-};
-
-// Bitcoin tx-lifecycle palette, reused by the landing page as the agent's
-// five-stage "Reasoning" timeline.
-const STAGE = {
-  pending: "#dfa88f", // intent / thinking
-  relayed: "#9fc9a2", // running a command
-  mempool: "#9fbbe0", // reading state
-  confirming: "#c0a8dd", // drafting / mutating
-  confirmed: "#c08532", // done
-};
+import { TOKEN, STAGE, stageForTool } from "./design-tokens.mjs";
+export { TOKEN, stageForTool };
 
 function hexToRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -74,27 +51,6 @@ export const danger = (s) => fg(TOKEN.error, s);
 // Uppercase, spaced section label (the design's "REASONING" / "CAPABILITIES").
 export function label(text) {
   return faint(text.toUpperCase().split("").join(" "));
-}
-
-// Map an agent tool to its reasoning stage (color + name), echoing the
-// design system's tx-lifecycle palette.
-export function stageForTool(name) {
-  if (["exec_command", "write_stdin", "terminate_process"].includes(name)) return { hex: STAGE.relayed, name: "running" };
-  if (["grep", "glob", "web_fetch", "git_status", "git_diff", "git_log", "read_plan", "read_skill", "list_skills", "list_processes"].includes(name)) return { hex: STAGE.mempool, name: "reading" };
-  if (["patch", "update_plan"].includes(name)) return { hex: STAGE.confirming, name: "drafting" };
-  // chain queries → "querying" (relayed/green)
-  if (name === "bash" || name === "btc_tx" || name === "btc_address" || name === "btc_block" || name === "bitcoin_rpc") {
-    return { hex: STAGE.relayed, name: name === "bash" ? "running" : "querying" };
-  }
-  // state reads → "reading" (mempool/blue)
-  if (name === "read_file" || name === "list_dir" || name === "btc_fees" || name === "btc_mempool" || name === "wallet_info" || name === "wallet_new_address" || name === "wallet_descriptor") {
-    return { hex: STAGE.mempool, name: "reading" };
-  }
-  // mutations / signing → "drafting" (confirming/purple)
-  if (name === "write_file" || name === "edit_file" || name === "wallet_create" || name === "wallet_send" || name === "btc_broadcast") {
-    return { hex: STAGE.confirming, name: "drafting" };
-  }
-  return { hex: STAGE.pending, name: "thinking" };
 }
 
 // The five-stage legend, shown once at startup.
