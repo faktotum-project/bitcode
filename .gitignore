@@ -9,3 +9,4 @@ artifacts/sats/
 desktop/dist/
 desktop/release/
 artifacts/desktop/
+__pycache__/

@@ -395,6 +395,57 @@
       .fact-value { font-size: 1.25rem; min-width: 39px; }
     }
 
+    /* Sats: four agents, each with its own colour and code-enforced limits. */
+    .preview-badge { display: inline-flex; align-items: center; gap: 7px; font: .6875rem/1 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink); border: 1px solid var(--hairline); background: var(--surface); padding: 6px 9px; border-radius: 999px; }
+    .preview-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--orange); }
+    .sats { border-top: 1px solid var(--surface-strong); }
+    .sat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .sat-card { display: flex; flex-direction: column; min-width: 0; background: var(--surface); border: 1px solid var(--surface-strong); border-radius: var(--radius); overflow: hidden; }
+    .sat-figure { display: grid; place-items: center; aspect-ratio: 4 / 3; background: color-mix(in srgb, var(--sat) 16%, var(--surface)); }
+    .sat-figure img { width: 62%; height: auto; }
+    .sat-body { display: flex; flex-direction: column; flex: 1; padding: 22px 22px 24px; }
+    .sat-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+    .sat-card h3 { font-size: 1.375rem; font-weight: 500; letter-spacing: -.04em; }
+    .sat-index { font: .6875rem/1 var(--mono); color: var(--body); }
+    .sat-role { display: flex; align-items: center; gap: 8px; font: .6875rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; color: var(--body); margin-bottom: 14px; }
+    .sat-role::before { content: ''; width: 8px; height: 8px; background: var(--sat); flex: none; }
+    .sat-card p { color: var(--body); font-size: .875rem; line-height: 1.75; margin-bottom: 20px; }
+    .sat-limits { display: flex; flex-wrap: wrap; gap: 6px; margin: auto 0 0; padding: 16px 0 0; list-style: none; border-top: 1px solid var(--surface-strong); }
+    .sat-limits li { font: .6875rem/1 var(--mono); letter-spacing: -.02em; color: var(--body); border: 1px solid var(--surface-strong); border-radius: 4px; padding: 5px 7px; }
+    .sat-limits li.allow { color: var(--ink); border-color: var(--hairline); }
+    .sat-usage { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    .sat-usage > div { background: var(--surface); border: 1px solid var(--surface-strong); border-radius: var(--radius); padding: 22px; min-width: 0; }
+    .sat-usage h3 { font-size: .875rem; font-weight: 500; margin-bottom: 6px; }
+    .sat-usage p { color: var(--body); font-size: .8125rem; line-height: 1.75; }
+    .sat-usage pre { margin: 14px 0 0; font-size: .75rem; line-height: 1.9; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .sat-note { margin-top: 22px; color: var(--body); font-size: .75rem; max-width: 92ch; }
+
+    /* Desktop: the Linux app, shown as a development preview. */
+    .desktop { border-top: 1px solid var(--surface-strong); }
+    .desktop-shot { margin: 0; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; background: #0b0e11; box-shadow: 0 24px 60px -24px rgba(38, 37, 30, .35); }
+    .desktop-shot img { display: block; width: 100%; height: auto; }
+    .desktop-caption { margin-top: 12px; color: var(--muted); font-size: .75rem; }
+    .desktop-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 44px; }
+    .desktop-item h3 { display: flex; align-items: center; gap: 9px; font-size: .9375rem; font-weight: 500; margin-bottom: 8px; }
+    .desktop-item h3 .icon { color: var(--orange-active); width: 17px; height: 17px; }
+    .desktop-item p { color: var(--body); font-size: .8125rem; line-height: 1.8; }
+    .desktop-status { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 24px; margin-top: 40px; padding: 22px 24px; border: 1px dashed var(--hairline); border-radius: var(--radius); }
+    .desktop-status h3 { font-size: .875rem; font-weight: 500; margin-bottom: 4px; }
+    .desktop-status p { color: var(--body); font-size: .8125rem; line-height: 1.75; }
+    @media (max-width: 1050px) {
+      .sat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 800px) {
+      .sat-usage, .desktop-grid { grid-template-columns: 1fr; }
+      .desktop-grid { gap: 24px; }
+      .desktop-status { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+      .sat-grid { grid-template-columns: 1fr; }
+      .sat-figure { aspect-ratio: 16 / 9; }
+      .sat-figure img { width: 38%; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -434,8 +485,10 @@
       </a>
       <nav class="nav-links" id="site-nav" aria-label="Main navigation">
         <a class="nav-link" href="#capabilities">Capabilities</a>
+        <a class="nav-link" href="#sats">Sats</a>
         <a class="nav-link" href="#demos">Demos</a>
         <a class="nav-link" href="#reasoning">How it works</a>
+        <a class="nav-link" href="#desktop">Desktop</a>
         <a class="nav-link" href="https://github.com/faktotum-project/bitcode#readme">Docs <span aria-hidden="true">↗</span></a>
       </nav>
       <div class="nav-actions">
@@ -449,7 +502,7 @@
     <section class="hero container" aria-labelledby="hero-title">
       <div class="hero-grid">
         <div class="hero-copy">
-          <a class="release" href="https://github.com/faktotum-project/bitcode#readme"><span class="release-tag">v0.2</span><span class="release-copy">Coding + Bitcoin + MCP</span><span aria-hidden="true">↗</span></a>
+          <a class="release" href="#sats"><span class="release-tag">New</span><span class="release-copy">Sats · Desktop preview for Linux</span><span aria-hidden="true">↓</span></a>
           <div class="hero-logo-lockup" aria-label="bitcode">
             <svg class="hero-logo-build" viewBox="0 0 4 5" shape-rendering="crispEdges" aria-hidden="true">
               <rect class="hero-logo-piece hero-logo-piece--ink" style="--piece:0" x="0" y="4" width="2" height="1" fill="#0F0F0F"/>
@@ -536,6 +589,58 @@
       <div class="cap-note"><p>Capabilities depend on your configuration. Wavelength read-only tools are also available with its optional binaries.</p><a class="text-link" href="https://github.com/faktotum-project/bitcode#tools">Explore all tools <span aria-hidden="true">↗</span></a></div>
     </section>
 
+    <section class="section container sats" id="sats" aria-labelledby="sats-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Meet the Sats</p><h2 class="section-title" id="sats-title">Four agents.<br>One bitcode.</h2></div>
+        <div><p class="section-description">Pick a Sat for the job. Each one has its own role, its own tools and limits enforced in code, in the CLI and in the desktop app.</p><p style="margin-top:18px"><span class="preview-badge">Preview</span></p></div>
+      </div>
+      <div class="sat-grid">
+        <article class="sat-card" style="--sat:#3297ff">
+          <div class="sat-figure"><img src="assets/sats/node/idle-256.webp" width="256" height="256" alt="Node, the bitcoin infrastructure Sat" loading="lazy" decoding="async"></div>
+          <div class="sat-body">
+            <div class="sat-head"><h3>Node</h3><span class="sat-index">SAT / 01</span></div>
+            <p class="sat-role">Bitcoin infrastructure</p>
+            <p>Reads Bitcoin, Lightning, Liquid and Taproot Assets data. Keeps the networks apart and never sends funds.</p>
+            <ul class="sat-limits" aria-label="Node limits"><li class="allow">read files</li><li class="allow">network</li><li>no shell</li><li>no wallet</li></ul>
+          </div>
+        </article>
+        <article class="sat-card" style="--sat:#f7931a">
+          <div class="sat-figure"><img src="assets/sats/script/idle-256.webp" width="256" height="256" alt="Script, the code and implementation Sat" loading="lazy" decoding="async"></div>
+          <div class="sat-body">
+            <div class="sat-head"><h3>Script</h3><span class="sat-index">SAT / 02</span></div>
+            <p class="sat-role">Code and implementation</p>
+            <p>Inspects before changing code, implements the requested scope and verifies the result. Commands wait for your approval.</p>
+            <ul class="sat-limits" aria-label="Script limits"><li class="allow">write files</li><li class="allow">shell on approval</li><li>no network</li><li>no wallet</li></ul>
+          </div>
+        </article>
+        <article class="sat-card" style="--sat:#b6f500">
+          <div class="sat-figure"><img src="assets/sats/hash/idle-256.webp" width="256" height="256" alt="Hash, the verification and security Sat" loading="lazy" decoding="async"></div>
+          <div class="sat-body">
+            <div class="sat-head"><h3>Hash</h3><span class="sat-index">SAT / 03</span></div>
+            <p class="sat-role">Verification and security</p>
+            <p>Reviews changes, evidence and security boundaries. Separates verified findings from assumptions.</p>
+            <ul class="sat-limits" aria-label="Hash limits"><li class="allow">read files</li><li>no shell</li><li>no network</li><li>no wallet</li></ul>
+          </div>
+        </article>
+        <article class="sat-card" style="--sat:#c96bff">
+          <div class="sat-figure"><img src="assets/sats/merkle/idle-256.webp" width="256" height="256" alt="Merkle, the orchestration Sat" loading="lazy" decoding="async"></div>
+          <div class="sat-body">
+            <div class="sat-head"><h3>Merkle</h3><span class="sat-index">SAT / 04</span></div>
+            <p class="sat-role">Orchestration</p>
+            <p>Plans the work and delegates to Node, Script and Hash, one level deep. Delegating never hands over permissions.</p>
+            <ul class="sat-limits" aria-label="Merkle limits"><li class="allow">read files</li><li class="allow">delegate</li><li>no shell</li><li>no wallet</li></ul>
+          </div>
+        </article>
+      </div>
+      <div class="sat-usage">
+        <div><h3>Choose a Sat.</h3><p>The choice applies to your next messages and is saved with the session. <code>/reset</code> returns to bitcode.</p><pre>/sats
+/sat merkle
+/sat info hash</pre></div>
+        <div><h3>Watch them work.</h3><p>Open the local companion: an animated view of each Sat's state and of Merkle's delegations. Interactive mode only.</p><pre>node bitcode.mjs --sats</pre></div>
+      </div>
+      <p class="sat-note">Sat permissions are application limits, not an operating-system sandbox. In the CLI, a shell command you approve runs with your user's rights. In the desktop app, the agent worker runs isolated with bubblewrap.</p>
+    </section>
+
 <!-- RECORDED DEMOS START -->
     <section class="section recorded-demos" id="demos" aria-labelledby="demos-title">
       <div class="container">
@@ -584,6 +689,27 @@
   --json -p "review this repo"</pre><button class="copy-button" type="button" data-copy="cmd-json" aria-label="Copy read-only JSON command" hidden><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button></div><p>Get an answer, tool events and usage as JSON. Use read-only mode for repository reviews.</p></article>
         <article class="mode-card"><div class="mode-head"><svg class="icon" aria-hidden="true"><use href="#i-monitor"/></svg><h3>Local model</h3></div><div class="snippet"><pre id="cmd-local">node bitcode.mjs \
   -m ollama/qwen3.8:27b</pre><button class="copy-button" type="button" data-copy="cmd-local" aria-label="Copy Ollama command" hidden><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button></div><p>Use your running Ollama instance with a matching downloaded model tag. Network tools still contact their services.</p></article>
+      </div>
+    </section>
+
+    <section class="section container desktop" id="desktop" aria-labelledby="desktop-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Bitcode Desktop</p><h2 class="section-title" id="desktop-title">bitcode on your desktop.<br>Starting with Linux.</h2></div>
+        <div><p class="section-description">The same agent and the same Sats, in a workspace with projects, an editor, Git and a terminal. It is still in development, with no installable release yet.</p><p style="margin-top:18px"><span class="preview-badge">In development</span></p></div>
+      </div>
+      <figure class="desktop-shot"><img src="assets/desktop/desktop-preview.webp" width="1440" height="863" alt="Bitcode Desktop in the dark theme: projects in the sidebar, the four Sats in the top bar and a chat with Merkle selected." loading="lazy" decoding="async"></figure>
+      <p class="desktop-caption">Development preview on Linux. The interface and features may change.</p>
+      <div class="desktop-grid">
+          <div class="desktop-item"><h3><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>Projects and sessions.</h3><p>Open a folder and keep several chats for each project. Sessions are shared with the CLI.</p></div>
+          <div class="desktop-item"><h3><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>Editor, Git and terminal.</h3><p>An editor that warns about changes on disk, Git diff, stage and commit, and your own terminal.</p></div>
+          <div class="desktop-item"><h3><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg>The Sats, in the chat.</h3><p>Choose bitcode or a Sat for each chat and a model for each Sat. Approval cards appear in the conversation.</p></div>
+          <div class="desktop-item"><h3><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>An isolated agent.</h3><p>The agent worker runs in a bubblewrap sandbox, without your home folder or direct network access, and never receives provider keys.</p></div>
+          <div class="desktop-item"><h3><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>You approve the actions.</h3><p>One-time approvals tied to the session, a local-only mode, and your consent before a local model hands off to a cloud provider.</p></div>
+          <div class="desktop-item"><h3><svg class="icon" aria-hidden="true"><use href="#i-monitor"/></svg>Made for the desktop.</h3><p>Tray icon, notifications without sensitive content, light and dark themes, English and Italian.</p></div>
+      </div>
+      <div class="desktop-status">
+        <div><h3>Not in the preview yet.</h3><p>Bitcoin wallets and adapters, an OS-level network gateway for commands, attaching from the CLI, checkpoints, updates and a tested .deb package.</p></div>
+        <a class="button button-secondary" href="https://github.com/faktotum-project/bitcode">Follow on GitHub <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
       </div>
     </section>
 
