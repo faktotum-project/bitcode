@@ -15,5 +15,5 @@ tests/
 *.json
 package-lock.json
 package.json
-desktop/
-artifacts/
+/desktop/
+/artifacts/
