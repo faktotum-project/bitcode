@@ -4,7 +4,7 @@
     {
       "id": "node",
       "name": "Node",
-      "role": "Ricerca e contesto",
+      "role": "Infrastruttura Bitcoin",
       "color": "#3297ff",
       "poses": {
         "idle": "/assets/sats/node/idle-256.webp",
@@ -52,7 +52,7 @@
     {
       "id": "merkle",
       "name": "Merkle",
-      "role": "Revisione",
+      "role": "Orchestrazione",
       "color": "#c96bff",
       "poses": {
         "idle": "/assets/sats/merkle/idle-256.webp",

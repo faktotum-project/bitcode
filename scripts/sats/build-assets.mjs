@@ -11,10 +11,10 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 const base = path.join(root, "assets/sats");
 const poses = ["idle", "focus", "working", "ask", "happy", "concerned"];
 const agents = [
-  { id: "node", name: "Node", role: "Ricerca e contesto", color: "#3297ff" },
+  { id: "node", name: "Node", role: "Infrastruttura Bitcoin", color: "#3297ff" },
   { id: "script", name: "Script", role: "Implementazione", color: "#f7931a" },
   { id: "hash", name: "Hash", role: "Analisi di sicurezza", color: "#b6f500" },
-  { id: "merkle", name: "Merkle", role: "Revisione", color: "#c96bff" },
+  { id: "merkle", name: "Merkle", role: "Orchestrazione", color: "#c96bff" },
 ];
 const blank = (width, height) =>
   sharp({
