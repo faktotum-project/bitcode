@@ -17,7 +17,7 @@ import * as G from './git.mjs';
 export const MODES = ['manual', 'assisted', 'unattended'];
 const SATS = ['node', 'script', 'hash', 'merkle'];
 const RETENTION_MS = 30 * 24 * 3600_000;
-const DEFAULT_SETTINGS = { v: 1, lang: 'it', theme: 'light', maxActive: 3, maxLocal: 1, model: null, satModels: {}, localOnly: false };
+const DEFAULT_SETTINGS = { v: 1, lang: 'it', theme: 'dark', maxActive: 3, maxLocal: 1, model: null, satModels: {}, localOnly: false };
 const DEFAULT_POLICY = { version: 1, commands: [], network: { destinations: [] } };
 const TTL = { patch: 900_000, command: 900_000, tool: 900_000, network: 300_000, egress: 300_000, policy: 300_000, integrate: 900_000 };
 const HUMAN = /^(ui:\d+|tray)$/;

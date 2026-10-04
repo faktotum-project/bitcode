@@ -1,5 +1,12 @@
 // UI strings only: tool names, commands, identifiers and file content are never translated.
 const it = {
+  sat_idle: 'riposo', sat_thinking: 'pensa', sat_reading: 'legge', sat_running: 'esegue', sat_drafting: 'scrive', sat_waiting: 'attende la tua conferma', sat_happy: 'fatto', sat_concerned: 'problema',
+  role_node: 'ricerca e contesto', role_script: 'implementazione', role_hash: 'analisi di sicurezza', role_merkle: 'revisione',
+  newChat: 'Nuova chat', noChats: 'Nessuna chat', homeTitle: 'Cosa costruiamo in', homeSub: 'Descrivi il lavoro: Bitcode e i Sats leggono il progetto, propongono modifiche e chiedono conferma quando serve.',
+  homeNoProject: 'Apri la cartella di un progetto per iniziare una chat.', placeholderNew: 'Chiedi a Bitcode di costruire, correggere o spiegare qualcosa…',
+  hint: 'Invio per inviare · Maiusc+Invio a capo · /approve /deny /cancel /mode /pending', terminalShort: 'Terminale', unsaved: 'modifiche non salvate, chiudere?', approved: 'approvato',
+  sandboxNoNet: 'bwrap · rete negata', activityLead: 'Esecuzioni in corso e concluse in tutti i progetti, richieste in attesa e worktree da integrare.', runsActive: 'Attività in corso',
+  cashuEnv: 'solo mint ammessi esplicitamente', connected: 'Connessioni verificate', balanceTest: 'Saldo di test', protocols: 'Protocolli', unavailable: 'non disponibile', appearance: 'Aspetto',
   coding: 'Coding', bitcoin: 'Bitcoin', activity: 'Attività', settings: 'Impostazioni',
   projects: 'Progetti', sessions: 'Sessioni', files: 'File', git: 'Git', openFolder: 'Apri cartella…', newSession: 'Nuova sessione',
   noProject: 'Apri una cartella per iniziare.', noSession: 'Crea una sessione per chattare con Bitcode.', noFile: 'Apri un file dall\'albero a sinistra.',
@@ -29,6 +36,13 @@ const it = {
   E_PROVIDER_UNAVAILABLE: 'Modello non configurato.', E_PTY_UNAVAILABLE: 'Terminale non disponibile.', E_FORBIDDEN_ORIGIN: 'Origine non autorizzata.', E_WORKTREE_UNAVAILABLE: 'La modalità senza supervisione richiede un repository Git.'
 };
 const en = {
+  sat_idle: 'idle', sat_thinking: 'thinking', sat_reading: 'reading', sat_running: 'running', sat_drafting: 'writing', sat_waiting: 'waiting for you', sat_happy: 'done', sat_concerned: 'problem',
+  role_node: 'research and context', role_script: 'implementation', role_hash: 'security analysis', role_merkle: 'review',
+  newChat: 'New chat', noChats: 'No chats', homeTitle: 'What are we building in', homeSub: 'Describe the work: Bitcode and the Sats read the project, propose changes and ask before acting when needed.',
+  homeNoProject: 'Open a project folder to start a chat.', placeholderNew: 'Ask Bitcode to build, fix or explain something…',
+  hint: 'Enter to send · Shift+Enter for a new line · /approve /deny /cancel /mode /pending', terminalShort: 'Terminal', unsaved: 'unsaved changes, close?', approved: 'approved',
+  sandboxNoNet: 'bwrap · network denied', activityLead: 'Running and finished runs across all projects, pending requests and worktrees to integrate.', runsActive: 'Active runs',
+  cashuEnv: 'explicitly allowed mints only', connected: 'Verified connections', balanceTest: 'Test balance', protocols: 'Protocols', unavailable: 'unavailable', appearance: 'Appearance',
   coding: 'Coding', bitcoin: 'Bitcoin', activity: 'Activity', settings: 'Settings',
   projects: 'Projects', sessions: 'Sessions', files: 'Files', git: 'Git', openFolder: 'Open folder…', newSession: 'New session',
   noProject: 'Open a folder to start.', noSession: 'Create a session to chat with Bitcode.', noFile: 'Open a file from the tree on the left.',

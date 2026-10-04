@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Bitcode desktop workspace for coding and Bitcoin",
+  "homepage": "https://github.com/faktotum-project/bitcode",
   "author": {
     "name": "FAKTOTUM",
     "email": "maintainers@faktotum-project.org"
