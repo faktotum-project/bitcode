@@ -6,7 +6,8 @@ import { appendFileSync, existsSync, readFileSync, readdirSync, realpathSync, rm
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { callModel } from '../../src/providers.mjs';
-import { loadConfig, resolveModel, allProviders } from '../../src/config.mjs';
+import { loadConfig, saveConfig, resolveModel, allProviders } from '../../src/config.mjs';
+import { localInventory, KNOWN_RUNTIMES } from '../../src/local-inventory.mjs';
 import { isLocalProvider, discoverLocalModels, describeLocalModel, localSetupHint } from '../../src/local-models.mjs';
 import { loadCommands, expandCommand } from '../../src/commands.mjs';
 import { savePlan, latestPlan } from '../../src/plans.mjs';
@@ -80,7 +81,7 @@ const matchesPolicy = (policy, argv) => !!argv && policy.commands.some(r =>
   r.argv ? r.argv.length === argv.length && r.argv.every((a, i) => a === argv[i]) : r.argvPrefix?.every((a, i) => a === argv[i]));
 
 export function createController({ home, appDir, agents = [], emit = () => {}, sandbox = { available: false }, spawnWorker,
-  callModelImpl = callModel, config: configOverride, secrets = { get: () => undefined }, now = Date.now } = {}) {
+  callModelImpl = callModel, config: configOverride, inventoryHome, secrets = { get: () => undefined }, now = Date.now } = {}) {
   const dir = path.join(home, 'desktop');
   const sats = loadSats(appDir && existsSync(path.join(appDir, 'sats')) ? { directory: path.join(appDir, 'sats') } : {});
   const files = { settings: path.join(dir, 'settings.json'), projects: path.join(dir, 'projects.json'), sessions: path.join(dir, 'sessions.json'), worktrees: path.join(dir, 'worktrees.json'), log: path.join(dir, 'approvals.jsonl') };
@@ -120,6 +121,17 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     if (t.apiKey) redactor.add(t.apiKey);
     return { ...t, locality: isLocalProvider(t.provider) ? 'local' : 'cloud' };
   };
+  // Default: explicit desktop setting, then the CLI config/env, then the best
+  // local model this machine is serving and can hold in memory.
+  let autoLocal = null;
+  const defaultSpec = () => settings.model || config().model || process.env.BITCODE_MODEL || autoLocal || undefined;
+  function pickAutoLocal(inv) {
+    const providers = allProviders(config());
+    const fits = inv.servers.filter(sv => sv.configured).flatMap(sv => sv.models.filter(m => ['gpu', 'ram'].includes(m.fit)).map(m => ({ ...m, preferred: providers[sv.name]?.defaultModel === m.id })));
+    const best = fits.find(m => m.preferred) || fits.sort((a, b) => (b.size || 0) - (a.size || 0))[0];
+    autoLocal = best?.spec || null;
+  }
+  const refreshAutoLocal = () => localInventory(config(), { timeoutMs: 1500, home: inventoryHome }).then(pickAutoLocal).catch(() => {});
   const describeModel = spec => { try { const t = resolveTarget(spec); return { spec: t.spec, locality: t.locality }; } catch (e) { return { spec: spec || null, locality: 'unknown', error: e.message }; } };
 
   async function modelRequest(r, { agent, system, messages, tools }) {
@@ -211,7 +223,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     if ([...runs.values()].some(r => r.sessionId === sessionId && !r.endedAt)) throw fail('BUSY', 'A run is already active in this session');
     if (!sandbox.available) throw fail('SANDBOX_UNAVAILABLE', sandbox.detail || 'bubblewrap is required');
     if (agent && !SATS.includes(agent)) throw fail('INVALID_PARAMS', 'Unknown agent');
-    const model = describeModel(s.model || settings.model);
+    const model = describeModel(s.model || defaultSpec());
     if (model.error) throw fail('PROVIDER_UNAVAILABLE', model.error);
     const satModels = Object.fromEntries(SATS.map(a => [a, s.satModels?.[a] || settings.satModels?.[a] || null]));
     if (settings.localOnly && (model.locality !== 'local' || SATS.some(a => satModels[a] && describeModel(satModels[a]).locality !== 'local'))) throw fail('LOCAL_ONLY', 'Local-only mode rejects cloud models');
@@ -339,7 +351,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     if (cmd === '/help' || cmd === '/commands') return { commands: listCommands(root) };
     if (cmd === '/tools') return { tools: DESKTOP_TOOLS };
     if (cmd === '/model') {
-      if (!rest) return { model: describeModel(s.model || settings.model) };
+      if (!rest) return { model: describeModel(s.model || defaultSpec()) };
       const m = describeModel(rest); if (m.error) throw fail('PROVIDER_UNAVAILABLE', m.error);
       if (settings.localOnly && m.locality !== 'local') throw fail('LOCAL_ONLY', 'Local-only mode rejects cloud models');
       loadMessages(s); s.model = m.spec; persistSession(s); return { model: m, session: sessionMeta(s) };
@@ -347,7 +359,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     if (cmd === '/status') {
       const usage = [...runs.values()].filter(r => r.sessionId === sessionId).reduce((u, r) => ({ inputTokens: u.inputTokens + r.usage.inputTokens, outputTokens: u.outputTokens + r.usage.outputTokens }), { inputTokens: 0, outputTokens: 0 });
       const plan = latestPlan(root);
-      return { status: { model: describeModel(s.model || settings.model).spec, mode: s.mode, sat: s.satId || null, messages: loadMessages(s).length, usage, plan: plan?.file || null, sandbox: sandbox.available } };
+      return { status: { model: describeModel(s.model || defaultSpec()).spec, mode: s.mode, sat: s.satId || null, messages: loadMessages(s).length, usage, plan: plan?.file || null, sandbox: sandbox.available } };
     }
     if (cmd === '/plan') {
       if (!rest) throw fail('INVALID_PARAMS', 'Usage: /plan <task>');
@@ -376,9 +388,9 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
 
   // ---- public API (§3) ----
-  const human = ['approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'session.delete', 'run.start'];
+  const human = ['models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'session.delete', 'run.start'];
   const methods = {
-    'app.status': () => ({ sandbox, settings, defaultModel: describeModel(settings.model), runs: [...runs.values()].map(publicRun), pending: approvals.list(), projects: [...projects.values()] }),
+    'app.status': () => ({ sandbox, settings, defaultModel: describeModel(defaultSpec()), runs: [...runs.values()].map(publicRun), pending: approvals.list(), projects: [...projects.values()] }),
     'project.open': ({ path: p }) => {
       const root = realpathSync(p); if (!statSync(root).isDirectory()) throw fail('INVALID_PARAMS', 'Not a directory');
       const projectId = projectIdFor(root); const entry = { projectId, root, name: path.basename(root), openedAt: now() };
@@ -459,9 +471,18 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       const cfg = config(), providers = allProviders(cfg);
       const cloud = Object.entries(providers).filter(([, p]) => !isLocalProvider(p)).map(([name, p]) => ({ provider: name, spec: p.defaultModel ? `${name}/${p.defaultModel}` : null, model: p.defaultModel || null,
         hasKey: !!(secrets.get(name) || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey) }));
-      const local = (await discoverLocalModels(cfg, { timeoutMs: 1500 })).map(d => ({ provider: d.name, running: d.running, hint: d.models.length ? null : localSetupHint(d.name, d.running),
-        models: d.models.map(m => ({ spec: `${d.name}/${m.id}`, model: m.id, detail: describeLocalModel(m) })) }));
-      return { local, cloud, current: describeModel(settings.model).spec, localOnly: settings.localOnly };
+      const inv = await localInventory(cfg, { timeoutMs: 1500, home: inventoryHome }); pickAutoLocal(inv);
+      const local = inv.servers.map(sv => ({ provider: sv.name, label: sv.label, baseURL: sv.baseURL, configured: sv.configured, running: sv.running,
+        hint: sv.models.length ? null : localSetupHint(sv.name, sv.running),
+        models: sv.models.map(m => ({ spec: m.spec, model: m.id, detail: describeLocalModel(m), size: m.size || 0, fit: m.fit })) }));
+      return { local, idle: inv.idle, machine: inv.machine, cloud, current: describeModel(defaultSpec()).spec, auto: !settings.model && !config().model && !process.env.BITCODE_MODEL, localOnly: settings.localOnly };
+    },
+    'models.addLocalProvider': ({ name, baseURL }) => {
+      const known = KNOWN_RUNTIMES.find(r => r.name === name && r.baseURL === baseURL);
+      if (!known) throw fail('INVALID_PARAMS', 'Unknown local runtime');
+      const entry = { api: 'openai', baseURL: known.baseURL, keyEnv: null, local: true, ...(known.discovery ? { discovery: known.discovery } : {}) };
+      if (configOverride) { configOverride.providers = { ...configOverride.providers, [name]: entry }; return entry; }
+      const cfg = loadConfig(); cfg.providers = { ...(cfg.providers || {}), [name]: entry }; saveConfig(cfg); return entry;
     },
     'fs.tree': ({ projectId, path: rel = '.' }) => {
       const root = project(projectId).root, abs = workspacePath(root, rel);
@@ -513,6 +534,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
 
   prune();
+  if (!configOverride) refreshAutoLocal();
   const timer = setInterval(prune, 3600_000); timer.unref?.();
   return {
     invoke, redactor,

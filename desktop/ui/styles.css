@@ -347,3 +347,28 @@ table.list th { font-size: 12px; color: var(--muted); font-weight: 500; }
 .note { background: var(--card); border: 1px solid var(--hairline); border-radius: 12px; padding: 12px 14px; }
 .note .ntitle { font-weight: 600; color: var(--ink); margin-bottom: 6px; font-size: 13px; }
 .note .nbody { font-size: 12px; color: var(--mutedStrong); display: grid; gap: 2px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; }
+
+/* ---------- model picker (popover + opencode-style dialog) ---------- */
+.fit { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; white-space: nowrap; flex: none; }
+.fit.gpu { color: var(--up); background: var(--upSoft); } .fit.ram { color: var(--info); background: rgba(59, 130, 246, .14); }
+.fit.tight { color: var(--accent); background: var(--accentSoft); } .fit.too-big { color: var(--down); background: var(--downSoft); }
+.mitem.disabled { opacity: .55; cursor: default; } .mitem.disabled:hover { background: none; }
+.midle { padding: 6px 10px 6px 23px; display: grid; gap: 4px; }
+.midle .mrow { display: flex; align-items: center; gap: 10px; } .midle .mname { flex: 1; color: var(--mutedStrong); font-size: 12.5px; }
+.mhint { font: 11px "JetBrains Mono", monospace; color: var(--muted); background: var(--canvas); border: 1px solid var(--hairline); border-radius: 5px; padding: 3px 6px; cursor: copy; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mhint:hover { color: var(--ink); }
+.mprov .btn.sm { height: 22px; padding: 0 8px; margin-left: 6px; }
+.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); display: grid; place-items: start center; padding-top: 10vh; z-index: 100; }
+.dialog { width: min(640px, 92vw); max-height: 76vh; background: var(--card); border: 1px solid var(--hairlineStrong); border-radius: 12px; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); box-shadow: 0 24px 64px rgba(0, 0, 0, .45); overflow: hidden; }
+.dhead { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 4px 18px; }
+.dtitle { font-weight: 600; color: var(--ink); font-size: 15px; }
+.dsearch { display: flex; align-items: center; gap: 10px; margin: 6px 14px; padding: 0 12px; height: 40px; border: 1px solid var(--hairlineStrong); border-radius: 8px; background: var(--canvas); color: var(--muted); }
+.dsearch input { flex: 1; border: 0; background: none; outline: none; color: var(--ink); height: 38px; padding: 0; }
+.dbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 18px 8px; border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
+.machine { display: flex; gap: 14px; color: var(--muted); font-size: 11.5px; flex-wrap: wrap; }
+.dtoggle { display: flex; align-items: center; gap: 6px; color: var(--mutedStrong); font-size: 12.5px; cursor: pointer; }
+.dlist { padding: 4px 8px 12px; }
+.modelfield { display: flex; align-items: center; gap: 8px; height: 36px; width: 100%; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--card); color: var(--ink); text-align: left; }
+.modelfield:hover { border-color: var(--hairlineStrong); }
+.modelfield .mf { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.modelfield .caret { color: var(--muted); font-size: 10px; }

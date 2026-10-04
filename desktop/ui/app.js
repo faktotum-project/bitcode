@@ -461,10 +461,13 @@ function renderComposer() {
   if (S.draft) updateMenu();
 }
 
-// Model picker: installed local models first (probed live), then cloud providers.
+// Model picker: everything runnable on this machine first (any runtime, probed
+// live, with a memory-fit badge), downloaded-but-not-served models with the
+// command to serve them, then cloud providers. Shared by the composer popover
+// and the settings dialog.
 const modelLocality = spec => {
   const a = S.picker.data; if (!a || !spec) return 'unknown';
-  if (a.local.some(p => p.models.some(m => m.spec === spec) || spec.startsWith(`${p.provider}/`))) return 'local';
+  if (a.local.some(p => spec.startsWith(`${p.provider}/`))) return 'local';
   return a.cloud.some(c => spec.startsWith(`${c.provider}/`)) ? 'cloud' : 'unknown';
 };
 async function loadModels() { S.picker.loading = true; try { S.picker.data = await api('models.available'); } finally { S.picker.loading = false; } }
@@ -476,32 +479,81 @@ const chooseModel = guard(async spec => {
   if (S.session) { const r = await api('chat.submit', { sessionId: S.session.sessionId, text: `/model ${spec}` }); showResult({ command: true, result: r.result }); }
   else { S.newModel = spec; renderComposer(); }
 });
-function modelPopover() {
-  const d = S.picker.data, q = S.picker.filter.toLowerCase(), current = S.session?.model || S.newModel || S.status?.defaultModel?.spec;
-  const match = x => !q || x.toLowerCase().includes(q);
-  const item = (spec, label, detail, opts = {}) => h('button', { class: `mitem${spec === current ? ' on' : ''}`, role: 'option', disabled: opts.disabled, onClick: () => chooseModel(spec) },
-    h('span', { class: 'mname num' }, label), detail ? h('span', { class: 'mdetail num' }, detail) : null, spec === current ? h('span', { class: 'check' }, '✓') : null);
+const gb = n => n ? `${(n / 1024 ** 3).toFixed(n < 10 * 1024 ** 3 ? 1 : 0)} GB` : '';
+const fitBadge = fit => fit && fit !== 'unknown' ? h('span', { class: `fit ${fit}`, title: t(`fitHint_${fit}`) }, t(`fit_${fit}`)) : null;
+function machineLine(m) {
+  if (!m) return null;
+  const gpu = m.gpus.map(g => `${g.name}${g.vram ? ` ${gb(g.vram)}` : ''}${g.unified ? ` · ${t('sharedMem')}` : ''}`).join(', ');
+  return h('div', { class: 'machine num' }, h('span', {}, `RAM ${gb(m.ram.total)} · ${gb(m.ram.available)} ${t('free')}`), gpu ? h('span', {}, `GPU ${gpu}`) : null, h('span', {}, `${m.cpus} core`));
+}
+function modelList({ current, filter = '', onPick, onRefresh, inherit = null, fitsOnly = false }) {
+  const d = S.picker.data, q = filter.toLowerCase(), match = x => !q || x.toLowerCase().includes(q);
+  const item = (spec, label, detail, extra = {}) => h('button', { class: `mitem${spec === current ? ' on' : ''}`, role: 'option', 'aria-selected': spec === current ? 'true' : 'false', onClick: () => onPick(spec) },
+    h('span', { class: 'mname num' }, label), extra.fit ? fitBadge(extra.fit) : null, detail ? h('span', { class: 'mdetail num' }, detail) : null, spec === current ? h('span', { class: 'check' }, '✓') : null);
   const body = [];
-  if (S.picker.loading && !d) body.push(h('div', { class: 'mnote' }, h('span', { class: 'typing' }, h('i'), h('i'), h('i')), ' ', t('probing')));
-  if (d) {
-    body.push(h('div', { class: 'mgroup' }, t('localModels'), h('button', { class: 'mrefresh', title: t('refresh'), onClick: guard(async () => { await loadModels(); renderComposer(); }) }, '↻')));
-    for (const p of d.local) {
-      const models = p.models.filter(m => match(m.spec));
-      body.push(h('div', { class: 'mprov' }, h('span', { class: `loc ${p.running ? 'local' : 'off'}` }), p.provider, h('span', { class: 'mdetail' }, p.running ? `${p.models.length} ${t('installed')}` : t('notRunning'))));
-      body.push(...models.map(m => item(m.spec, m.model, m.detail)));
-      if (p.hint && !q) body.push(h('div', { class: 'mnote mono' }, p.hint));
-    }
-    if (!d.localOnly) {
-      body.push(h('div', { class: 'mgroup' }, t('cloudModels')));
-      for (const c of d.cloud.filter(c => c.spec && match(c.spec))) body.push(item(c.spec, c.spec, c.hasKey ? t('hasKey') : t('noKey')));
-    }
+  if (inherit) body.push(h('button', { class: `mitem${!current ? ' on' : ''}`, onClick: () => onPick(null) }, h('span', { class: 'mname' }, inherit), !current ? h('span', { class: 'check' }, '✓') : null));
+  if (!d) { body.push(h('div', { class: 'mnote' }, h('span', { class: 'typing' }, h('i'), h('i'), h('i')), ' ', t('probing'))); return body; }
+  body.push(h('div', { class: 'mgroup' }, t('localModels'), onRefresh ? h('button', { class: 'mrefresh', title: t('refresh'), onClick: onRefresh }, '↻') : null));
+  let anyLocal = false;
+  for (const p of d.local) {
+    const models = p.models.filter(m => match(m.spec) && (!fitsOnly || ['gpu', 'ram'].includes(m.fit)));
+    if (q && !models.length) continue;
+    anyLocal ||= models.length > 0;
+    body.push(h('div', { class: 'mprov' }, h('span', { class: `loc ${p.running ? 'local' : 'off'}` }), p.label || p.provider,
+      !p.configured ? h('span', { class: 'chip warn' }, t('detected')) : null,
+      h('span', { class: 'mdetail' }, p.running ? `${p.models.length} ${t('installed')}` : t('notRunning')),
+      !p.configured ? h('button', { class: 'btn sm', onClick: guard(async () => { await api('models.addLocalProvider', { name: p.provider, baseURL: p.baseURL }); toast(`${p.label} ${t('added')}`); await onRefresh?.(); }) }, t('addRuntime')) : null));
+    body.push(...models.map(m => p.configured ? item(m.spec, m.model, [gb(m.size), m.detail.replace(/ · [\d.]+ GB$/, '')].filter(Boolean).join(' · '), { fit: m.fit })
+      : h('div', { class: 'mitem disabled' }, h('span', { class: 'mname num' }, m.model), fitBadge(m.fit), h('span', { class: 'mdetail num' }, gb(m.size)))));
+    if (p.hint && !q) body.push(h('div', { class: 'mnote mono' }, p.hint));
   }
+  if (!anyLocal && !q) body.push(h('div', { class: 'mnote' }, t('noLocalModels')));
+  const idle = (d.idle || []).filter(x => match(x.name));
+  if (idle.length) {
+    body.push(h('div', { class: 'mgroup' }, t('idleModels')));
+    for (const x of idle) body.push(h('div', { class: 'midle' }, h('div', { class: 'mrow' }, h('span', { class: 'mname num' }, x.name), fitBadge(x.fit), h('span', { class: 'mdetail num' }, `${x.runtime} · ${gb(x.size)}`)),
+      x.hint ? h('code', { class: 'mhint', title: t('copy'), onClick: () => { navigator.clipboard?.writeText(x.hint); toast(t('copied')); } }, x.hint) : null));
+  }
+  if (!d.localOnly) {
+    const cloud = d.cloud.filter(c => c.spec && match(c.spec));
+    if (cloud.length) body.push(h('div', { class: 'mgroup' }, t('cloudModels')), ...cloud.map(c => item(c.spec, c.spec, c.hasKey ? t('hasKey') : t('noKey'))));
+  }
+  if (q.includes('/') && ![...d.local.flatMap(p => p.models.map(m => m.spec)), ...d.cloud.map(c => c.spec)].includes(filter.trim()))
+    body.push(h('div', { class: 'mgroup' }, t('customModel')), item(filter.trim(), filter.trim(), t('typed')));
+  return body;
+}
+function modelPopover() {
+  const current = S.session?.model || S.newModel || S.status?.defaultModel?.spec;
+  const refresh = guard(async () => { await loadModels(); renderComposer(); });
   const custom = h('input', { id: 'modelfilter', type: 'text', class: 'mono', placeholder: t('modelFilter'), value: S.picker.filter,
     onInput: e => { S.picker.filter = e.target.value; const pos = e.target.selectionStart; renderComposer(); const i = $('modelfilter'); i?.focus(); i?.setSelectionRange(pos, pos); },
     onKeydown: e => { if (e.key === 'Enter' && e.target.value.includes('/')) chooseModel(e.target.value.trim()); if (e.key === 'Escape') closeModelPicker(); } });
-  return h('div', { class: 'modelpop', role: 'listbox' }, custom, h('div', { class: 'mlist' }, body),
+  return h('div', { class: 'modelpop', role: 'listbox' }, custom, h('div', { class: 'mlist' }, modelList({ current, filter: S.picker.filter, onPick: chooseModel, onRefresh: refresh })),
     h('div', { class: 'mfoot' }, h('span', { class: 'status' }, t('modelFoot')),
       h('button', { class: 'btn sm ghost', disabled: !current, onClick: guard(async () => { S.settings = await api('settings.set', { key: 'model', value: current }); await refreshStatus(); toast(`${t('defaultModel')}: ${current}`); closeModelPicker(); }) }, t('setDefault'))));
+}
+// opencode-style dialog: search, machine summary, "fits in memory" filter.
+function openModelDialog({ title, current, inherit = null, onPick }) {
+  const state = { filter: '', fitsOnly: false };
+  const overlay = h('div', { class: 'overlay', onMousedown: e => { if (e.target === overlay) close(); } });
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+  const esc = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', esc);
+  const pick = guard(async spec => { await onPick(spec); close(); });
+  const draw = () => {
+    const search = h('input', { type: 'text', class: 'mono', placeholder: t('modelFilter'), value: state.filter, 'aria-label': t('modelFilter'),
+      onInput: e => { state.filter = e.target.value; const pos = e.target.selectionStart; draw(); const i = overlay.querySelector('input'); i.focus(); i.setSelectionRange(pos, pos); },
+      onKeydown: e => { if (e.key === 'Enter' && state.filter.includes('/')) pick(state.filter.trim()); } });
+    fill(overlay, h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+      h('div', { class: 'dhead' }, h('span', { class: 'dtitle' }, title), h('button', { class: 'ibtn', 'aria-label': t('close'), onClick: close }, icon('close'))),
+      h('div', { class: 'dsearch' }, icon('search'), search),
+      h('div', { class: 'dbar' }, machineLine(S.picker.data?.machine),
+        h('label', { class: 'dtoggle' }, h('input', { type: 'checkbox', checked: state.fitsOnly, onChange: e => { state.fitsOnly = e.target.checked; draw(); } }), t('fitsOnly'))),
+      h('div', { class: 'mlist dlist' }, modelList({ current, filter: state.filter, fitsOnly: state.fitsOnly, inherit, onPick: pick, onRefresh: guard(async () => { S.picker.data = null; draw(); await loadModels(); draw(); }) }))));
+    if (!state.filter) setTimeout(() => overlay.querySelector('input')?.focus(), 0);
+  };
+  document.body.append(overlay); draw();
+  if (!S.picker.data) loadModels().then(draw);
 }
 
 function approvalCard(a) {
@@ -622,7 +674,9 @@ function settingsPage() {
     S.settings = await api('settings.set', { key, value: parse(e.target.type === 'checkbox' ? e.target.checked : e.target.value) });
     if (key === 'model') await refreshStatus(); if (key === 'lang') setLang(S.settings.lang); if (key === 'theme') { applyTheme(); retheme(); } renderShell();
   });
-  const modelInput = (value, onChange, placeholder) => h('input', { type: 'text', class: 'mono', list: 'models', value: value || '', placeholder, onChange });
+  const modelField = (spec, auto, onClick, empty) => h('button', { class: 'modelfield num', onClick }, h('span', { class: `loc ${spec ? modelLocality(spec) : 'unknown'}` }),
+    h('span', { class: 'mf' }, spec || empty), auto ? h('span', { class: 'chip' }, t('auto')) : null, h('span', { class: 'caret' }, '▾'));
+  if (!S.picker.data && !S.picker.loading) loadModels().then(() => { if (S.view === 'settings') renderCenter(); }).catch(() => {});
   const keyInputs = new Map();
   return h('div', { class: 'page' }, h('h1', {}, t('settings')),
     h('datalist', { id: 'models' }, S.models.map(m => h('option', { value: `${m.name}/${m.defaultModel || ''}` }))),
@@ -632,8 +686,10 @@ function settingsPage() {
       h('label', {}, t('theme')), h('select', { onChange: set('theme') }, ['dark', 'light', 'system'].map(l => h('option', { value: l, selected: (st.theme || 'dark') === l }, t(l))))),
     h('div', { class: 'section' }, t('model')),
     h('div', { class: 'form' },
-      h('label', {}, t('defaultModel')), modelInput(st.model, set('model', v => v.trim() || null), 'ollama/qwen3-coder'),
-      SATS.map(s => [h('label', {}, `${t('satModel')} ${satName(s)}`), modelInput(st.satModels?.[s], guard(async e => { S.settings = await api('settings.set', { key: 'satModels', value: { ...st.satModels, [s]: e.target.value.trim() || null } }); }), t('inherit'))]),
+      h('label', {}, t('defaultModel')), modelField(st.model || S.status?.defaultModel?.spec, !st.model, () => openModelDialog({ title: t('defaultModel'), current: st.model,
+        onPick: async spec => { S.settings = await api('settings.set', { key: 'model', value: spec }); await refreshStatus(); renderCenter(); } })),
+      SATS.map(x => [h('label', {}, `${t('satModel')} ${satName(x)}`), modelField(st.satModels?.[x], false, () => openModelDialog({ title: `${t('satModel')} ${satName(x)}`, current: st.satModels?.[x] || null, inherit: t('inherit'),
+        onPick: async spec => { S.settings = await api('settings.set', { key: 'satModels', value: { ...S.settings.satModels, [x]: spec } }); renderCenter(); } }), t('inherit'))]),
       h('label', {}, t('localOnly')), h('input', { type: 'checkbox', checked: st.localOnly, onChange: set('localOnly') }),
       h('label', {}, t('maxActive')), h('input', { type: 'number', min: 1, max: 8, value: st.maxActive, onChange: set('maxActive', Number) }),
       h('label', {}, t('maxLocal')), h('input', { type: 'number', min: 1, max: 4, value: st.maxLocal, onChange: set('maxLocal', Number) })),
