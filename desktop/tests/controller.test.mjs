@@ -169,3 +169,38 @@ test('unattended runs work in a separate worktree, integrated only on request', 
   assert.equal(readFileSync(path.join(root, 'x.txt'), 'utf8'), 'my uncommitted edit\n', 'manual edits preserved');
   c.shutdown();
 });
+
+test('slash commands: catalogue, /model, /plan read-only with saved plan, /build, CLI-only and unknown', async () => {
+  const { c, home, root, workers } = setup();
+  const previous = process.env.BITCODE_HOME; process.env.BITCODE_HOME = home;
+  try {
+    const { s, p } = await sessionIn(c, root);
+    const list = await c.invoke('commands.list', { projectId: p.projectId });
+    for (const name of ['help', 'plan', 'build', 'model', 'models', 'status', 'repo:review']) assert.ok(list.some(x => x.name === name), name);
+    assert.equal(list.find(x => x.name === 'btc:fees').scope, 'cli');
+    const help = await c.invoke('chat.submit', { sessionId: s.sessionId, text: '/help' }, 'ui:1');
+    assert.ok(help.result.commands.length >= list.length - 1);
+    await assert.rejects(c.invoke('chat.submit', { sessionId: s.sessionId, text: '/model nope/x' }, 'ui:1'), { code: 'PROVIDER_UNAVAILABLE' });
+    const switched = await c.invoke('chat.submit', { sessionId: s.sessionId, text: '/model ollama/qwen3:8b' }, 'ui:1');
+    assert.equal(switched.result.session.model, 'ollama/qwen3:8b');
+    await assert.rejects(c.invoke('chat.submit', { sessionId: s.sessionId, text: '/btc:fees' }, 'ui:1'), { code: 'CLI_ONLY' });
+    await assert.rejects(c.invoke('chat.submit', { sessionId: s.sessionId, text: '/compact' }, 'ui:1'), { code: 'CLI_ONLY' });
+    await assert.rejects(c.invoke('chat.submit', { sessionId: s.sessionId, text: '/nonexistent' }, 'ui:1'), { code: 'UNKNOWN_COMMAND' });
+    await assert.rejects(c.invoke('chat.submit', { sessionId: s.sessionId, text: '/build' }, 'ui:1'), { code: 'NOT_FOUND' });
+    await c.invoke('chat.submit', { sessionId: s.sessionId, text: '/plan add a fee test' }, 'ui:1');
+    await until(() => workers.length === 1);
+    const start = workers[0].sent.find(m => m.type === 'start');
+    assert.equal(start.readOnly, true); assert.match(start.systemExtra, /Do not implement/); assert.equal(start.model, 'ollama/qwen3:8b');
+    workers[0].onMessage({ type: 'done', answer: '1. edit fees.mjs\n2. run tests' });
+    const status = await c.invoke('chat.submit', { sessionId: s.sessionId, text: '/status' }, 'ui:1');
+    assert.ok(status.result.status.plan);
+    await c.invoke('chat.submit', { sessionId: s.sessionId, text: '/build' }, 'ui:1');
+    await until(() => workers.length === 2);
+    const build = workers[1].sent.find(m => m.type === 'start');
+    assert.equal(build.readOnly, false); assert.match(build.messages.at(-1).content, /edit fees\.mjs/);
+    workers[1].onMessage({ type: 'done' });
+    await c.invoke('chat.submit', { sessionId: s.sessionId, text: '/repo:review the fee module' }, 'ui:1');
+    await until(() => workers.length === 3);
+    assert.match(workers[2].sent.find(m => m.type === 'start').messages.at(-1).content, /the fee module/);
+  } finally { if (previous === undefined) delete process.env.BITCODE_HOME; else process.env.BITCODE_HOME = previous; c.shutdown(); }
+});

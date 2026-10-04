@@ -58,14 +58,14 @@ async function run(input) {
   const target = { spec: input.model, provider: { desktopAgent: input.agent || 'bitcode' }, model: input.model };
   const hooks = { onCheckpoint: messages => send({ type: 'checkpoint', messages }), onUsage: usage => send({ type: 'usage', usage }) };
   const model = request => rpc('model.request', { agent: request.provider.desktopAgent, system: request.system, messages: request.messages, tools: request.tools });
-  const system = systemPrompt({ project: { root }, profile: 'code' }) + '\nDesktop mode: remain inside the project. All changes and commands are policy-controlled. Never attempt to approve actions yourself.';
+  const system = systemPrompt({ project: { root }, profile: 'code' }) + '\nDesktop mode: remain inside the project. All changes and commands are policy-controlled. Never attempt to approve actions yourself.' + (input.systemExtra ? `\n${input.systemExtra}` : '');
   tools.push({ name: 'subagent', serial: true, description: 'Delegate one task to node (research), script (coding), hash (security) or merkle (review).', parameters: schema({ agent: { enum: ['node', 'script', 'hash', 'merkle'] }, prompt: string }), run: args => runSubagent({ ...args, agents: input.agents,
     target: { spec: input.model, model: input.model, provider: { desktopAgent: args.agent } },
     system, tools, parentContext: context, hooks: { onUsage: hooks.onUsage }, callModelImpl: model, signal, limits: input.limits,
     state: sharedState }) });
   const sharedState = { totalToolCalls: 0 };
   try {
-    const options = { target, system, messages: input.messages, tools, hooks, context, signal, state: sharedState, limits: input.limits, callModelImpl: model };
+    const options = { target, system, messages: input.messages, tools, hooks, context, signal, state: sharedState, limits: input.limits, callModelImpl: model, readOnly: !!input.readOnly };
     const answer = input.agent ? await runSat({ ...options, satId: input.agent, registry: input.sats, persistence: false, guardedTools: true,
       targetForSat: id => ({ ...target, provider: { desktopAgent: id } }) })
       : await runAgent(options);

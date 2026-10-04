@@ -7,7 +7,9 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { callModel } from '../../src/providers.mjs';
 import { loadConfig, resolveModel, allProviders } from '../../src/config.mjs';
-import { isLocalProvider } from '../../src/local-models.mjs';
+import { isLocalProvider, discoverLocalModels, describeLocalModel, localSetupHint } from '../../src/local-models.mjs';
+import { loadCommands, expandCommand } from '../../src/commands.mjs';
+import { savePlan, latestPlan } from '../../src/plans.mjs';
 import { isReadOnlyCommand, normalizeCommand } from '../../src/permissions.mjs';
 import { saveSession, loadSession, sessionsDir, newSessionId } from '../../src/session.mjs';
 import { Approvals, Redactor, Semaphore, atomicJSON, fail, hash, loadJSON, workspacePath } from './primitives.mjs';
@@ -24,6 +26,48 @@ const DEFAULT_SETTINGS = { v: 1, lang: 'it', theme: 'dark', maxActive: 3, maxLoc
 const DEFAULT_POLICY = { version: 1, commands: [], network: { destinations: [] } };
 const TTL = { patch: 900_000, command: 900_000, tool: 900_000, network: 300_000, egress: 300_000, policy: 300_000, integrate: 900_000 };
 const HUMAN = /^(ui:\d+|tray)$/;
+// Slash commands available in the desktop chat. `run` = handled here, `ui` =
+// handled by the renderer (panels, pickers), `cli` = CLI-only for now and
+// listed so the catalogue matches the project, never silently dropped.
+export const BUILTIN_COMMANDS = [
+  { name: 'help', hint: 'show commands', scope: 'run' },
+  { name: 'plan', hint: 'investigate a task with read-only tools and save a plan', args: true, scope: 'run' },
+  { name: 'build', hint: 'execute the most recently saved plan', scope: 'run' },
+  { name: 'model', hint: 'show or switch the model of this chat', args: true, scope: 'run' },
+  { name: 'models', hint: 'pick a provider or an installed local model', scope: 'ui' },
+  { name: 'status', hint: 'model, mode, Sat, tokens and latest plan', scope: 'run' },
+  { name: 'commands', hint: 'list bundled and custom commands', scope: 'run' },
+  { name: 'sats', hint: 'list persistent Sats', scope: 'run' },
+  { name: 'sat', hint: 'select · info · workspace', args: true, scope: 'run' },
+  { name: 'mode', hint: 'manual · assisted · unattended', args: true, scope: 'run' },
+  { name: 'approve', hint: 'approve a pending request by id', args: true, scope: 'run' },
+  { name: 'deny', hint: 'deny a pending request by id', args: true, scope: 'run' },
+  { name: 'pending', hint: 'list pending requests', scope: 'run' },
+  { name: 'cancel', hint: 'stop the active run', scope: 'run' },
+  { name: 'diff', hint: 'show project changes', scope: 'ui' },
+  { name: 'new', hint: 'start a new chat', scope: 'ui' },
+  { name: 'reset', hint: 'start a new chat', scope: 'ui' },
+  { name: 'export', hint: 'export this chat as Markdown', scope: 'ui' },
+  { name: 'tools', hint: 'list tools available to the agent', scope: 'run' },
+  { name: 'settings', hint: 'providers, keys and defaults', scope: 'ui' },
+  { name: 'setting', hint: 'provider status & active model', scope: 'ui' },
+  { name: 'config', hint: 'get · set config values', scope: 'ui' },
+  { name: 'login', hint: 'configure a provider API key', scope: 'ui' },
+  { name: 'provider', hint: 'add an API key · list providers', scope: 'ui' },
+  { name: 'doctor', hint: 'diagnostics', scope: 'ui' },
+  { name: 'compact', hint: 'summarize older context', scope: 'cli' },
+  { name: 'undo', hint: 'restore the latest agent turn', scope: 'cli' },
+  { name: 'profile', hint: 'switch code/bitcoin profile', scope: 'cli' },
+  { name: 'skills', hint: 'list local skills', scope: 'cli' },
+  { name: 'mcp', hint: 'show MCP connections', scope: 'cli' },
+  { name: 'subagent', hint: 'run a custom subagent persona', scope: 'cli' },
+  { name: 'session', hint: 'save · load · list · export', scope: 'cli' }
+];
+// Custom commands in these namespaces drive wallet/node tools, which the
+// sandboxed coding worker does not have until the D4 finance service exists.
+const FINANCIAL_NAMESPACES = /^(btc|cashu|liquid|ln|wl):/;
+const DESKTOP_TOOLS = ['read_file', 'list_dir', 'write_file', 'edit_file', 'bash', 'network_fetch', 'subagent'];
+const PLAN_SYSTEM = 'Investigate the task using read-only tools. Return a concrete implementation plan with files, steps and verification. Do not implement changes.';
 
 export const projectIdFor = root => `p_${hash(realpathSync(root)).slice(0, 16)}`;
 export const fileVersion = file => {
@@ -161,9 +205,9 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
 
   // ---- runs (§8, §9) ----
-  async function startRun({ sessionId, prompt, agent }) {
+  async function startRun({ sessionId, prompt, agent, kind = 'chat', readOnly = false, systemExtra = '' }) {
     const s = session(sessionId), p = project(s.projectId);
-    agent ??= s.satId;
+    agent ??= kind === 'plan' ? undefined : s.satId;
     if ([...runs.values()].some(r => r.sessionId === sessionId && !r.endedAt)) throw fail('BUSY', 'A run is already active in this session');
     if (!sandbox.available) throw fail('SANDBOX_UNAVAILABLE', sandbox.detail || 'bubblewrap is required');
     if (agent && !SATS.includes(agent)) throw fail('INVALID_PARAMS', 'Unknown agent');
@@ -175,7 +219,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     const config = Object.freeze({ mode: s.mode, model: model.spec, locality: model.locality, satModels: Object.freeze(satModels), localOnly: settings.localOnly, policyVersion: pol.version,
       limits: Object.freeze({ maxSteps: 60, maxTotalToolCalls: 200 }) });
     const r = { runId: randomUUID(), sessionId, projectId: p.projectId, root: p.root, agentId: agent || 'bitcode', prompt, config, state: 'queued', startedAt: now(),
-      usage: { inputTokens: 0, outputTokens: 0, costMicros: null }, aborter: new AbortController(), egress: new Set() };
+      usage: { inputTokens: 0, outputTokens: 0, costMicros: null }, aborter: new AbortController(), egress: new Set(), kind };
     runs.set(r.runId, r);
     s.messages = [...(s.messages || []), { role: 'user', content: prompt }]; s.updatedAt = now(); persistSession(s);
     sessionEvent(sessionId, 'messages', { messages: transcript(s.messages) });
@@ -195,7 +239,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
             onMessage: msg => onWorkerMessage(r, msg),
             onExit: err => { if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'interrupted', { error: err?.message || null }); cleanup(r); resolve(); } });
           setState(r, 'running');
-          r.worker.send({ type: 'start', runId: r.runId, sessionId, model: config.model, agent, agents, sats, limits: config.limits, messages: s.messages });
+          r.worker.send({ type: 'start', runId: r.runId, sessionId, model: config.model, agent, agents, sats, limits: config.limits, messages: s.messages, readOnly, systemExtra });
         });
       } catch (e) {
         if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', { error: e.message });
@@ -227,7 +271,13 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       const s = sessions.get(r.sessionId); if (!s) return;
       s.messages = msg.messages; s.updatedAt = now(); persistSession(s);
       sessionEvent(r.sessionId, 'messages', { messages: transcript(s.messages) });
-    } else if (msg.type === 'done') { setState(r, 'success'); r.worker?.stop(); }
+    } else if (msg.type === 'done') {
+      if (r.kind === 'plan' && typeof msg.answer === 'string' && msg.answer.trim()) {
+        const file = savePlan(project(r.projectId).root, { task: r.prompt, text: msg.answer });
+        sessionEvent(r.sessionId, 'plan.saved', { runId: r.runId, file });
+      }
+      setState(r, 'success'); r.worker?.stop();
+    }
     else if (msg.type === 'failure') { setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', { error: redactor.text(msg.message || 'failed') }); r.worker?.stop(); }
   }
   function cancelRun(runId) {
@@ -262,7 +312,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
 
   // ---- chat control commands (§5.3): parsed only from human-typed text ----
-  function command(origin, { sessionId, text }) {
+  async function command(origin, { sessionId, text }) {
     const [cmd, arg, name, extra] = text.trim().split(/\s+/);
     if (cmd === '/sats' && !arg) return sats.map(({ id, role }) => ({ id, role }));
     if (cmd === '/sat') {
@@ -285,7 +335,44 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     if (cmd === '/cancel') { const r = [...runs.values()].filter(r => r.sessionId === sessionId && !r.endedAt && (!arg || r.runId.startsWith(arg))); if (r.length !== 1) throw fail('NOT_FOUND', 'No matching active run'); return cancelRun(r[0].runId); }
     if (cmd === '/mode') { const map = { manuale: 'manual', manual: 'manual', assistita: 'assisted', assisted: 'assisted', autonoma: 'unattended', unattended: 'unattended' }; return invoke('mode.set', { sessionId, mode: map[arg] }, origin); }
     if (cmd === '/pending') return pending;
-    throw fail('INVALID_PARAMS', `Unknown command ${cmd}`);
+    const s = session(sessionId), root = project(s.projectId).root, rest = text.trim().slice(cmd.length).trim();
+    if (cmd === '/help' || cmd === '/commands') return { commands: listCommands(root) };
+    if (cmd === '/tools') return { tools: DESKTOP_TOOLS };
+    if (cmd === '/model') {
+      if (!rest) return { model: describeModel(s.model || settings.model) };
+      const m = describeModel(rest); if (m.error) throw fail('PROVIDER_UNAVAILABLE', m.error);
+      if (settings.localOnly && m.locality !== 'local') throw fail('LOCAL_ONLY', 'Local-only mode rejects cloud models');
+      loadMessages(s); s.model = m.spec; persistSession(s); return { model: m, session: sessionMeta(s) };
+    }
+    if (cmd === '/status') {
+      const usage = [...runs.values()].filter(r => r.sessionId === sessionId).reduce((u, r) => ({ inputTokens: u.inputTokens + r.usage.inputTokens, outputTokens: u.outputTokens + r.usage.outputTokens }), { inputTokens: 0, outputTokens: 0 });
+      const plan = latestPlan(root);
+      return { status: { model: describeModel(s.model || settings.model).spec, mode: s.mode, sat: s.satId || null, messages: loadMessages(s).length, usage, plan: plan?.file || null, sandbox: sandbox.available } };
+    }
+    if (cmd === '/plan') {
+      if (!rest) throw fail('INVALID_PARAMS', 'Usage: /plan <task>');
+      loadMessages(s); return { run: await startRun({ sessionId, prompt: rest, kind: 'plan', readOnly: true, systemExtra: PLAN_SYSTEM }) };
+    }
+    if (cmd === '/build') {
+      const plan = latestPlan(root); if (!plan) throw fail('NOT_FOUND', 'No saved plan; use /plan <task>');
+      loadMessages(s); return { run: await startRun({ sessionId, prompt: `Implement this saved plan, inspect current files first, and verify the changes:\n${plan.text}` }) };
+    }
+    const builtin = BUILTIN_COMMANDS.find(c => `/${c.name}` === cmd);
+    if (builtin?.scope === 'cli') throw fail('CLI_ONLY', `/${builtin.name} is available in the CLI only for now`);
+    if (builtin?.scope === 'ui') throw fail('UI_ONLY', `/${builtin.name} is handled by the app window`);
+    const custom = loadCommands({ cwd: root, bundledDir: bundledCommandsDir, userDir: path.join(home, 'commands') }).find(c => `/${c.name}` === cmd);
+    if (custom) {
+      if (FINANCIAL_NAMESPACES.test(custom.name)) throw fail('CLI_ONLY', `/${custom.name} needs the Bitcoin tools, available in the CLI only for now`);
+      loadMessages(s); return { run: await startRun({ sessionId, prompt: expandCommand(custom, rest) }) };
+    }
+    throw fail('UNKNOWN_COMMAND', `Unknown command ${cmd}. Type /help`);
+  }
+
+  const bundledCommandsDir = appDir && existsSync(path.join(appDir, 'commands')) ? path.join(appDir, 'commands') : undefined;
+  function listCommands(root) {
+    const custom = loadCommands({ cwd: root || home, bundledDir: bundledCommandsDir, userDir: path.join(home, 'commands') })
+      .map(c => ({ name: c.name, hint: c.description || 'custom command', args: true, scope: FINANCIAL_NAMESPACES.test(c.name) ? 'cli' : 'run', custom: true }));
+    return [...BUILTIN_COMMANDS, ...custom];
   }
 
   // ---- public API (§3) ----
@@ -367,6 +454,15 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     'models.list': () => Object.entries(allProviders(config())).map(([name, p]) => ({ name, defaultModel: p.defaultModel || null, locality: isLocalProvider(p) ? 'local' : 'cloud',
       hasKey: !!(secrets.get(name) || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey) || isLocalProvider(p) })),
     'model.describe': ({ spec }) => describeModel(spec),
+    'commands.list': ({ projectId } = {}) => listCommands(projectId ? project(projectId).root : null),
+    'models.available': async () => {
+      const cfg = config(), providers = allProviders(cfg);
+      const cloud = Object.entries(providers).filter(([, p]) => !isLocalProvider(p)).map(([name, p]) => ({ provider: name, spec: p.defaultModel ? `${name}/${p.defaultModel}` : null, model: p.defaultModel || null,
+        hasKey: !!(secrets.get(name) || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey) }));
+      const local = (await discoverLocalModels(cfg, { timeoutMs: 1500 })).map(d => ({ provider: d.name, running: d.running, hint: d.models.length ? null : localSetupHint(d.name, d.running),
+        models: d.models.map(m => ({ spec: `${d.name}/${m.id}`, model: m.id, detail: describeLocalModel(m) })) }));
+      return { local, cloud, current: describeModel(settings.model).spec, localOnly: settings.localOnly };
+    },
     'fs.tree': ({ projectId, path: rel = '.' }) => {
       const root = project(projectId).root, abs = workspacePath(root, rel);
       return readdirSync(abs, { withFileTypes: true }).filter(e => e.name !== '.git').slice(0, 2000)

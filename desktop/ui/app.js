@@ -10,13 +10,14 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { t, setLang, errorText } from './i18n.js';
 import { logo, sat, typing, SAT_META } from './marks.js';
+import { icon } from './icons.js';
 
 const SATS = ['node', 'script', 'hash', 'merkle'];
 const MODES = ['manual', 'assisted', 'unattended'];
 const S = {
   view: 'chat', info: null, status: null, settings: null, projects: [], projectId: null, sessions: [], sessionId: null, session: null,
   collapsed: new Set(), tree: new Map(), expanded: new Set(['.']), git: null, tabs: [], active: null, panel: null, runs: new Map(), pending: [],
-  sats: Object.fromEntries(SATS.map(s => [s, { st: 'idle' }])), live: new Map(), agentLog: [], worktrees: [], models: [], agent: '', commitMsg: '', draft: ''
+  sats: Object.fromEntries(SATS.map(s => [s, { st: 'idle' }])), live: new Map(), agentLog: [], worktrees: [], models: [], agent: '', commitMsg: '', draft: '', commands: [], menu: { items: [], index: 0 }, picker: { open: false, data: null, filter: '', loading: false }, notes: [], newModel: null, search: '', searching: false, renaming: null, expandedProjects: new Set(), sideHidden: (() => { try { return localStorage.getItem('bitcode.sideHidden') === '1'; } catch { return false; } })()
 };
 
 // ---------- helpers ----------
@@ -129,12 +130,14 @@ async function loadAll() {
 }
 async function selectProject(id, { openLatest = false } = {}) {
   if (S.projectId !== id) { S.projectId = id; S.tree.clear(); S.expanded = new Set(['.']); for (const tab of S.tabs) tab.view?.destroy(); S.tabs = []; S.active = null; }
-  await Promise.all([loadTree('.').catch(() => {}), refreshGit()]);
+  await Promise.all([loadTree('.').catch(() => {}), refreshGit(), loadCommandList()]);
   if (openLatest) { const s = S.sessions.find(x => x.projectId === id); if (s) await openSession(s.sessionId); else { S.sessionId = null; S.session = null; } }
 }
+async function loadCommandList() { try { S.commands = await api('commands.list', { projectId: S.projectId }); } catch { S.commands = []; } }
 async function loadTree(path) { S.tree.set(path, await api('fs.tree', { projectId: S.projectId, path })); }
 async function loadSessions() { S.sessions = await api('session.list'); }
 async function openSession(id) {
+  S.notes = [];
   const meta = S.sessions.find(s => s.sessionId === id);
   if (meta && meta.projectId !== S.projectId) await selectProject(meta.projectId);
   S.sessionId = id; S.session = await api('session.open', { sessionId: id }); S.live.clear(); S.view = 'chat';
@@ -163,6 +166,7 @@ window.bitcode.subscribe(({ channel, payload }) => {
     renderSidebar(); if (S.view === 'chat') { renderThread(); renderComposer(); renderTopbar(); } else if (S.view === 'activity') renderCenter();
   } else if (channel === 'session' && payload.sessionId === S.sessionId) {
     const { type, data } = payload;
+    if (type === 'plan.saved') note(t('planSaved'), [data.file, t('planBuildHint')]);
     if (type === 'messages') { S.session.messages = data.messages; S.live.clear(); renderThread(); }
     if (type === 'message.delta') { S.live.set(data.runId, { agent: data.agentId, text: (S.live.get(data.runId)?.text || '') + data.text }); renderThread(); }
     if (type === 'tool.detail') { S.agentLog.push({ at: Date.now(), text: `${data.auto ? 'auto' : t('approved')} · ${data.tool} · ${data.summary}` }); if (S.panel === 'agent') renderPanel(); }
@@ -201,32 +205,80 @@ function renderShell() {
     fill(app, h('aside', { class: 'sidebar', id: 'sidebar' }), h('main', { class: 'center', id: 'center' }), h('aside', { class: 'panel', id: 'panel' }));
   }
   app.classList.toggle('panel-open', !!S.panel && S.view === 'chat' && !!S.projectId);
+  app.classList.toggle('side-hidden', !!S.sideHidden);
   renderSidebar(); renderCenter(); renderPanel();
 }
 
+const ago = ms => {
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return t('now'); if (m < 60) return `${m} min`; const hh = Math.round(m / 60); if (hh < 24) return `${hh} h`;
+  const d = Math.round(hh / 24); return d === 1 ? t('yesterday') : d < 7 ? `${d} ${t('daysShort')}` : new Date(ms).toLocaleDateString(document.documentElement.lang, { day: 'numeric', month: 'short' });
+};
 function renderSidebar() {
   const el = $('sidebar'); if (!el) return;
-  const nav = (view, icon, label, badge) => h('button', { class: `navbtn${S.view === view ? ' on' : ''}`, onClick: () => { S.view = view; renderShell(); } },
-    h('span', { class: 'ic' }, icon), label, badge ? h('span', { class: 'badge num' }, badge) : null);
+  const q = S.search.trim().toLowerCase();
+  const action = (ic, label, onClick, { on = false, badge = null, kbd = null } = {}) => h('button', { class: `sact${on ? ' on' : ''}`, onClick },
+    icon(ic), h('span', { class: 'label' }, label), badge ? h('span', { class: 'badge num' }, badge) : kbd ? h('kbd', {}, kbd) : null);
+  const threadRow = s => {
+    const run = activeRun(s.sessionId), waiting = S.pending.some(a => a.sessionId === s.sessionId), on = s.sessionId === S.sessionId && S.view === 'chat';
+    if (S.renaming === s.sessionId) return h('div', { class: 'trow editing' }, h('input', { type: 'text', value: s.name, class: 'rename', 'aria-label': t('rename'),
+      onKeydown: guard(async e => { if (e.key === 'Escape') { S.renaming = null; renderSidebar(); } if (e.key === 'Enter') { await api('session.update', { sessionId: s.sessionId, name: e.target.value.trim() || s.name }); S.renaming = null; await loadSessions(); if (S.session?.sessionId === s.sessionId) S.session.name = e.target.value.trim() || s.name; renderSidebar(); renderTopbar(); } }),
+      onBlur: () => { S.renaming = null; renderSidebar(); } }));
+    return h('div', { class: `trow${on ? ' on' : ''}`, role: 'button', tabindex: 0, title: s.name, onClick: guard(async e => { if (e.target.closest('.tmenu')) return; await openSession(s.sessionId); renderShell(); }),
+      onKeydown: e => { if (e.key === 'Enter') e.currentTarget.click(); } },
+      waiting ? h('span', { class: 'tstate wait', title: t('waiting') }) : run ? h('span', { class: 'tstate run', title: t(`run_${run.state}`) }) : null,
+      h('span', { class: 'tname' }, s.name),
+      s.keep ? h('span', { class: 'tkeep', title: t('kept') }, icon('star', { size: 12 })) : null,
+      h('span', { class: 'ttime num' }, ago(s.updatedAt)),
+      h('span', { class: 'tmenu' },
+        h('button', { title: t('rename'), 'aria-label': t('rename'), onClick: e => { e.stopPropagation(); S.renaming = s.sessionId; renderSidebar(); setTimeout(() => { const i = el.querySelector('.rename'); i?.focus(); i?.select(); }, 0); } }, icon('pencil', { size: 14 })),
+        h('button', { title: s.keep ? t('kept') : t('keep'), 'aria-label': t('keep'), onClick: guard(async e => { e.stopPropagation(); await api('session.update', { sessionId: s.sessionId, keep: !s.keep }); await loadSessions(); if (S.session?.sessionId === s.sessionId) Object.assign(S.session, { keep: !s.keep }); renderSidebar(); }) }, icon('star', { size: 14 })),
+        h('button', { title: t('delete'), 'aria-label': t('delete'), disabled: !!run, onClick: guard(async e => { e.stopPropagation(); if (!confirm(`${t('delete')} «${s.name}»?`)) return; await api('session.delete', { sessionId: s.sessionId }); await loadSessions(); if (S.sessionId === s.sessionId) { S.sessionId = null; S.session = null; } renderShell(); }) }, icon('trash', { size: 14 }))));
+  };
   const groups = S.projects.map(p => {
-    const sessions = S.sessions.filter(s => s.projectId === p.projectId), open = !S.collapsed.has(p.projectId);
-    return h('div', { class: 'group' },
-      h('button', { class: 'ghead', title: p.root, onClick: () => { open ? S.collapsed.add(p.projectId) : S.collapsed.delete(p.projectId); renderSidebar(); } },
-        h('span', { class: 'chev' }, open ? '▾' : '▸'), p.name,
-        h('span', { class: 'act', title: t('newChat'), role: 'button', onClick: guard(async e => { e.stopPropagation(); await goHome(p.projectId); }) }, '+')),
-      open ? sessions.map(s => {
-        const run = activeRun(s.sessionId), waiting = S.pending.some(a => a.sessionId === s.sessionId);
-        return h('button', { class: `thread${s.sessionId === S.sessionId && S.view === 'chat' ? ' on' : ''}`, onClick: guard(async () => { await openSession(s.sessionId); renderShell(); }) },
-          h('span', { class: 'name' }, s.name), waiting ? h('span', { class: 'pulse wait', title: t('waiting') }) : run ? h('span', { class: 'pulse', title: t(`run_${run.state}`) }) : null);
-      }) : null,
-      open && !sessions.length ? h('div', { class: 'thread', style: 'color:var(--muted);cursor:default' }, t('noChats')) : null);
+    const all = S.sessions.filter(s => s.projectId === p.projectId && (!q || s.name.toLowerCase().includes(q)));
+    if (q && !all.length && !p.name.toLowerCase().includes(q)) return null;
+    const open = q || !S.collapsed.has(p.projectId), expanded = S.expandedProjects.has(p.projectId);
+    const shown = expanded || q ? all : all.slice(0, 6);
+    const live = all.filter(x => activeRun(x.sessionId)).length;
+    return h('div', { class: 'pgroup' },
+      h('div', { class: `prow${p.projectId === S.projectId ? ' cur' : ''}`, role: 'button', tabindex: 0, title: p.root, onClick: () => { open ? S.collapsed.add(p.projectId) : S.collapsed.delete(p.projectId); renderSidebar(); } },
+        icon(open ? 'chevronDown' : 'chevronRight', { size: 12, cls: 'chev' }), icon('folder', { size: 15 }), h('span', { class: 'pname' }, p.name),
+        live ? h('span', { class: 'tstate run', title: `${live} ${t('runsActive').toLowerCase()}` }) : null,
+        h('button', { class: 'padd', title: `${t('newChat')} · ${p.name}`, 'aria-label': t('newChat'), onClick: guard(async e => { e.stopPropagation(); await goHome(p.projectId); }) }, icon('compose', { size: 14 }))),
+      open ? h('div', { class: 'threads' }, shown.map(threadRow),
+        !all.length ? h('div', { class: 'tempty' }, t('noChats')) : null,
+        all.length > shown.length ? h('button', { class: 'tmore', onClick: () => { S.expandedProjects.add(p.projectId); renderSidebar(); } }, `${t('showMore')} (${all.length - shown.length})`) : null) : null);
   });
+  const searchBox = S.searching ? h('div', { class: 'ssearch' }, icon('search'), h('input', { id: 'sidesearch', type: 'text', placeholder: t('searchChats'), value: S.search,
+    onInput: e => { S.search = e.target.value; const pos = e.target.selectionStart; renderSidebar(); const i = $('sidesearch'); i?.focus(); i?.setSelectionRange(pos, pos); },
+    onKeydown: e => { if (e.key === 'Escape') { S.searching = false; S.search = ''; renderSidebar(); } } }),
+    h('button', { class: 'sclose', 'aria-label': t('close'), onClick: () => { S.searching = false; S.search = ''; renderSidebar(); } }, icon('close', { size: 14 }))) : null;
   fill(el,
-    h('div', { class: 'brand' }, logo({ size: 26 }), h('span', { class: 'word' }, 'bitcode'), h('span', { class: 'ver num' }, S.info?.version || '')),
-    h('div', { class: 'newchat' }, h('button', { class: 'btn primary pill block', onClick: guard(() => S.projectId ? goHome(S.projectId) : openFolder()) }, `+ ${t('newChat')}`)),
-    h('div', { class: 'nav' }, groups, h('button', { class: 'ghead', style: 'margin-top:10px', onClick: openFolder }, h('span', { class: 'chev' }, '+'), t('openFolder'))),
-    h('div', { class: 'sidefoot' }, nav('bitcoin', '₿', t('bitcoin')), nav('activity', '≡', t('activity'), S.pending.length || null), nav('settings', '⚙', t('settings'))));
+    h('div', { class: 'shead' }, logo({ size: 22 }), h('span', { class: 'word' }, 'bitcode'), h('span', { class: 'spacer' }),
+      h('button', { class: 'ibtn', title: `${t('hideSidebar')} (Ctrl+B)`, 'aria-label': t('hideSidebar'), onClick: toggleSidebar }, icon('sidebar'))),
+    h('div', { class: 'sactions' },
+      action('compose', t('newChat'), guard(() => S.projectId ? goHome(S.projectId) : openFolder()), { kbd: 'Ctrl N' }),
+      searchBox || action('search', t('search'), openSearch, { kbd: 'Ctrl K' }),
+      action('bitcoin', t('bitcoin'), () => { S.view = 'bitcoin'; renderShell(); }, { on: S.view === 'bitcoin' }),
+      action('activity', t('activity'), () => { S.view = 'activity'; renderShell(); }, { on: S.view === 'activity', badge: S.pending.length || null })),
+    h('div', { class: 'sscroll' },
+      h('div', { class: 'ssec' }, h('span', {}, t('projects')), h('button', { class: 'ibtn sm', title: t('openFolder'), 'aria-label': t('openFolder'), onClick: openFolder }, icon('folderPlus', { size: 15 }))),
+      S.projects.length ? groups : h('button', { class: 'sact', onClick: openFolder }, icon('folderPlus'), h('span', { class: 'label' }, t('openFolder')))),
+    h('div', { class: 'sfoot' },
+      action('settings', t('settings'), () => { S.view = 'settings'; renderShell(); }, { on: S.view === 'settings' }),
+      h('div', { class: 'sstatus', title: S.status?.sandbox.available ? t('sandboxOk') : t('sandboxMissing') },
+        h('span', { class: `sdot ${S.status?.sandbox.available ? 'ok' : 'err'}` }), h('span', {}, S.status?.sandbox.available ? 'sandbox' : t('sandboxShort')), h('span', { class: 'num' }, `v${S.info?.version || ''}`))));
 }
+function toggleSidebar() { S.sideHidden = !S.sideHidden; try { localStorage.setItem('bitcode.sideHidden', S.sideHidden ? '1' : ''); } catch {} renderShell(); }
+function openSearch() { S.searching = true; renderSidebar(); setTimeout(() => $('sidesearch')?.focus(), 0); }
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'b') { e.preventDefault(); toggleSidebar(); }
+  else if (k === 'k') { e.preventDefault(); if (S.sideHidden) toggleSidebar(); openSearch(); }
+  else if (k === 'n') { e.preventDefault(); if (S.projectId) goHome(S.projectId); }
+});
 const goHome = async projectId => { await selectProject(projectId); S.sessionId = null; S.session = null; S.view = 'chat'; renderShell(); setTimeout(() => $('prompt')?.focus(), 0); };
 const openFolder = guard(async () => {
   const p = await api('dialog.openFolder'); if (!p) return;
@@ -265,6 +317,7 @@ function renderTopbar() {
   const s = S.session, p = project();
   const toggle = (key, label) => h('button', { class: `iconbtn${S.panel === key ? ' on' : ''}`, title: key === 'terminal' ? t('terminalShort') : t(key), 'aria-label': key === 'terminal' ? t('terminalShort') : t(key), onClick: () => { S.panel = S.panel === key ? null : key; renderShell(); } }, label);
   fill(el,
+    S.sideHidden ? h('button', { class: 'ibtn', title: `${t('showSidebar')} (Ctrl+B)`, 'aria-label': t('showSidebar'), onClick: toggleSidebar }, icon('sidebar')) : null,
     h('span', { class: 'title', title: s?.name || '' }, s ? s.name : p ? p.name : 'bitcode'),
     p ? h('span', { class: 'chip opt' }, p.name) : null,
     S.git?.repo ? h('span', { class: 'chip opt mono' }, `⎇ ${S.git.branch || 'HEAD'}${S.git.files.length ? ` · ${S.git.files.length}` : ''}`) : null,
@@ -295,6 +348,7 @@ function renderThread() {
   }
   for (const [, l] of S.live) items.push(h('div', { class: 'm-bot live' }, h('div', { class: 'who' }, SATS.includes(l.agent) ? sat(l.agent, { size: 20, state: 'drafting' }) : logo({ size: 16 }), SATS.includes(l.agent) ? satName(l.agent) : 'Bitcode', typing(SAT_META[l.agent]?.color)), l.text));
   items.push(...S.pending.filter(a => a.sessionId === s.sessionId).map(approvalCard));
+  items.push(...S.notes.map(n => h('div', { class: 'note' }, h('div', { class: 'ntitle' }, n.title), n.lines.length ? h('div', { class: 'nbody mono' }, n.lines.map(l => h('div', {}, l))) : null)));
   if (run) items.push(h('div', { class: 'runline' }, typing(), t(`run_${run.state}`), h('span', { class: 'num' }, `${run.usage.inputTokens + run.usage.outputTokens} ${t('tokens')}`)));
   if (!items.length) return fill(el, home(p));
   fill(el, h('div', { class: 'col' }, items));
@@ -311,35 +365,84 @@ function home(p) {
     p ? null : h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary pill', onClick: openFolder }, t('openFolder')), h('button', { class: 'btn pill', onClick: () => { S.view = 'settings'; renderShell(); } }, t('settings')))));
 }
 
+// ---------- composer: slash menu, model picker, command results ----------
+const UI_COMMANDS = {
+  models: () => openModelPicker(), diff: () => { S.panel = 'git'; renderShell(); },
+  new: () => goHome(S.projectId), reset: () => goHome(S.projectId),
+  export: guard(async () => { if (!S.session) return; openDiff(`export · ${S.session.name}`, await api('session.export', { sessionId: S.session.sessionId })); }),
+  settings: () => { S.view = 'settings'; renderShell(); }
+};
+for (const k of ['setting', 'config', 'login', 'provider', 'doctor']) UI_COMMANDS[k] = UI_COMMANDS.settings;
+const cmdHint = c => { const k = `cmd_${c.name}`, v = t(k); return v === k ? c.hint : v; };
+function note(title, lines = []) { S.notes.push({ title, lines: [].concat(lines) }); renderThread(); }
+function showResult(res) {
+  const r = res.result;
+  if (Array.isArray(r)) return note(t('pendingReq'), r.length ? r.map(a => `${a.id.slice(0, 12)} · ${a.role || a.kind}`) : [t('none')]);
+  if (r?.commands) return note(t('commandsTitle'), r.commands.map(c => `/${c.name}${c.args ? ' …' : ''} — ${cmdHint(c)}${c.scope === 'cli' ? ` (${t('cliOnly')})` : ''}`));
+  if (r?.tools) return note(t('toolsTitle'), r.tools);
+  if (r?.status) { const st = r.status; return note(t('statusTitle'), [`${t('model')}: ${st.model}`, `${t('mode')}: ${t(st.mode)}`, `Sat: ${st.sat || '—'}`, `${t('messages')}: ${st.messages}`, `${t('tokens')}: ${st.usage.inputTokens + st.usage.outputTokens}`, `${t('planL')}: ${st.plan || '—'}`]); }
+  if (r?.model && !r.session) return note(t('model'), [`${r.model.spec} · ${t(r.model.locality) || r.model.locality}`]);
+  if (r?.model && r.session) { S.session.model = r.session.model; toast(`${t('model')}: ${r.model.spec}`); renderComposer(); return; }
+  if (r?.satId) { S.agent = r.satId; S.session.satId = S.agent; renderComposer(); return toast(`${satName(S.agent)} · ${r.role}`); }
+  if (r?.workspace) return showSatInfo(r);
+  if (r?.mode) { S.session.mode = r.mode; loadSessions(); renderComposer(); return; }
+  if (r?.run) { S.notes = []; api('session.open', { sessionId: S.session.sessionId }).then(x => { S.session = x; renderThread(); renderSidebar(); }); }
+}
+
 function renderComposer() {
   const el = $('composer'); if (!el) return;
   if (!project()) return fill(el);
   const s = S.session, run = s && activeRun(s.sessionId);
-  const input = h('textarea', { id: 'prompt', rows: 2, placeholder: s ? t('placeholder') : t('placeholderNew'), 'aria-label': t('placeholder'),
-    onInput: e => { S.draft = e.target.value; e.target.style.height = 'auto'; e.target.style.height = `${Math.min(240, e.target.scrollHeight)}px`; },
-    onKeydown: e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } } });
+  const menuEl = h('div', { class: 'cmdmenu', role: 'listbox', hidden: true });
+  const input = h('textarea', { id: 'prompt', rows: 2, placeholder: s ? t('placeholder') : t('placeholderNew'), 'aria-label': t('placeholder'), 'aria-autocomplete': 'list',
+    onInput: e => { S.draft = e.target.value; e.target.style.height = 'auto'; e.target.style.height = `${Math.min(240, e.target.scrollHeight)}px`; updateMenu(); },
+    onKeydown: e => {
+      if (S.menu.items.length) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); S.menu.index = (S.menu.index + (e.key === 'ArrowDown' ? 1 : -1) + S.menu.items.length) % S.menu.items.length; drawMenu(); return; }
+        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); return pick(S.menu.items[S.menu.index], e.key === 'Enter'); }
+        if (e.key === 'Escape') { e.preventDefault(); S.menu.items = []; drawMenu(); return; }
+      }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+    } });
   input.value = S.draft;
+  function updateMenu() {
+    const v = input.value;
+    S.menu.items = v.startsWith('/') && !/\s/.test(v) ? S.commands.filter(c => c.name.toLowerCase().startsWith(v.slice(1).toLowerCase())).slice(0, 60) : [];
+    S.menu.index = Math.min(S.menu.index, Math.max(0, S.menu.items.length - 1)); drawMenu();
+  }
+  function drawMenu() {
+    menuEl.hidden = !S.menu.items.length;
+    fill(menuEl, S.menu.items.map((c, i) => h('div', { class: `cmditem${i === S.menu.index ? ' on' : ''}${c.scope === 'cli' ? ' off' : ''}`, role: 'option', 'aria-selected': i === S.menu.index ? 'true' : 'false',
+      onMousedown: e => { e.preventDefault(); pick(c, !c.args); } },
+      h('span', { class: 'cname mono' }, `/${c.name}`), h('span', { class: 'chint' }, cmdHint(c)),
+      c.scope === 'cli' ? h('span', { class: 'chip' }, t('cliOnly')) : c.custom ? h('span', { class: 'chip' }, t('customL')) : null)));
+    menuEl.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+  }
+  function pick(c, submitNow) {
+    if (c.scope === 'cli') { toast(`/${c.name}: ${t('cliOnlyLong')}`, true); return; }
+    input.value = c.args ? `/${c.name} ` : `/${c.name}`; S.draft = input.value; S.menu.items = []; drawMenu(); input.focus();
+    if (submitNow && !c.args) submit();
+  }
   const submit = guard(async () => {
-    const text = input.value; if (!text.trim()) return;
+    const text = input.value.trim(); if (!text) return;
+    const [cmdName] = text.slice(1).split(/\s+/);
+    if (text.startsWith('/') && UI_COMMANDS[cmdName]) { S.draft = ''; input.value = ''; S.menu.items = []; drawMenu(); return UI_COMMANDS[cmdName](); }
     let session = S.session;
     if (!session) {
-      if (text.trim().startsWith('/')) throw Object.assign(new Error(t('noSession')), { code: 'X' });
-      const meta = await api('session.create', { projectId: S.projectId, name: text.trim().replace(/\s+/g, ' ').slice(0, 48), mode: S.newMode || 'assisted', satId: S.agent });
+      const meta = await api('session.create', { projectId: S.projectId, name: text.replace(/^\/\S+\s*/, '').replace(/\s+/g, ' ').slice(0, 48) || text.slice(0, 48), mode: S.newMode || 'assisted', satId: S.agent, model: S.newModel || undefined });
       await loadSessions(); await openSession(meta.sessionId); session = S.session; renderShell();
     }
     const res = await api('chat.submit', { sessionId: session.sessionId, text, agent: S.agent });
     S.draft = ''; if ($('prompt')) $('prompt').value = '';
-    if (res.command && Array.isArray(res.result)) toast(res.result.length ? res.result.map(a => `${a.id.slice(0, 10)} · ${a.role || a.kind}`).join('\n') : t('none'));
-    if (res.command && res.result?.satId) { S.agent = res.result.satId; S.session.satId = S.agent; renderComposer(); toast(`${satName(S.agent)} · ${res.result.role}`); }
-    if (res.command && res.result?.workspace) showSatInfo(res.result);
-    if (res.command && res.result?.mode) { S.session.mode = res.result.mode; await loadSessions(); renderComposer(); }
-    if (!res.command) { S.session = await api('session.open', { sessionId: session.sessionId }); renderThread(); renderComposer(); renderSidebar(); }
+    if (res.command) showResult(res);
+    else { S.notes = []; S.session = await api('session.open', { sessionId: session.sessionId }); renderThread(); renderComposer(); renderSidebar(); }
   });
   const modeSelect = h('select', { 'aria-label': t('mode'), onChange: guard(async e => {
     if (!s) { S.newMode = e.target.value; return; }
     const r = await api('mode.set', { sessionId: s.sessionId, mode: e.target.value }); S.session.mode = r.mode; await loadSessions();
   }) }, MODES.map(m => h('option', { value: m, selected: (s?.mode || S.newMode || 'assisted') === m }, t(m))));
-  fill(el, h('div', { class: 'composer' }, input,
+  const currentModel = s?.model || S.newModel || S.status?.defaultModel?.spec || '—';
+  fill(el, h('div', { class: 'composer' }, menuEl, input,
     h('div', { class: 'bar' },
       h('select', { 'aria-label': t('agentL'), disabled: !!run, onChange: guard(async e => {
         const id = e.target.value;
@@ -347,11 +450,58 @@ function renderComposer() {
         S.agent = id;
       }) }, h('option', { value: '', selected: !S.agent }, 'Bitcode'), SATS.map(a => h('option', { value: a, selected: S.agent === a }, satName(a)))),
       modeSelect,
-      h('span', { class: 'chip num', title: t('model') }, s?.model || S.status?.defaultModel?.spec || '—'),
+      h('div', { class: 'modelpick' },
+        h('button', { class: 'modelbtn num', title: t('chooseModel'), 'aria-haspopup': 'listbox', 'aria-expanded': S.picker.open ? 'true' : 'false', disabled: !!run, onClick: () => S.picker.open ? closeModelPicker() : openModelPicker() },
+          h('span', { class: `loc ${modelLocality(currentModel)}` }), currentModel, h('span', { class: 'caret' }, '▾')),
+        S.picker.open ? modelPopover() : null),
       h('span', { style: 'flex:1' }),
       run ? h('button', { class: 'send stop', title: t('stop'), 'aria-label': t('stop'), onClick: guard(() => api('run.cancel', { runId: run.runId })) }, '■')
         : h('button', { class: 'send', title: t('send'), 'aria-label': t('send'), onClick: submit }, '↑'))),
     h('div', { class: 'hint' }, t('hint')));
+  if (S.draft) updateMenu();
+}
+
+// Model picker: installed local models first (probed live), then cloud providers.
+const modelLocality = spec => {
+  const a = S.picker.data; if (!a || !spec) return 'unknown';
+  if (a.local.some(p => p.models.some(m => m.spec === spec) || spec.startsWith(`${p.provider}/`))) return 'local';
+  return a.cloud.some(c => spec.startsWith(`${c.provider}/`)) ? 'cloud' : 'unknown';
+};
+async function loadModels() { S.picker.loading = true; try { S.picker.data = await api('models.available'); } finally { S.picker.loading = false; } }
+const openModelPicker = guard(async () => { S.picker.open = true; S.picker.filter = ''; renderComposer(); await loadModels(); if (S.picker.open) renderComposer(); setTimeout(() => $('modelfilter')?.focus(), 0); });
+function closeModelPicker() { S.picker.open = false; renderComposer(); }
+document.addEventListener('mousedown', e => { if (S.picker.open && !e.target.closest('.modelpick')) closeModelPicker(); });
+const chooseModel = guard(async spec => {
+  S.picker.open = false;
+  if (S.session) { const r = await api('chat.submit', { sessionId: S.session.sessionId, text: `/model ${spec}` }); showResult({ command: true, result: r.result }); }
+  else { S.newModel = spec; renderComposer(); }
+});
+function modelPopover() {
+  const d = S.picker.data, q = S.picker.filter.toLowerCase(), current = S.session?.model || S.newModel || S.status?.defaultModel?.spec;
+  const match = x => !q || x.toLowerCase().includes(q);
+  const item = (spec, label, detail, opts = {}) => h('button', { class: `mitem${spec === current ? ' on' : ''}`, role: 'option', disabled: opts.disabled, onClick: () => chooseModel(spec) },
+    h('span', { class: 'mname num' }, label), detail ? h('span', { class: 'mdetail num' }, detail) : null, spec === current ? h('span', { class: 'check' }, '✓') : null);
+  const body = [];
+  if (S.picker.loading && !d) body.push(h('div', { class: 'mnote' }, h('span', { class: 'typing' }, h('i'), h('i'), h('i')), ' ', t('probing')));
+  if (d) {
+    body.push(h('div', { class: 'mgroup' }, t('localModels'), h('button', { class: 'mrefresh', title: t('refresh'), onClick: guard(async () => { await loadModels(); renderComposer(); }) }, '↻')));
+    for (const p of d.local) {
+      const models = p.models.filter(m => match(m.spec));
+      body.push(h('div', { class: 'mprov' }, h('span', { class: `loc ${p.running ? 'local' : 'off'}` }), p.provider, h('span', { class: 'mdetail' }, p.running ? `${p.models.length} ${t('installed')}` : t('notRunning'))));
+      body.push(...models.map(m => item(m.spec, m.model, m.detail)));
+      if (p.hint && !q) body.push(h('div', { class: 'mnote mono' }, p.hint));
+    }
+    if (!d.localOnly) {
+      body.push(h('div', { class: 'mgroup' }, t('cloudModels')));
+      for (const c of d.cloud.filter(c => c.spec && match(c.spec))) body.push(item(c.spec, c.spec, c.hasKey ? t('hasKey') : t('noKey')));
+    }
+  }
+  const custom = h('input', { id: 'modelfilter', type: 'text', class: 'mono', placeholder: t('modelFilter'), value: S.picker.filter,
+    onInput: e => { S.picker.filter = e.target.value; const pos = e.target.selectionStart; renderComposer(); const i = $('modelfilter'); i?.focus(); i?.setSelectionRange(pos, pos); },
+    onKeydown: e => { if (e.key === 'Enter' && e.target.value.includes('/')) chooseModel(e.target.value.trim()); if (e.key === 'Escape') closeModelPicker(); } });
+  return h('div', { class: 'modelpop', role: 'listbox' }, custom, h('div', { class: 'mlist' }, body),
+    h('div', { class: 'mfoot' }, h('span', { class: 'status' }, t('modelFoot')),
+      h('button', { class: 'btn sm ghost', disabled: !current, onClick: guard(async () => { S.settings = await api('settings.set', { key: 'model', value: current }); await refreshStatus(); toast(`${t('defaultModel')}: ${current}`); closeModelPicker(); }) }, t('setDefault'))));
 }
 
 function approvalCard(a) {

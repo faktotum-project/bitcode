@@ -34,6 +34,7 @@ cpSync(path.join(here, 'node_modules/@xterm/xterm/css/xterm.css'), path.join(dis
 cpSync(path.join(repo, 'ui/sats/fonts'), path.join(dist, 'ui/fonts'), { recursive: true });
 writeFileSync(path.join(dist, 'ui/icon.png'), iconPng(256));
 cpSync(path.join(repo, 'agents'), path.join(dist, 'agents'), { recursive: true });
+cpSync(path.join(repo, 'commands'), path.join(dist, 'commands'), { recursive: true });
 cpSync(path.join(repo, 'sats'), path.join(dist, 'sats'), { recursive: true });
 console.log('desktop build → dist/');
 

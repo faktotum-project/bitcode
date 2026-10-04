@@ -37,9 +37,9 @@ function loadCommandsFrom(dir) {
   return [...top, ...namespaced];
 }
 
-export function loadCommands() {
-  const bundled = loadCommandsFrom(bundledCommandsDir());
-  const user = [...loadCommandsFrom(commandsDir()), ...loadCommandsFrom(path.join(process.cwd(), ".bitcode", "commands"))];
+export function loadCommands({ cwd = process.cwd(), bundledDir = bundledCommandsDir(), userDir = commandsDir() } = {}) {
+  const bundled = loadCommandsFrom(bundledDir);
+  const user = [...loadCommandsFrom(userDir), ...loadCommandsFrom(path.join(cwd, ".bitcode", "commands"))];
   const byName = new Map(bundled.map((c) => [c.name, c]));
   for (const c of user) byName.set(c.name, c);
   return [...byName.values()];
