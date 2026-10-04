@@ -4,6 +4,17 @@ import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { startCliFixture, until } from "../scripts/sats/fixture.mjs";
 
+test('Sat CLI selection applies policy to real requests and --no-session leaves no Sat Memory', async t => {
+  const f = await startCliFixture({ args: ['--no-session'] }); t.after(() => f.close());
+  await f.ready(); f.send('/sats'); await until(() => f.stdout().includes('Orchestration'));
+  f.send('/sat hash'); await until(() => f.stdout().includes('Sat: Hash'));
+  f.send('read'); await until(() => f.stdout().includes('PRIVATE_FINAL_RESULT'));
+  assert.deepEqual(f.requests[0].tools.map(t => t.function.name).sort(), ['list_dir', 'read_file']);
+  assert.match(f.requests[0].messages[0].content, /Sat Identity: Hash/);
+  f.send('/exit'); assert.equal(await f.exited(), 0);
+  await assert.rejects(access(path.join(f.home, 'sats')));
+});
+
 test("Sats CLI: opt-in observer, manual gate, policies, session isolation and shutdown", async t => {
   const f = await startCliFixture(); t.after(() => f.close());
   await f.ready();

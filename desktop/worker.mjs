@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { runAgent, systemPrompt } from '../src/agent.mjs';
 import { createEventBus } from '../src/runtime/events.mjs';
 import { runSubagent } from '../src/subagents.mjs';
-import { toolsForAgent } from '../src/sats/policy.mjs';
+import { runSat } from '../src/sat-runtime.mjs';
 import { workspacePath, hash } from './core/primitives.mjs';
 
 const send = data => process.stdout.write(JSON.stringify(data) + '\n');
@@ -64,10 +64,11 @@ async function run(input) {
     system, tools, parentContext: context, hooks: { onUsage: hooks.onUsage }, callModelImpl: model, signal, limits: input.limits,
     state: sharedState }) });
   const sharedState = { totalToolCalls: 0 };
-  const persona = input.agents.find(a => a.name === input.agent);
   try {
-    const answer = await runAgent({ target, system: system + (persona ? `\n${persona.body}` : ''), messages: input.messages,
-      tools: input.agent ? toolsForAgent(input.agent, tools) : tools, hooks, context, signal, state: sharedState, limits: input.limits, callModelImpl: model });
+    const options = { target, system, messages: input.messages, tools, hooks, context, signal, state: sharedState, limits: input.limits, callModelImpl: model };
+    const answer = input.agent ? await runSat({ ...options, satId: input.agent, registry: input.sats, persistence: false, guardedTools: true,
+      targetForSat: id => ({ ...target, provider: { desktopAgent: id } }) })
+      : await runAgent(options);
     send({ type: 'done', answer });
   } catch (e) { send({ type: 'failure', message: e.message }); }
   process.stdin.destroy();

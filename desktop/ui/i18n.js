@@ -1,7 +1,8 @@
 // UI strings only: tool names, commands, identifiers and file content are never translated.
 const it = {
+  satClose: 'Chiudi', satPermissions: 'Permessi applicativi', satDeclaredTools: 'Tool dichiarati · disponibili solo se forniti dall’host', satHistory: 'Ultime esecuzioni nel progetto', satHistoryEmpty: 'Nessuna esecuzione registrata.',
   sat_idle: 'riposo', sat_thinking: 'pensa', sat_reading: 'legge', sat_running: 'esegue', sat_drafting: 'scrive', sat_waiting: 'attende la tua conferma', sat_happy: 'fatto', sat_concerned: 'problema',
-  role_node: 'ricerca e contesto', role_script: 'implementazione', role_hash: 'analisi di sicurezza', role_merkle: 'revisione',
+  role_node: 'infrastruttura Bitcoin', role_script: 'implementazione', role_hash: 'analisi di sicurezza', role_merkle: 'orchestrazione',
   newChat: 'Nuova chat', noChats: 'Nessuna chat', homeTitle: 'Cosa costruiamo in', homeSub: 'Descrivi il lavoro: Bitcode e i Sats leggono il progetto, propongono modifiche e chiedono conferma quando serve.',
   homeNoProject: 'Apri la cartella di un progetto per iniziare una chat.', placeholderNew: 'Chiedi a Bitcode di costruire, correggere o spiegare qualcosa…',
   hint: 'Invio per inviare · Maiusc+Invio a capo · /approve /deny /cancel /mode /pending', terminalShort: 'Terminale', unsaved: 'modifiche non salvate, chiudere?', approved: 'approvato',
@@ -36,8 +37,9 @@ const it = {
   E_PROVIDER_UNAVAILABLE: 'Modello non configurato.', E_PTY_UNAVAILABLE: 'Terminale non disponibile.', E_FORBIDDEN_ORIGIN: 'Origine non autorizzata.', E_WORKTREE_UNAVAILABLE: 'La modalità senza supervisione richiede un repository Git.'
 };
 const en = {
+  satClose: 'Close', satPermissions: 'Application permissions', satDeclaredTools: 'Declared tools · available only when provided by the host', satHistory: 'Recent runs in this project', satHistoryEmpty: 'No recorded runs.',
   sat_idle: 'idle', sat_thinking: 'thinking', sat_reading: 'reading', sat_running: 'running', sat_drafting: 'writing', sat_waiting: 'waiting for you', sat_happy: 'done', sat_concerned: 'problem',
-  role_node: 'research and context', role_script: 'implementation', role_hash: 'security analysis', role_merkle: 'review',
+  role_node: 'Bitcoin infrastructure', role_script: 'implementation', role_hash: 'security analysis', role_merkle: 'orchestration',
   newChat: 'New chat', noChats: 'No chats', homeTitle: 'What are we building in', homeSub: 'Describe the work: Bitcode and the Sats read the project, propose changes and ask before acting when needed.',
   homeNoProject: 'Open a project folder to start a chat.', placeholderNew: 'Ask Bitcode to build, fix or explain something…',
   hint: 'Enter to send · Shift+Enter for a new line · /approve /deny /cancel /mode /pending', terminalShort: 'Terminal', unsaved: 'unsaved changes, close?', approved: 'approved',

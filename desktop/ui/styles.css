@@ -2,6 +2,14 @@
    (Bitcoin orange in the role Binance gives its yellow), tabular numbers,
    green/red outcome semantics. Light theme keeps the Bitcode cream palette. */
 @font-face { font-family: Inter; src: url("fonts/InterVariable.woff2") format("woff2"); font-weight: 100 900; }
+.sat-info { width: min(700px, 90vw); max-height: 80vh; overflow: auto; background: var(--surface); color: var(--ink); border: 1px solid var(--hairlineStrong); border-radius: 16px; padding: 24px; }
+.sat-info::backdrop { background: #0008; }
+.sat-info .row { flex-wrap: wrap; }
+.sat-info h2 { flex: 1; font-size: 20px; }
+.sat-info h3 { margin: 22px 0 8px; font-size: 13px; color: var(--mutedStrong); }
+.sat-info p, .sat-info pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.sat-info details { margin-top: 24px; }
+.sat-info summary { cursor: pointer; }
 @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2"); }
 :root, :root[data-theme="dark"] {
   --canvas: #0b0e11; --surface: #14171c; --card: #1e2329; --elevated: #2b3139; --hover: #252a31;

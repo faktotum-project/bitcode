@@ -31,6 +31,26 @@ async function sessionIn(c, root, mode = 'assisted') {
 }
 const pendingOf = events => events.filter(([ch, a]) => ch === 'approval' && a.status === 'pending').map(([, a]) => a);
 
+test('Sat commands share registry, persist selection and expose project-scoped identity', async () => {
+  const { c, root, workers } = setup();
+  try {
+    const { s } = await sessionIn(c, root);
+    const command = text => c.invoke('chat.submit', { sessionId: s.sessionId, text }, 'ui:1');
+    assert.deepEqual((await command('/sats')).result.map(s => s.id), ['node', 'script', 'hash', 'merkle']);
+    assert.equal((await command('/sat merkle')).result.satId, 'merkle');
+    assert.equal((await c.invoke('session.open', { sessionId: s.sessionId })).satId, 'merkle');
+    const info = (await command('/sat info merkle')).result;
+    assert.equal(info.permissions.wallet, 'deny'); assert.deepEqual(info.history, []);
+    assert.equal((await command('/sat workspace merkle')).result.workspace, info.workspace);
+    await assert.rejects(command('/sat ../../escape'));
+    await c.invoke('chat.submit', { sessionId: s.sessionId, text: 'implement' }, 'ui:1');
+    await until(() => workers.length);
+    assert.equal(workers[0].sent[0].agent, 'merkle');
+    assert.equal(workers[0].sent[0].sats.length, 4);
+    await assert.rejects(command('/sat hash'), { code: 'BUSY' });
+  } finally { c.shutdown(); }
+});
+
 test('approvals: human origin, session binding, digest, single use', async () => {
   const { c, root, events, workers } = setup();
   const { s } = await sessionIn(c, root, 'manual');

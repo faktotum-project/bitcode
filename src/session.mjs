@@ -63,11 +63,12 @@ export function loadSession(cwd, id) {
     model: data.model || null,
     network: data.network || null,
     name: data.name || null,
+    ...(['node', 'script', 'hash', 'merkle'].includes(data.satId) ? { satId: data.satId } : {}),
     messages: Array.isArray(data.messages) ? data.messages : [],
   };
 }
 
-export function saveSession(cwd, { id, model, network, messages, name }) {
+export function saveSession(cwd, { id, model, network, messages, name, satId }) {
   const dir = sessionsDir(cwd);
   mkdirSync(dir, { recursive: true });
   const payload = {
@@ -76,6 +77,7 @@ export function saveSession(cwd, { id, model, network, messages, name }) {
     model,
     network,
     name: name || null,
+    ...(['node', 'script', 'hash', 'merkle'].includes(satId) ? { satId } : {}),
     messages,
   };
   // Atomic write: a Ctrl+C mid-write must not corrupt an existing session.

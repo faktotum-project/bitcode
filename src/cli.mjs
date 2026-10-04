@@ -22,6 +22,9 @@ import { closeWavelength, wavelengthTools } from "./wavelength/tools.mjs";
 import { emit } from "./hooks.mjs";
 import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { runSubagent } from "./subagents.mjs";
+import { runSat } from "./sat-runtime.mjs";
+import { loadSats, findSat } from "./sats.mjs";
+import { satWorkspace, satHistory } from "./sat-workspace.mjs";
 import { createEventBus, createRunContext } from "./runtime/events.mjs";
 import { startSatsServer } from "./sats/server.mjs";
 import { buildTools, registerTool } from "./tools.mjs";
@@ -97,7 +100,8 @@ const SLASH_COMMANDS = [
   { name: "login", hint: "configure a provider with a masked API key", args: true },
   { name: "doctor", hint: "config, provider, tools & plugin diagnostics" },
   { name: "session", hint: "save · load · list · export", args: true },
-  { name: "subagent", hint: "delegate a sub-task to a persona", args: true },
+  { name: "sats", hint: "list persistent Sats" },
+  { name: "sat", hint: "select · info · workspace", args: true },
   { name: "tools", hint: "list available tools" },
   { name: "reset", hint: "clear conversation history" },
   { name: "exit", hint: "leave" },
@@ -186,10 +190,10 @@ Interactive slash commands:
   /provider <sub>      add <name> (masked key entry) · list · health
   /login [provider]    choose a provider and save a masked API key
   /session <sub>       save [name] · load <id> · list · export [md|json]
-  /subagent [name] [prompt]
-                       list bundled Sats and user personas, or delegate
-                       (-- selects a generic agent); child mutations use the
-                       same approval mode as the parent
+  /sats                list persistent Sats
+  /sat <name>          select Node, Script, Hash or Merkle (/reset exits)
+  /sat info <name>     inspect identity, permissions and project history
+  /sat workspace <name>  show the persistent Sat Workspace
   /tools               list available tools
   /reset               clear conversation history
   /exit, /quit         leave
@@ -617,7 +621,9 @@ async function withInterrupt(work) {
   finally { process.removeListener("SIGINT", abort); }
 }
 export function runWithInterrupt(options) {
-  return withInterrupt(signal => runAgent({ ...options, signal }));
+  return withInterrupt(signal => options.context?.satId
+    ? runSat({ ...options, signal, satId: options.context.satId, persistence: options.context.satPersistence !== false })
+    : runAgent({ ...options, signal }));
 }
 
 async function oneShot({ target, system, tools, network, prompt, limits, fallbacks, opts, permissions, root, profile, project }) {
@@ -676,7 +682,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   const messages = [];
   let active = target;
   const session = { id: newSessionId(), name: null };
-  const createContext = () => createRunContext({ bus, sessionId: session.id, cwd: root });
+  const createContext = () => createRunContext({ bus, sessionId: session.id, cwd: root, satId: session.satId, satPersistence: !noSession });
 
   if (resume) {
     try {
@@ -689,6 +695,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
         messages.push(...s.messages);
         session.id = s.id;
         session.name = s.name;
+        session.satId = s.satId;
         out(t.faint(`resumed ${s.id} · ${s.messages.length} messages`));
       }
     } catch (err) {
@@ -719,7 +726,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   const persist = () => {
     if (noSession) return;
     try {
-      saveSession(cwd, { id: session.id, model: active.spec, network, messages, name: session.name });
+      saveSession(cwd, { id: session.id, model: active.spec, network, messages, name: session.name, satId: session.satId });
     } catch (err) {
       out(t.danger(`session save failed: ${err.message}`));
     }
@@ -789,10 +796,26 @@ export async function handleSlash(input, ctx) {
   const [cmd, ...rest] = input.slice(1).split(/\s+/);
   const arg = rest.join(" ");
   switch (cmd) {
+    case "sats":
+      return printData(loadSats().map(({ id, role }) => ({ id, role })));
+    case "sat": {
+      try {
+        const [action, name, extra] = rest;
+        if (extra || !action || (name && !['info', 'workspace'].includes(action))) throw new Error('usage: /sat <name> | /sat info <name> | /sat workspace <name>');
+        const sat = findSat(['info', 'workspace'].includes(action) ? name : action);
+        if (action === 'info') return printData({ ...sat, ...satWorkspace(sat.id), history: satHistory(sat.id, { cwd: ctx.cwd }) });
+        if (action === 'workspace') return out(satWorkspace(sat.id).workspace);
+        ctx.session.satId = sat.id;
+        ctx.persist?.();
+        out(t.ok(`Sat: ${sat.name} · ${sat.role}`));
+      } catch (error) { out(t.danger(error.message)); }
+      return;
+    }
     case "exit":
     case "quit":
       return "exit";
     case "reset":
+      delete ctx.session.satId;
       ctx.messages.length = 0;
       ctx.session.id = newSessionId();
       ctx.session.name = null;
@@ -1079,6 +1102,7 @@ export async function handleSlash(input, ctx) {
             network: ctx.network,
             messages: ctx.messages,
             name: ctx.session.name,
+            satId: ctx.session.satId,
           });
           out(t.ok(`saved ${ctx.session.id}${ctx.session.name ? ` (${ctx.session.name})` : ""}`));
         } catch (err) {
@@ -1099,6 +1123,7 @@ export async function handleSlash(input, ctx) {
           ctx.messages.push(...s.messages);
           ctx.session.id = s.id;
           ctx.session.name = s.name;
+          ctx.session.satId = s.satId;
           out(t.ok(`loaded ${s.id} · ${s.messages.length} messages`));
         } catch (err) {
           out(t.danger(`load failed: ${err.message}`));
@@ -1119,6 +1144,7 @@ export async function handleSlash(input, ctx) {
             network: ctx.network,
             messages: ctx.messages,
             name: ctx.session.name,
+            satId: ctx.session.satId,
           });
           const content = exportSession(cwd, ctx.session.id, format);
           const file = path.join(cwd, `bitcode-session-${ctx.session.id}.${format}`);
@@ -1135,7 +1161,7 @@ export async function handleSlash(input, ctx) {
     case "help":
       out(t.faint("/model [spec]  /models  /login [provider]  /setting  /config <sub>  /provider <sub>  /doctor  /session <sub>"));
       out(t.faint("/plan <task>  /build  /compact  /status  /profile [code|bitcoin]  /diff  /undo  /skills  /mcp  /commands"));
-      out(t.faint("/subagent [name] [prompt]  /tools [filter]  /reset  /exit"));
+      out(t.faint("/sats  /sat <name>  /sat info <name>  /sat workspace <name>  /tools [filter]  /reset  /exit"));
       if (ctx.commands?.length) out(t.faint(`custom: ${ctx.commands.map((c) => "/" + c.name).join("  ")}`));
       return;
     default:

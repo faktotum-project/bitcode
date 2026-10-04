@@ -13,6 +13,9 @@ import { saveSession, loadSession, sessionsDir, newSessionId } from '../../src/s
 import { Approvals, Redactor, Semaphore, atomicJSON, fail, hash, loadJSON, workspacePath } from './primitives.mjs';
 import { unifiedDiff } from './diff.mjs';
 import * as G from './git.mjs';
+import { loadSats, findSat } from '../../src/sats.mjs';
+import { satWorkspace, satHistory, recordSatRun } from '../../src/sat-workspace.mjs';
+import { satEvents } from '../../src/sat-events.mjs';
 
 export const MODES = ['manual', 'assisted', 'unattended'];
 const SATS = ['node', 'script', 'hash', 'merkle'];
@@ -35,6 +38,7 @@ const matchesPolicy = (policy, argv) => !!argv && policy.commands.some(r =>
 export function createController({ home, appDir, agents = [], emit = () => {}, sandbox = { available: false }, spawnWorker,
   callModelImpl = callModel, config: configOverride, secrets = { get: () => undefined }, now = Date.now } = {}) {
   const dir = path.join(home, 'desktop');
+  const sats = loadSats(appDir && existsSync(path.join(appDir, 'sats')) ? { directory: path.join(appDir, 'sats') } : {});
   const files = { settings: path.join(dir, 'settings.json'), projects: path.join(dir, 'projects.json'), sessions: path.join(dir, 'sessions.json'), worktrees: path.join(dir, 'worktrees.json'), log: path.join(dir, 'approvals.jsonl') };
   const settings = { ...DEFAULT_SETTINGS, ...loadJSON(files.settings, {}) };
   const projects = new Map(loadJSON(files.projects, []).filter(p => existsSync(p.root)).map(p => [p.projectId, p]));
@@ -46,6 +50,9 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   const config = () => configOverride || loadConfig();
   const approvals = new Approvals({ redact: v => redactor.value(v), emit: (_, req) => {
     emit('approval', req);
+    const r = runs.get(req.runId), satId = r?.executingSat || r?.agentId;
+    if (SATS.includes(satId)) emit('sat', { v: 1, type: req.status === 'pending' ? 'approval:required' : 'approval:resolved',
+      satId, sessionId: req.sessionId, runId: req.runId, at: new Date(now()).toISOString(), state: req.status === 'pending' ? 'waiting_approval' : 'thinking' });
     if (req.status !== 'pending') log({ id: req.id, sessionId: req.sessionId, runId: req.runId, kind: req.kind, status: req.status });
   } });
 
@@ -114,7 +121,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       needsApproval = !(readOnly || (inPolicy && mode !== 'manual'));
       subject = { shell: args.command, argv, cwd: '.', sandbox: 'bwrap', network: 'none', policyVersion: pol.version, reason: readOnly ? 'read-only' : inPolicy ? 'manual mode' : 'not covered by project policy' };
     } else throw fail('INVALID_PARAMS', `Unsupported mutation ${tool}`);
-    subject.agentId = r.agentId; subject.model = r.config.model;
+    subject.agentId = r.executingSat || r.agentId; subject.model = r.config.satModels[subject.agentId] || r.config.model;
     if (needsApproval) {
       setState(r, 'awaiting_approval');
       const ok = await ask(r, kind, subject);
@@ -156,6 +163,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   // ---- runs (§8, §9) ----
   async function startRun({ sessionId, prompt, agent }) {
     const s = session(sessionId), p = project(s.projectId);
+    agent ??= s.satId;
     if ([...runs.values()].some(r => r.sessionId === sessionId && !r.endedAt)) throw fail('BUSY', 'A run is already active in this session');
     if (!sandbox.available) throw fail('SANDBOX_UNAVAILABLE', sandbox.detail || 'bubblewrap is required');
     if (agent && !SATS.includes(agent)) throw fail('INVALID_PARAMS', 'Unknown agent');
@@ -187,7 +195,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
             onMessage: msg => onWorkerMessage(r, msg),
             onExit: err => { if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'interrupted', { error: err?.message || null }); cleanup(r); resolve(); } });
           setState(r, 'running');
-          r.worker.send({ type: 'start', runId: r.runId, sessionId, model: config.model, agent, agents, limits: config.limits, messages: s.messages });
+          r.worker.send({ type: 'start', runId: r.runId, sessionId, model: config.model, agent, agents, sats, limits: config.limits, messages: s.messages });
         });
       } catch (e) {
         if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', { error: e.message });
@@ -205,7 +213,16 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       Promise.resolve().then(() => { if (!h) throw fail('FORBIDDEN', 'Unknown worker method'); return h(msg.params || {}); })
         .then(result => r.worker?.send({ type: 'response', id: msg.id, result }), e => r.worker?.send({ type: 'response', id: msg.id, error: `${e.code ? e.code + ': ' : ''}${e.message}` }));
     } else if (msg.type === 'event' && msg.event?.v === 1) {
+      if (msg.event.type === 'run.started') r.executingSat = SATS.includes(msg.event.agentId) ? msg.event.agentId : r.agentId;
+      if (msg.event.type === 'run.finished') r.executingSat = r.agentId;
       emit('feed', { ...msg.event, projectId: r.projectId });
+      if (SATS.includes(msg.event.agentId)) {
+        for (const event of satEvents(msg.event)) emit('sat', { ...event, sessionId: r.sessionId, projectId: r.projectId });
+        if (msg.event.type === 'run.started') satWorkspace(msg.event.agentId, { home });
+        if (msg.event.type === 'run.finished') recordSatRun(msg.event.agentId,
+          { state: msg.event.data?.outcome === 'ok' ? 'success' : msg.event.data?.outcome === 'cancelled' ? 'idle' : 'error' },
+          { home, cwd: project(r.projectId).root });
+      }
     } else if (msg.type === 'checkpoint' && Array.isArray(msg.messages)) {
       const s = sessions.get(r.sessionId); if (!s) return;
       s.messages = msg.messages; s.updatedAt = now(); persistSession(s);
@@ -228,7 +245,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     sessions.set(s.sessionId, s); saveMeta();
   }
   const transcript = messages => messages.map(m => ({ role: m.role, content: redactor.text(String(m.content ?? '')).slice(0, m.role === 'tool' ? 2000 : 200_000), name: m.name, tools: m.toolCalls?.map(t => t.name) }));
-  const sessionMeta = s => ({ sessionId: s.sessionId, projectId: s.projectId, name: s.name, mode: s.mode, model: s.model, satModels: s.satModels, keep: !!s.keep, updatedAt: s.updatedAt,
+  const sessionMeta = s => ({ sessionId: s.sessionId, projectId: s.projectId, name: s.name, mode: s.mode, model: s.model, satModels: s.satModels, satId: s.satId || '', keep: !!s.keep, updatedAt: s.updatedAt,
     expiresAt: s.keep ? null : s.updatedAt + RETENTION_MS, active: [...runs.values()].some(r => r.sessionId === s.sessionId && !r.endedAt) });
   function loadMessages(s) {
     if (!s.messages) { try { s.messages = loadSession(project(s.projectId).root, s.sessionId).messages; } catch { s.messages = []; } }
@@ -246,7 +263,17 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
 
   // ---- chat control commands (§5.3): parsed only from human-typed text ----
   function command(origin, { sessionId, text }) {
-    const [cmd, arg] = text.trim().split(/\s+/);
+    const [cmd, arg, name, extra] = text.trim().split(/\s+/);
+    if (cmd === '/sats' && !arg) return sats.map(({ id, role }) => ({ id, role }));
+    if (cmd === '/sat') {
+      if (extra || !arg || (name && !['info', 'workspace'].includes(arg))) throw fail('INVALID_PARAMS', 'Use /sat <name>, /sat info <name>, /sat workspace <name>');
+      const selected = findSat(['info', 'workspace'].includes(arg) ? name : arg, sats);
+      const s = session(sessionId);
+      if (arg === 'info') return { ...selected, ...satWorkspace(selected.id, { home }), history: satHistory(selected.id, { home, cwd: project(s.projectId).root }) };
+      if (arg === 'workspace') return { workspace: satWorkspace(selected.id, { home }).workspace };
+      if (sessionMeta(s).active) throw fail('BUSY', 'Wait for the active run before selecting a Sat');
+      s.satId = selected.id; saveMeta(); return { satId: selected.id, role: selected.role };
+    }
     const pending = approvals.list().filter(a => a.sessionId === sessionId);
     const pick = () => {
       if (!arg || arg.length < 6) throw fail('INVALID_PARAMS', 'Give at least 6 characters of the request id');
@@ -272,15 +299,22 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     },
     'project.list': () => [...projects.values()].sort((a, b) => b.openedAt - a.openedAt),
     'project.close': ({ projectId }) => { projects.delete(projectId); saveMeta(); return true; },
-    'session.create': ({ projectId, name, mode = 'assisted', model }) => {
+    'session.create': ({ projectId, name, mode = 'assisted', model, satId = '' }) => {
       project(projectId); if (!MODES.includes(mode)) throw fail('INVALID_PARAMS', 'Unknown mode');
+      if (satId !== '' && !SATS.includes(satId)) throw fail('INVALID_PARAMS', 'Unknown Sat');
       const s = { sessionId: newSessionId(), projectId, name: (name || 'Nuova sessione').slice(0, 80), mode, model: model || null, satModels: {}, keep: false, updatedAt: now(), messages: [] };
+      s.satId = satId;
       sessions.set(s.sessionId, s); persistSession(s); return sessionMeta(s);
     },
     'session.list': ({ projectId } = {}) => [...sessions.values()].filter(s => !projectId || s.projectId === projectId).map(sessionMeta).sort((a, b) => b.updatedAt - a.updatedAt),
     'session.open': ({ sessionId }) => { const s = session(sessionId); return { ...sessionMeta(s), messages: transcript(loadMessages(s)), pending: approvals.list().filter(a => a.sessionId === sessionId) }; },
-    'session.update': ({ sessionId, name, keep, model, satModels }) => {
+    'session.update': ({ sessionId, name, keep, model, satModels, satId }) => {
       const s = session(sessionId); loadMessages(s);
+      if (satId !== undefined) {
+        if (satId !== '' && !SATS.includes(satId)) throw fail('INVALID_PARAMS', 'Unknown Sat');
+        if (sessionMeta(s).active) throw fail('BUSY', 'Wait for the active run');
+        s.satId = satId;
+      }
       if (typeof name === 'string') s.name = name.slice(0, 80);
       if (typeof keep === 'boolean') s.keep = keep;
       if (model !== undefined) s.model = model || null;

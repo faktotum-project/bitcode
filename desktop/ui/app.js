@@ -138,6 +138,7 @@ async function openSession(id) {
   const meta = S.sessions.find(s => s.sessionId === id);
   if (meta && meta.projectId !== S.projectId) await selectProject(meta.projectId);
   S.sessionId = id; S.session = await api('session.open', { sessionId: id }); S.live.clear(); S.view = 'chat';
+  S.agent = S.session.satId || '';
   for (const s of SATS) S.sats[s] = { st: 'idle' };
 }
 async function refreshGit() { if (S.projectId) { try { S.git = await api('git.status', { projectId: S.projectId }); } catch { S.git = null; } if (S.panel === 'git' || S.panel === 'files') renderPanel(); } }
@@ -165,6 +166,10 @@ window.bitcode.subscribe(({ channel, payload }) => {
     if (type === 'messages') { S.session.messages = data.messages; S.live.clear(); renderThread(); }
     if (type === 'message.delta') { S.live.set(data.runId, { agent: data.agentId, text: (S.live.get(data.runId)?.text || '') + data.text }); renderThread(); }
     if (type === 'tool.detail') { S.agentLog.push({ at: Date.now(), text: `${data.auto ? 'auto' : t('approved')} · ${data.tool} · ${data.summary}` }); if (S.panel === 'agent') renderPanel(); }
+  } else if (channel === 'sat' && payload.sessionId === S.sessionId && SATS.includes(payload.satId)) {
+    const visual = { writing: 'drafting', waiting_approval: 'waiting', success: 'happy', error: 'concerned', planning: 'thinking', delegating: 'running' };
+    S.sats[payload.satId] = { st: visual[payload.state] || payload.state };
+    renderTopbar();
   } else if (channel === 'feed') {
     const line = `${payload.agentId} · ${payload.type}${payload.data.summary ? ' · ' + payload.data.summary : ''}${payload.data.outcome ? ' · ' + payload.data.outcome : ''}`;
     S.agentLog.push({ at: Date.now(), text: line }); if (S.agentLog.length > 500) S.agentLog.shift();
@@ -240,6 +245,21 @@ function renderCenter() {
   }
 }
 
+function showSatInfo(info) {
+  const dialog = h('dialog', { class: 'sat-info', 'aria-labelledby': 'sat-info-title' });
+  fill(dialog,
+    h('div', { class: 'row' }, info.id ? sat(info.id, { size: 36 }) : null,
+      h('h2', { id: 'sat-info-title' }, info.name ? `${info.name} · ${t(`role_${info.id}`)}` : 'Sat Workspace'),
+      h('button', { class: 'iconbtn', autofocus: true, onClick: () => dialog.close(), 'aria-label': t('satClose') }, '×')),
+    info.identity ? h('p', { class: 'mono' }, 'Sat Identity · ', info.identity) : null,
+    h('h3', {}, 'Sat Workspace'), h('p', { class: 'mono' }, info.workspace),
+    info.permissions ? [h('h3', {}, t('satPermissions')), h('div', { class: 'row' }, Object.entries(info.permissions).map(([key, value]) => h('span', { class: 'chip mono' }, `${key}: ${value}`)))] : null,
+    info.tools ? [h('h3', {}, t('satDeclaredTools')), h('p', { class: 'mono' }, info.tools.join(' · '))] : null,
+    info.history ? [h('h3', {}, t('satHistory')), info.history.length ? h('ul', {}, info.history.slice(-5).reverse().map(e => h('li', {}, `${fmtTime(e.at)} · ${e.state}`))) : h('p', {}, t('satHistoryEmpty'))] : null,
+    info.id ? h('details', {}, h('summary', {}, 'Sat Manifest'), h('pre', {}, JSON.stringify(info, null, 2))) : null);
+  dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal();
+}
+
 function renderTopbar() {
   const el = $('topbar'); if (!el) return;
   const s = S.session, p = project();
@@ -251,7 +271,9 @@ function renderTopbar() {
     s ? h('button', { class: 'chip', style: 'cursor:pointer', title: s.keep ? t('kept') : `${t('expiresIn')} ${fmtTime(s.expiresAt)}`,
       onClick: guard(async () => { const r = await api('session.update', { sessionId: s.sessionId, keep: !s.keep }); Object.assign(S.session, { keep: r.keep, expiresAt: r.expiresAt }); renderTopbar(); }) }, s.keep ? `★ ${t('kept')}` : `☆ ${t('keep')}`) : null,
     h('span', { class: 'spacer' }),
-    s ? h('div', { class: 'satrow' }, SATS.map(x => sat(x, { size: 30, state: S.sats[x].st, title: `${satName(x)} · ${t(`sat_${S.sats[x].st}`)}${S.sats[x].summary ? ' · ' + S.sats[x].summary : ''}` }))) : null,
+    s ? h('div', { class: 'satrow' }, SATS.map(x => h('button', { class: 'iconbtn', 'aria-label': `Sat info ${satName(x)}`, onClick: guard(async () => {
+      const res = await api('chat.submit', { sessionId: s.sessionId, text: `/sat info ${x}` }); showSatInfo(res.result);
+    }) }, sat(x, { size: 30, state: S.sats[x].st, title: `${satName(x)} · ${t(`role_${x}`)}` })))) : null,
     p ? h('div', { class: 'tools' }, toggle('files', '▤'), toggle('git', '⎇'), toggle('terminal', '>_'), toggle('agent', '◉')) : null);
 }
 
@@ -302,12 +324,14 @@ function renderComposer() {
     let session = S.session;
     if (!session) {
       if (text.trim().startsWith('/')) throw Object.assign(new Error(t('noSession')), { code: 'X' });
-      const meta = await api('session.create', { projectId: S.projectId, name: text.trim().replace(/\s+/g, ' ').slice(0, 48), mode: S.newMode || 'assisted' });
+      const meta = await api('session.create', { projectId: S.projectId, name: text.trim().replace(/\s+/g, ' ').slice(0, 48), mode: S.newMode || 'assisted', satId: S.agent });
       await loadSessions(); await openSession(meta.sessionId); session = S.session; renderShell();
     }
-    const res = await api('chat.submit', { sessionId: session.sessionId, text, ...(S.agent ? { agent: S.agent } : {}) });
+    const res = await api('chat.submit', { sessionId: session.sessionId, text, agent: S.agent });
     S.draft = ''; if ($('prompt')) $('prompt').value = '';
-    if (res.command && Array.isArray(res.result)) toast(res.result.length ? res.result.map(a => `${a.id.slice(0, 10)} · ${a.kind}`).join('\n') : t('none'));
+    if (res.command && Array.isArray(res.result)) toast(res.result.length ? res.result.map(a => `${a.id.slice(0, 10)} · ${a.role || a.kind}`).join('\n') : t('none'));
+    if (res.command && res.result?.satId) { S.agent = res.result.satId; S.session.satId = S.agent; renderComposer(); toast(`${satName(S.agent)} · ${res.result.role}`); }
+    if (res.command && res.result?.workspace) showSatInfo(res.result);
     if (res.command && res.result?.mode) { S.session.mode = res.result.mode; await loadSessions(); renderComposer(); }
     if (!res.command) { S.session = await api('session.open', { sessionId: session.sessionId }); renderThread(); renderComposer(); renderSidebar(); }
   });
@@ -317,7 +341,11 @@ function renderComposer() {
   }) }, MODES.map(m => h('option', { value: m, selected: (s?.mode || S.newMode || 'assisted') === m }, t(m))));
   fill(el, h('div', { class: 'composer' }, input,
     h('div', { class: 'bar' },
-      h('select', { 'aria-label': t('agentL'), onChange: e => { S.agent = e.target.value; } }, h('option', { value: '' }, 'Bitcode'), SATS.map(a => h('option', { value: a, selected: S.agent === a }, satName(a)))),
+      h('select', { 'aria-label': t('agentL'), disabled: !!run, onChange: guard(async e => {
+        const id = e.target.value;
+        if (s) await api('session.update', { sessionId: s.sessionId, satId: id });
+        S.agent = id;
+      }) }, h('option', { value: '', selected: !S.agent }, 'Bitcode'), SATS.map(a => h('option', { value: a, selected: S.agent === a }, satName(a)))),
       modeSelect,
       h('span', { class: 'chip num', title: t('model') }, s?.model || S.status?.defaultModel?.spec || '—'),
       h('span', { style: 'flex:1' }),
