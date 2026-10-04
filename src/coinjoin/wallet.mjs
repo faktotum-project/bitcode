@@ -1,4 +1,4 @@
-// Temporary CoinJoin wallet (update_cj.md G1, G9): fully isolated from the
+// Temporary CoinJoin wallet (docs/plans/coinjoin-update.md G1, G9): fully isolated from the
 // main bitcode wallet — separate file, never touched by wallet_send/wallet_*
 // tools. Exists only for the duration of a /btc:coinjoin operation and is
 // destroyed at the end (G4: never leave residual UTXOs, so drainAll always

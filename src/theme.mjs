@@ -1,5 +1,5 @@
-// Terminal theme — a faithful translation of the bitcode design system
-// ("bitcode design system/Bitcoin Design System.dc.html") into 24-bit ANSI.
+// Terminal theme — a faithful translation of the design system (design/system)
+// ("design/system/Bitcoin Design System.dc.html") into 24-bit ANSI.
 // Token names and hex values are taken verbatim from that design doc.
 
 const COLOR = process.stdout.isTTY && process.env.NO_COLOR == null;

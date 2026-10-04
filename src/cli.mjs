@@ -1,6 +1,6 @@
 import { bitcodeHome } from "./paths.mjs";
 // Command-line interface: argument parsing, interactive REPL, and one-shot mode.
-// Visual styling comes from the bitcode design system via ./theme.mjs.
+// Visual styling comes from the design system (design/system) via ./theme.mjs.
 
 import readline from "node:readline";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

@@ -9,7 +9,7 @@ set -euo pipefail
 # project (github.com/lightninglabs/wavelength) that Lightning Labs releases
 # as signed, reproducible prebuilt binaries per platform. So this script
 # downloads + checksum-verifies the release tarball instead of compiling one.
-# See update_wavelength.md for the full research trail.
+# See docs/plans/wavelength-update.md for the full research trail.
 #
 # Usage:  ./scripts/build-wavelength.sh [version]   (default: pinned below)
 #

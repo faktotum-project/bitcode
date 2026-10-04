@@ -10,3 +10,9 @@ desktop/dist/
 desktop/release/
 artifacts/desktop/
 __pycache__/
+
+# Local tooling
+.swarm/
+.opencode/
+.claude/
+design/instagram/

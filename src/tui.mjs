@@ -5,7 +5,7 @@
 // run with Enter, dismissed with Esc. Also provides plain questions and
 // masked secret input for API-key setup.
 //
-// Styling comes from the bitcode design system via ./theme.mjs.
+// Styling comes from the design system (design/system) via ./theme.mjs.
 // Falls back to node:readline when stdin is not a TTY (pipes, scripts).
 
 import readline from "node:readline";

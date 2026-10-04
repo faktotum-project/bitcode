@@ -1,5 +1,5 @@
 import { bitcodeHome } from "../paths.mjs";
-// CoinJoin agent tools — Fase 1 (update_cj.md): risk consent, temp wallet
+// CoinJoin agent tools — Fase 1 (docs/plans/coinjoin-update.md): risk consent, temp wallet
 // lifecycle. JoinMarket round execution itself is Fase 2 and not wired up
 // yet; these tools only manage the isolated temp wallet described in G1/G9.
 import { appendFileSync, mkdirSync, existsSync } from "node:fs";

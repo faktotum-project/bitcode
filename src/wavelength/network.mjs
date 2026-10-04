@@ -86,7 +86,7 @@ export function resolveWavelength(config = {}) {
     swapServerAddress: w.swapServerAddress || preset.swapServerAddress,
     swapServerTransport: w.swapServerTransport || (!w.swapServerAddress && preset.swapServerAddress ? PRESET_TRANSPORT : undefined),
     walletEsploraUrl: w.walletEsploraUrl || preset.walletEsploraUrl,
-    // Guardrails (update_wavelength.md §5): per-payment cap enforced in code
+    // Guardrails (docs/plans/wavelength-update.md §5): per-payment cap enforced in code
     // (G3) and the per-round operator fee cap the daemon accepts.
     maxPaySats: w.maxPaySats ?? 50_000,
     maxOperatorFeeSat: w.maxOperatorFeeSat ?? 1_000,

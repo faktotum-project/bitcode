@@ -11,7 +11,7 @@
 // mcp_tool/side_effect) — reusing bitcode's existing MCP client (../mcp.mjs)
 // instead of hand-rolling a gRPC/REST client and a bespoke tool surface.
 //
-// Phase 1 of update_wavelength.md: read-only only. `wavecli schema` classifies
+// Phase 1 of docs/plans/wavelength-update.md: read-only only. `wavecli schema` classifies
 // each MCP-exposed method as side_effect true/false; only false ones are
 // registered here. Mutating ones (send, recv, exit, vtxo management) arrive
 // in a later phase behind bitcode's own guardrails (G3 per-payment sats cap,

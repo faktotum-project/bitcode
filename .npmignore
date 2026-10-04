@@ -16,9 +16,8 @@ assets/sats/*/brand-*.png
 assets/sats/*/working.gif
 docs/sats-preview.png
 docs/sats-poses.png
-bitcode sats/
-bitcode design system/
-bitcode-slides/
+design/system/
+design/instagram/
 *.tgz
 desktop/
 design/desktop-mockups.html

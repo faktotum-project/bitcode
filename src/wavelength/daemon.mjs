@@ -4,7 +4,7 @@
 // node management for the user" — someone still has to run the engine, and
 // here that's bitcode, not the person using it.
 //
-// TLS and macaroon auth are always on (guardrails G6/G8, update_wavelength.md
+// TLS and macaroon auth are always on (guardrails G6/G8, docs/plans/wavelength-update.md
 // §5): no --rpc.notls/--rpc.no-macaroons, those are waved's own dev-only
 // bypass flags. The HTTP/JSON gateway is disabled — bitcode's transport goes
 // through wavecli (gRPC) exclusively, so the gateway is just an unused open
