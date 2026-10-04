@@ -12,5 +12,5 @@ export function satTools(sat, tools, { readOnly = false } = {}) {
     if (tool.name === 'sat_delegate') return p.delegation === 'allow';
     if (/^(btc_|liquid_|ln_|taproot_)/.test(tool.name) && tool.name !== 'ln_decode_invoice' && p.network !== 'allow') return false;
     return true;
-  });
+  }).map(tool => ['write_file', 'edit_file', 'bash'].includes(tool.name) ? { ...tool, mutating: true } : tool);
 }

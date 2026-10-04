@@ -14,7 +14,7 @@ export async function runSat({ satId, registry = loadSats(), persistence = true,
   const state = options.state || { totalToolCalls: 0 };
   const available = options.tools.filter(t => !['subagent', 'sat_delegate'].includes(t.name));
   if (sat.id === 'merkle' && !context.parentRunId) available.push({
-    name: 'sat_delegate', serial: true, mutating: false,
+    name: 'sat_delegate', serial: true, mutating: false, retryable: false,
     description: 'Delegate a focused task to NODE, SCRIPT or HASH. Each Sat retains its own permissions and approval gates. Return to Merkle to synthesize the result.',
     parameters: { type: 'object', properties: { agent: { type: 'string', enum: ['node', 'script', 'hash'] }, prompt: { type: 'string', minLength: 1 } }, required: ['agent', 'prompt'], additionalProperties: false },
     run: async ({ agent, prompt }) => {

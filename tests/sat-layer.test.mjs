@@ -25,6 +25,7 @@ test('Sat Registry validates manifests and rejects permission escalation', () =>
   const sat = { ...registry[0], tools: ['bash', 'bitcoin_rpc', 'wallet_send', 'read_file'] };
   assert.deepEqual(satTools(sat, sat.tools.map(name => ({ name }))).map(t => t.name), ['read_file']);
   assert.deepEqual(satTools({ ...sat, permissions: { ...sat.permissions, filesystem: 'deny' } }, [{ name: 'read_file' }]), []);
+  assert.equal(satTools(registry[1], [{ name: 'bash', mutating: false }])[0].mutating, true);
 });
 
 test('Sat Identity is persistent, history is project scoped and contains no secrets', () => {
@@ -70,6 +71,24 @@ test('Sat Runtime fails closed without an approval hook, and obeys read-only', a
     await runSat({ satId: 'script', persistence: false, target, messages: [], tools: ['bash', 'write_file', 'read_file'].map(name => ({ name, mutating: name !== 'read_file' })), ...options,
       callModelImpl: async ({ tools }) => { assert.deepEqual(tools.map(t => t.name), ['read_file']); return { text: 'ok' }; } });
   }
+});
+
+test('Sat Delegation never retries a child after a possible side effect', async () => {
+  let parentCalls = 0, childCalls = 0, writes = 0;
+  const answer = await runSat({ satId: 'merkle', persistence: false, target, messages: [],
+    limits: { toolRetryAttempts: 2, toolRetryDelay: 0 }, hooks: { approve: () => true },
+    tools: [{ name: 'write_file', run: () => { writes++; return 'written'; } }],
+    callModelImpl: async ({ system }) => {
+      if (system.includes('Sat Identity: Script')) {
+        if (++childCalls === 1) return { toolCalls: [tc('write_file')] };
+        throw Object.assign(new Error('provider unavailable after write'), { status: 503 });
+      }
+      if (++parentCalls === 1) return { toolCalls: [tc('sat_delegate', { agent: 'script', prompt: 'write once' })] };
+      return { text: 'Inspect the partial result before retrying.' };
+    },
+  });
+  assert.equal(writes, 1); assert.equal(childCalls, 2);
+  assert.match(answer, /partial result/);
 });
 
 test('Sat State represents exhausted budgets as error, events strip raw payloads', async () => {

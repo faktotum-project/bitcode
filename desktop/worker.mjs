@@ -69,7 +69,8 @@ async function run(input) {
     const answer = input.agent ? await runSat({ ...options, satId: input.agent, registry: input.sats, persistence: false, guardedTools: true,
       targetForSat: id => ({ ...target, provider: { desktopAgent: id } }) })
       : await runAgent(options);
-    send({ type: 'done', answer });
+    if (answer?.startsWith('[stopped:')) send({ type: 'failure', message: answer });
+    else send({ type: 'done', answer });
   } catch (e) { send({ type: 'failure', message: e.message }); }
   process.stdin.destroy();
 }

@@ -20,6 +20,8 @@ function run(bin, args, cwd = root) {
 try {
   const archive = JSON.parse(run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", temp, "--cache", path.join(temp, "cache")]))[0];
   const files = new Set(archive.files.map(f => f.path));
+  for (const id of ['node', 'script', 'hash', 'merkle']) assert.ok(files.has(`sats/${id}/SAT.md`));
+  for (const name of ['sats', 'sat-runtime', 'sat-workspace', 'sat-permissions', 'sat-events', 'sat-computer']) assert.ok(files.has(`src/${name}.mjs`));
   for (const f of ["agents/node.md", "agents/script.md", "agents/hash.md", "agents/merkle.md", "ui/sats/fonts/Inter-LICENSE.txt", "ui/sats/fonts/JetBrainsMono-OFL.txt", "src/subagents.mjs", "assets/sats/manifest.json"]) assert.ok(files.has(f), f);
   assert.equal([...files].some(f => f.includes("assets/sats/sources/") || f.includes("/masters/") || f.endsWith("/working.gif") || f.startsWith("bitcode sats/")), false);
   run("tar", ["-xzf", path.join(temp, archive.filename), "-C", temp]);
@@ -35,6 +37,11 @@ try {
   const { runSubagent } = await module("src/subagents.mjs");
   const bus = createEventBus();
   process.chdir(temp);
+  const { loadSats } = await module('src/sats.mjs');
+  const { runSat } = await module('src/sat-runtime.mjs');
+  assert.equal(loadSats().length, 4);
+  assert.equal(await runSat({ satId: 'merkle', persistence: false, target: { provider: {}, model: 'mock' }, tools: [], messages: [],
+    callModelImpl: async ({ tools }) => { assert.ok(tools.some(t => t.name === 'sat_delegate')); return { text: 'packaged Sat works' }; } }), 'packaged Sat works');
   const panel = await startSatsServer({ bus, network: "testnet4" });
   try {
     const attached = await fetch(panel.origin + "/api/attach", { method: "POST", headers: { Origin: panel.origin, "Content-Type": "application/json" }, body: JSON.stringify({ token: new URL(panel.url).hash.slice(7) }) });
