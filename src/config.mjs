@@ -55,6 +55,13 @@ export const BUILTIN_PROVIDERS = {
     local: true,
     defaultModel: null,
   },
+  qvac: {
+    api: "openai",
+    baseURL: "http://127.0.0.1:11435/v1",
+    keyEnv: "QVAC_API_KEY",
+    local: true,
+    defaultModel: "bitcode-local",
+  },
 };
 
 // OLLAMA_HOST follows Ollama's own conventions: "host", "host:port" or a URL,

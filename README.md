@@ -19,6 +19,9 @@ node bitcode.mjs doctor           # check your setup
 
 Local models need no key: `node bitcode.mjs -m ollama/gpt-oss:20b`.
 
+QVAC local inference: `node bitcode.mjs -m qvac/bitcode-local`.
+See [setup and model configuration](integrations/qvac/README.md).
+
 ## What's inside
 
 | Folder | Content |

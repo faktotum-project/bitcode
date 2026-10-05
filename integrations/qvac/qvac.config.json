@@ -1,0 +1,12 @@
+{
+  "serve": {
+    "models": {
+      "bitcode-local": {
+        "model": "QWEN3_600M_INST_Q4",
+        "default": true,
+        "preload": false,
+        "config": { "ctx_size": 8192, "tools": true }
+      }
+    }
+  }
+}

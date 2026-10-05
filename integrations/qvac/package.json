@@ -1,0 +1,11 @@
+{
+  "name": "bitcode-qvac",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "qvac serve --openai --host 127.0.0.1 --port 11435 --config qvac.config.json"
+  },
+  "dependencies": {
+    "@qvac/cli": "0.14.0"
+  }
+}
