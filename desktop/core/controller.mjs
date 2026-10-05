@@ -112,7 +112,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   const policy = projectId => { if (!policies.has(projectId)) policies.set(projectId, { ...DEFAULT_POLICY, ...loadJSON(policyFile(projectId), DEFAULT_POLICY) }); return policies.get(projectId); };
   const lockFor = root => { if (!projectLocks.has(root)) projectLocks.set(root, new Semaphore(1)); return projectLocks.get(root); };
   const publicRun = r => ({ runId: r.runId, sessionId: r.sessionId, projectId: r.projectId, state: r.state, mode: r.config.mode, model: r.config.model,
-    prompt: r.prompt.slice(0, 160), startedAt: r.startedAt, endedAt: r.endedAt || null, usage: r.usage, worktree: r.worktree?.dir || null, error: r.error || null });
+    prompt: r.prompt.slice(0, 160), startedAt: r.startedAt, endedAt: r.endedAt || null, usage: r.usage, worktree: r.worktree?.dir || null, error: r.error || null, errorCode: r.errorCode || null });
   const setState = (r, state, extra = {}) => { Object.assign(r, { state }, extra); if (['success', 'error', 'cancelled', 'interrupted'].includes(state)) { r.endedAt = now(); r.probe?.stop(); } emit('run', publicRun(r)); };
   const sessionEvent = (sessionId, type, data) => emit('session', { sessionId, type, data });
 
@@ -253,7 +253,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
           r.worker.send({ type: 'start', runId: r.runId, sessionId, model: config.model, agent, agents, sats, limits: config.limits, messages: s.messages, readOnly, systemExtra });
         });
       } catch (e) {
-        if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', { error: e.message });
+        if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', { error: e.message, errorCode: e.code || null });
       } finally { release?.(); cleanup(r); }
     })();
     return publicRun(r);
@@ -388,7 +388,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
 
   // ---- public API (§3) ----
   const finance = createFinance({ home, emit, configImpl: configOverride ? () => configOverride : undefined, saveConfigImpl: configOverride ? () => {} : undefined, fetchImpl: financeFetch });
-  const human = [...finance.human, 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'session.delete', 'run.start'];
+  const human = [...finance.human, 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'run.start'];
   const methods = {
     ...finance.methods,
     'app.status': () => ({ sandbox, settings, defaultModel: describeModel(defaultSpec()), runs: [...runs.values()].map(publicRun), pending: approvals.list(), projects: [...projects.values()] }),
@@ -399,8 +399,9 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     },
     'project.list': () => [...projects.values()].sort((a, b) => b.openedAt - a.openedAt),
     'project.close': ({ projectId }) => { projects.delete(projectId); saveMeta(); return true; },
-    'session.create': ({ projectId, name, mode = 'assisted', model, satId = '' }) => {
+    'session.create': async ({ projectId, name, mode = 'assisted', model, satId = '' }) => {
       project(projectId); if (!MODES.includes(mode)) throw fail('INVALID_PARAMS', 'Unknown mode');
+      if (mode === 'unattended') { const problem = G.worktreeError(await G.worktreeReadiness(project(projectId).root)); if (problem) throw problem; }
       if (satId !== '' && !SATS.includes(satId)) throw fail('INVALID_PARAMS', 'Unknown Sat');
       const s = { sessionId: newSessionId(), projectId, name: (name || 'Nuova sessione').slice(0, 80), mode, model: model || null, satModels: {}, keep: false, updatedAt: now(), messages: [] };
       s.satId = satId;
@@ -426,9 +427,10 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       rmSync(path.join(sessionsDir(project(s.projectId).root), `${sessionId}.json`), { force: true }); sessions.delete(sessionId); saveMeta(); return true;
     },
     'session.export': ({ sessionId }) => { const s = session(sessionId); return transcript(loadMessages(s)).filter(m => m.role !== 'tool').map(m => `## ${m.role}\n\n${m.content}`).join('\n\n'); },
-    'mode.set': ({ sessionId, mode }) => {
+    'mode.set': async ({ sessionId, mode }) => {
       const s = session(sessionId); if (!MODES.includes(mode)) throw fail('INVALID_PARAMS', 'Unknown mode');
       if (mode === 'unattended' && !sandbox.available) throw fail('SANDBOX_UNAVAILABLE');
+      if (mode === 'unattended') { const problem = G.worktreeError(await G.worktreeReadiness(project(s.projectId).root)); if (problem) throw problem; }
       loadMessages(s); s.mode = mode; persistSession(s); return sessionMeta(s);
     },
     'chat.submit': async ({ sessionId, text, agent }, origin) => {
@@ -507,6 +509,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     },
     'git.status': ({ projectId }) => G.status(project(projectId).root),
     'git.diff': ({ projectId, path: p, staged }) => G.diff(project(projectId).root, { path: p, staged }),
+    'git.init': async ({ projectId }) => { await G.init(project(projectId).root); return G.status(project(projectId).root); },
     'git.stage': ({ projectId, paths }) => G.stage(project(projectId).root, paths),
     'git.unstage': ({ projectId, paths }) => G.unstage(project(projectId).root, paths),
     'git.commit': ({ projectId, message }) => { if (!message?.trim()) throw fail('INVALID_PARAMS', 'Empty commit message'); const root = project(projectId).root; return lockFor(root).use(() => G.commit(root, message)); },

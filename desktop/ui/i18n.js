@@ -1,5 +1,7 @@
 // UI strings only: tool names, commands, identifiers and file content are never translated.
 const it = {
+  gitInit: 'Inizializza repository Git', gitInitConfirm: 'Creare un repository Git in questa cartella? Non viene aggiunto nessun file: il primo commit lo fai tu.', gitInitDone: 'Repository creato. Per «Senza supervisione» serve ancora un primo commit.',
+  E_WORKTREE_NO_REPO: 'La modalità «Senza supervisione» richiede un repository Git nella cartella del progetto: usa Git → Inizializza.', E_WORKTREE_NO_COMMIT: 'La modalità «Senza supervisione» richiede almeno un commit nel repository: fai il primo commit dal pannello Git.',
   attachL: 'Allega', attachFiles: 'File…', attachFolder: 'Cartella…', dropHint: 'Rilascia per allegare file o cartelle', attachDefault: 'Guarda gli allegati.', attachRemove: 'Rimuovi l’allegato', attachBusy: 'Allego…', attachSkipped: 'non allegati', scAttach: 'Allega file',
   kind_folder: 'cartella', kind_image: 'immagine', kind_pdf: 'PDF', kind_text: 'testo', kind_archive: 'archivio', kind_audio: 'audio', kind_video: 'video', kind_file: 'file', filesN: 'file',
   E_TOO_LARGE: 'Allegato troppo grande (massimo 50 MB per file, 200 MB in totale).', E_TOO_MANY: 'Troppi file (massimo 1500).', E_INVALID_PATH: 'Nome o percorso non valido.',
@@ -83,6 +85,8 @@ const it = {
   E_PROVIDER_UNAVAILABLE: 'Modello non configurato.', E_PTY_UNAVAILABLE: 'Terminale non disponibile.', E_FORBIDDEN_ORIGIN: 'Origine non autorizzata.', E_WORKTREE_UNAVAILABLE: 'La modalità senza supervisione richiede un repository Git.'
 };
 const en = {
+  gitInit: 'Initialise Git repository', gitInitConfirm: 'Create a Git repository in this folder? No file is added: you make the first commit.', gitInitDone: 'Repository created. “Unattended” still needs a first commit.',
+  E_WORKTREE_NO_REPO: 'Unattended mode needs a Git repository in the project folder: use Git → Initialise.', E_WORKTREE_NO_COMMIT: 'Unattended mode needs at least one commit in the repository: make the first commit from the Git panel.',
   attachL: 'Attach', attachFiles: 'Files…', attachFolder: 'Folder…', dropHint: 'Drop to attach files or folders', attachDefault: 'Have a look at the attachments.', attachRemove: 'Remove attachment', attachBusy: 'Attaching…', attachSkipped: 'not attached', scAttach: 'Attach files',
   kind_folder: 'folder', kind_image: 'image', kind_pdf: 'PDF', kind_text: 'text', kind_archive: 'archive', kind_audio: 'audio', kind_video: 'video', kind_file: 'file', filesN: 'files',
   E_TOO_LARGE: 'Attachment too large (50 MB per file, 200 MB in total).', E_TOO_MANY: 'Too many files (1500 max).', E_INVALID_PATH: 'Invalid name or path.',

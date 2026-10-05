@@ -17,6 +17,8 @@ import { satStateLabel, satStateTable, satEthics } from '../../src/sat-states.mj
 import { workText, closingText, actionText, word } from '../../src/work-meter.mjs';
 
 const SATS = ['node', 'script', 'hash', 'merkle'];
+// Why 'Senza supervisione' cannot be chosen yet (it works in a Git worktree), or '' when it can.
+const unattendedBlocked = () => (S.git && !S.git.repo ? t('E_WORKTREE_NO_REPO') : S.git && S.git.repo && !S.git.hasCommits ? t('E_WORKTREE_NO_COMMIT') : '');
 const MODES = ['manual', 'assisted', 'unattended'];
 const S = {
   view: 'chat', info: null, status: null, settings: null, projects: [], projectId: null, sessions: [], sessionId: null, session: null,
@@ -398,7 +400,7 @@ window.bitcode.subscribe(({ channel, payload }) => {
       const sid = S.sessions.find(x => x.sessionId === payload.sessionId)?.satId || null;
       S.closing.set(payload.sessionId, { id: sid, ok: payload.state === 'success', text: closingText({ outcome: payload.state === 'success' ? 'ok' : payload.state === 'cancelled' ? 'cancelled' : 'error', snap: runSnapshot(payload), lang: wlang() }) });
       S.live.delete(payload.runId); refreshGit();
-      if (payload.error && payload.sessionId === S.sessionId) toast(payload.error, true);
+      if (payload.error && payload.sessionId === S.sessionId) toast(errorText({ code: payload.errorCode, message: payload.error }), true);
       if (payload.worktree) api('worktree.list').then(w => { S.worktrees = w; });
       if (payload.sessionId === S.sessionId) for (const s of SATS) S.sats[s] = { st: 'idle' };
     }
@@ -695,7 +697,8 @@ function renderComposer() {
   const modeSelect = h('select', { 'aria-label': t('mode'), onChange: guard(async e => {
     if (!s) { S.newMode = e.target.value; return; }
     const r = await api('mode.set', { sessionId: s.sessionId, mode: e.target.value }); S.session.mode = r.mode; await loadSessions();
-  }) }, MODES.map(m => h('option', { value: m, selected: (s?.mode || S.newMode || 'assisted') === m }, t(m))));
+  }) }, MODES.map(m => h('option', { value: m, selected: (s?.mode || S.newMode || 'assisted') === m, disabled: m === 'unattended' && !!unattendedBlocked() && (s?.mode || S.newMode) !== m }, t(m))));
+  if (unattendedBlocked()) modeSelect.title = unattendedBlocked();
   const currentModel = s?.model || S.newModel || S.status?.defaultModel?.spec || '—';
   fill(el, h('div', { class: 'composer' }, menuEl, attachmentChips(), input,
     h('div', { class: 'bar' },
@@ -874,7 +877,7 @@ function renderEditor() {
   fill(ed, banner, host); tab.view.requestMeasure();
 }
 function gitView() {
-  const g = S.git; if (!g) return h('div', { class: 'status' }, '…'); if (!g.repo) return h('div', { class: 'status' }, t('notRepo'));
+  const g = S.git; if (!g) return h('div', { class: 'status' }, '…'); if (!g.repo) return h('div', { class: 'gitinit' }, h('div', { class: 'status' }, t('notRepo')), h('button', { class: 'btn', onClick: guard(async () => { if (!confirm(t('gitInitConfirm'))) return; await api('git.init', { projectId: S.projectId }); await refreshGit(); renderComposer(); toast(t('gitInitDone')); }) }, t('gitInit')));
   const isStaged = f => f.index !== ' ' && f.index !== '?';
   const staged = g.files.filter(isStaged);
   return [h('div', { class: 'row', style: 'margin-bottom:12px' }, h('span', { class: 'chip mono' }, `⎇ ${g.branch || 'HEAD'}`), h('span', { class: 'status' }, `${g.files.length} ${t('changes')}`),

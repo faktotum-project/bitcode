@@ -18,7 +18,7 @@ export async function isRepoRoot(root) {
 }
 
 export async function status(root) {
-  if (!await isRepoRoot(root)) return { repo: false, branch: null, files: [] };
+  if (!await isRepoRoot(root)) return { repo: false, branch: null, files: [], hasCommits: false };
   const out = await git(root, ['status', '--porcelain=v1', '-b', '-z', '--untracked-files=all']);
   const entries = out.split('\0').filter(Boolean);
   let branch = null; const files = [];
@@ -29,7 +29,7 @@ export async function status(root) {
     if (x === 'R' || x === 'C') i++; // -z puts the rename source in the next entry
     files.push({ path: file, index: x, worktree: y });
   }
-  return { repo: true, branch, files };
+  return { repo: true, branch, files, hasCommits: await hasCommits(root) };
 }
 
 export const diff = (root, { path: p, staged = false } = {}) => git(root, ['diff', '--no-color', ...(staged ? ['--cached'] : []), '--', ...(p ? [p] : [])]);
@@ -39,8 +39,18 @@ export const commit = (root, message) => git(root, ['commit', '-m', message]);
 
 // Unattended runs (1A) work in a detached worktree outside the project; the
 // result is applied to the project only by an explicit human integration.
+export const hasCommits = root => git(root, ['rev-parse', '--verify', '--quiet', 'HEAD']).then(() => true, () => false);
+// Unattended mode needs a repository at the project root AND a first commit to branch the worktree from.
+// Returns 'ok' | 'no_repo' | 'no_commit'; the callers turn the other two into precise, translated errors.
+export async function worktreeReadiness(root) {
+  if (!await isRepoRoot(root)) return 'no_repo';
+  return await hasCommits(root) ? 'ok' : 'no_commit';
+}
+export const worktreeError = readiness => (readiness === 'no_repo' ? fail('WORKTREE_NO_REPO', 'Unattended mode needs a Git repository at the project root')
+  : readiness === 'no_commit' ? fail('WORKTREE_NO_COMMIT', 'Unattended mode needs at least one commit in the repository') : null);
+export const init = async root => { if (await isRepoRoot(root)) throw fail('INVALID_PARAMS', 'Already a Git repository'); try { await git(root, ['init', '-b', 'main']); } catch { await git(root, ['init']); } };
 export async function addWorktree(root, dir) {
-  if (!await isRepoRoot(root)) throw fail('WORKTREE_UNAVAILABLE', 'Unattended mode needs a Git repository at the project root');
+  const problem = worktreeError(await worktreeReadiness(root)); if (problem) throw problem;
   mkdirSync(path.dirname(dir), { recursive: true, mode: 0o700 });
   const head = (await git(root, ['rev-parse', 'HEAD'])).trim();
   await git(root, ['worktree', 'add', '--detach', dir, head]);

@@ -272,7 +272,7 @@ index 91ac0de..4be2f70 100644
     'approval.resolve': ({ requestId, decision }) => { emit('approval', { ...window.__demo.approval(), id: requestId, status: decision === 'approve' ? 'approved' : 'denied' }); return true; },
     'fs.tree': ({ path: rel = '.' }) => treeOf(rel),
     'buffer.open': ({ path: rel }) => { const text = FILES[rel] ?? ''; return { text, version: version(text) }; },
-    'git.status': () => ({ repo: true, branch: 'feat/webhook-hmac', files: S.committed ? [] : gitFiles() }),
+    'git.status': () => ({ repo: true, branch: 'feat/webhook-hmac', hasCommits: true, files: S.committed ? [] : gitFiles() }),
     'git.diff': ({ path: p }) => (p === 'src/webhooks.js' ? DIFF_WEBHOOKS : p === 'tests/webhooks.test.js' ? DIFF_TEST : `diff --git a/${p} b/${p}\nnew file mode 100644\n--- /dev/null\n+++ b/${p}\n@@ -0,0 +1,3 @@\n${(FILES[p] || '').split('\n').slice(0, 3).map(l => '+' + l).join('\n')}\n`),
     'git.stage': ({ paths }) => { paths.forEach(p => S.staged.add(p)); return ''; },
     'git.unstage': ({ paths }) => { paths.forEach(p => S.staged.delete(p)); return ''; },

@@ -204,3 +204,20 @@ test('slash commands: catalogue, /model, /plan read-only with saved plan, /build
     assert.match(workers[2].sent.find(m => m.type === 'start').messages.at(-1).content, /the fee module/);
   } finally { if (previous === undefined) delete process.env.BITCODE_HOME; else process.env.BITCODE_HOME = previous; c.shutdown(); }
 });
+
+test('unattended mode is refused up front, with a precise reason, until the project has a repository and a first commit', async () => {
+  const { c, root } = setup();
+  const p = await c.invoke('project.open', { path: root });
+  await assert.rejects(() => c.invoke('session.create', { projectId: p.projectId, mode: 'unattended' }, 'ui:1'), e => e.code === 'WORKTREE_NO_REPO');
+  const s = await c.invoke('session.create', { projectId: p.projectId, mode: 'assisted' }, 'ui:1');
+  await assert.rejects(() => c.invoke('mode.set', { sessionId: s.sessionId, mode: 'unattended' }, 'ui:1'), e => e.code === 'WORKTREE_NO_REPO');
+  assert.deepEqual(await c.invoke('git.status', { projectId: p.projectId }), { repo: false, branch: null, files: [], hasCommits: false });
+  assert.equal((await c.invoke('git.init', { projectId: p.projectId }, 'ui:1')).repo, true);
+  await assert.rejects(() => c.invoke('mode.set', { sessionId: s.sessionId, mode: 'unattended' }, 'ui:1'), e => e.code === 'WORKTREE_NO_COMMIT');
+  assert.equal((await c.invoke('git.status', { projectId: p.projectId })).hasCommits, false);
+  const git = args => execFileSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]);
+  writeFileSync(path.join(root, 'a.txt'), 'a'); git(['add', '.']); git(['commit', '-qm', 'first']);
+  assert.equal((await c.invoke('mode.set', { sessionId: s.sessionId, mode: 'unattended' }, 'ui:1')).mode, 'unattended');
+  await assert.rejects(() => c.invoke('git.init', { projectId: p.projectId }, 'ui:1'), /Already a Git repository/);
+  await assert.rejects(() => c.invoke('git.init', { projectId: p.projectId }, 'worker:1'), e => e.code === 'FORBIDDEN_ORIGIN');
+});
