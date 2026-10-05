@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { runAgent, agentLimits } from "../src/agent.mjs";
+import { bitcoinTools } from '../src/bitcoin/tools.mjs';
 
 // A mock OpenAI-compatible SSE endpoint; each test sets `script(res)` to decide
 // the per-request response (tool calls first, then a final text).
@@ -28,6 +29,23 @@ function sse(res, chunks) {
 const target = () => ({ provider: { api: "openai", baseURL: `http://127.0.0.1:${port}/v1` }, model: "m", apiKey: null });
 const toolCall = (i, id, name) => ({ choices: [{ delta: { tool_calls: [{ index: i, id, function: { name, arguments: "{}" } }] } }] });
 const textChunk = (s) => ({ choices: [{ delta: { content: s } }] });
+
+test('address inspection rejects a mainnet address on signet before network IO', async () => {
+  const tool = bitcoinTools({ bitcoin: { network: 'signet', esploraUrl: 'http://127.0.0.1:1' } }).find(t => t.name === 'btc_address');
+  await assert.rejects(tool.run({ address: '162bzZT2hJfv5Gm3ZmWfWfHJjCtMD6rHhw' }), /different Bitcoin network.*signet/);
+  await assert.rejects(tool.run({ address: 'not-an-address' }), /no request was sent/);
+});
+
+test('truncated model turn is checkpointed as incomplete without executing tools or retrying', async () => {
+  let writes = 0, calls = 0, checkpoints = 0;
+  const messages = [{ role: 'user', content: 'investigate' }];
+  const result = await runAgent({ target: target(), messages, tools: [{ name: 'write_file', run: () => writes++ }],
+    hooks: { onCheckpoint: () => checkpoints++ },
+    callModelImpl: async () => { calls++; return { text: 'partial report', incomplete: 'length', toolCalls: [{ id: 'a', name: 'write_file', args: {} }] }; } });
+  assert.match(result, /^\[stopped:/); assert.match(result, /partial report/);
+  assert.equal(writes, 0); assert.equal(calls, 1); assert.equal(checkpoints, 1);
+  assert.equal(messages[1].incomplete, 'length'); assert.deepEqual(messages[1].toolCalls, []);
+});
 
 test("independent tool calls in one turn run concurrently", async () => {
   let turn = 0;

@@ -213,6 +213,11 @@ async function callOpenAI({ provider, model, apiKey, system, messages, tools, on
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
 
   const body = { model, messages: toOpenAIMessages(system, messages) };
+  if (provider.maxOutputTokens !== undefined) {
+    if (!Number.isSafeInteger(provider.maxOutputTokens) || provider.maxOutputTokens < 1) throw new Error('maxOutputTokens must be a positive integer');
+    body.max_tokens = provider.maxOutputTokens;
+  }
+  if (provider.reasoningEffort !== undefined) body.reasoning_effort = provider.reasoningEffort;
   if (tools?.length) {
     body.tools = tools.map((t) => ({
       type: "function",
@@ -232,14 +237,15 @@ async function callOpenAI({ provider, model, apiKey, system, messages, tools, on
   }
 
   let text = "";
-  let complete = false, usage;
+  let complete = false, usage, incomplete;
   const calls = []; // accumulated by streamed tool_call index
   for await (const data of sseEvents(res)) {
     if (data === "[DONE]") { complete = true; break; }
     const json = eventJSON(data);
     if (json.usage) usage = { input_tokens: json.usage.prompt_tokens || 0, output_tokens: json.usage.completion_tokens || 0 };
     const reason = json.choices?.[0]?.finish_reason;
-    if (reason === "length" || reason === "content_filter") throw new Error(`model response incomplete: ${reason}`);
+    if (reason === "content_filter") throw new Error(`model response incomplete: ${reason}`);
+    if (reason === "length") incomplete = "length";
     if (reason) complete = true;
     const delta = json.choices?.[0]?.delta;
     if (!delta) continue;
@@ -257,6 +263,11 @@ async function callOpenAI({ provider, model, apiKey, system, messages, tools, on
   }
 
   if (!complete) throw new Error("provider stream ended before completion");
+  // Never parse or execute even apparently valid tool calls from a truncated turn.
+  if (incomplete) return { text, toolCalls: [], usage, incomplete,
+    completionHint: isOllama(undefined, provider)
+      ? 'Ollama: check the loaded context with ollama ps; maxOutputTokens controls output, not context. Use /compact or /reset to shorten history, or configure num_ctx in an Ollama Modelfile.'
+      : 'Check provider maxOutputTokens and the model context window; use /compact or /reset to shorten history.' };
   const toolCalls = calls
     .filter((c) => c && c.name)
     .map((c) => ({ id: c.id || randomUUID(), name: c.name, args: parseArgs(c.args) }));

@@ -52,6 +52,29 @@ async function modelServer(t, respond) {
 }
 const answer = text => [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }];
 
+test('CLI reports a length-truncated answer as incomplete and saves the partial text', async t => {
+  const cwd = mkdtempSync(path.join(os.tmpdir(), 'bc-length-'));
+  const home = path.join(cwd, 'state'); mkdirSync(home);
+  let hits = 0;
+  const server = http.createServer(async (req, res) => {
+    for await (const _ of req) {} hits++;
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end('data: {"choices":[{"delta":{"content":"partial report"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  writeFileSync(path.join(home, 'config.json'), JSON.stringify({ model: 'mock/model', providers: { mock: { api: 'openai', baseURL: `http://127.0.0.1:${server.address().port}/v1` } } }));
+  const result = await new Promise(resolve => execFile(process.execPath, [entry, '--cwd', cwd, '--json', '-p', 'inspect'],
+    { env: { ...process.env, BITCODE_HOME: home, BITCODE_MODEL: '', NO_COLOR: '1' }, timeout: 10000 },
+    (error, stdout, stderr) => resolve({ error, stdout, stderr })));
+  assert.equal(result.error?.code, 2, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.status, 'incomplete'); assert.match(output.answer, /partial report/); assert.equal(hits, 1);
+  const dirs = readdirSync(path.join(home, 'sessions'));
+  const saved = JSON.parse(readFileSync(path.join(home, 'sessions', dirs[0], `${output.session_id}.json`), 'utf8'));
+  assert.ok(saved.messages.some(m => m.content === 'partial report' && m.incomplete === 'length'));
+});
+
 test("CLI one-shot Responses executes a real file tool, saves and resumes the transcript", async t => {
   const cwd = mkdtempSync(path.join(os.tmpdir(), "bc-e2e-"));
   const home = path.join(cwd, "state"); mkdirSync(home);

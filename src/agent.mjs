@@ -19,6 +19,8 @@ export function systemPrompt({ profile = "code", network = "signet", lightning =
     "- Verify work with a relevant command when practical, and report its actual output/result.",
     "- At completion, summarize changed files, verification run, and any remaining limitation.",
     "- Be concise and direct.",
+    "- For blockchain/address intelligence, use available data tools before reporting findings. If this coding profile lacks them, explain that /profile bitcoin enables blockchain tools; do not fabricate balances, attribution, risk scores, official classifications or investigative findings.",
+    `- Active Bitcoin network: ${network}. Confirm an address belongs to this network before queries; do not silently switch networks. A mainnet address cannot be investigated on signet.`,
   ];
   if (profile !== "bitcoin") return coding.join("\n");
   return [
@@ -98,9 +100,15 @@ export async function runAgent({ target, messages, system, tools, hooks = {}, li
       observe(context, "model.finished");
       const { text, toolCalls = [], usage, providerState } = response;
       if (toolCalls.some(tc => !tc.id || !tc.name) || new Set(toolCalls.map(tc => tc.id)).size !== toolCalls.length) throw new Error("model returned missing or duplicate tool call IDs");
-      messages.push({ role: "assistant", content: text || "", toolCalls, ...(providerState ? { providerState } : {}), ...(usage ? { usage } : {}) });
+      messages.push({ role: "assistant", content: text || "", toolCalls: response.incomplete ? [] : toolCalls, ...(response.incomplete ? { incomplete: response.incomplete } : {}), ...(providerState ? { providerState } : {}), ...(usage ? { usage } : {}) });
       hooks.onAssistantEnd?.(text);
       if (usage) hooks.onUsage?.(usage);
+      if (response.incomplete) {
+        outcome = 'error';
+        const notice = `[stopped: model output/context limit reached; response is incomplete, partial text retained, no tools from this turn executed. ${response.completionHint || 'Reduce context or increase the configured output budget.'}]`;
+        await finish(notice);
+        return notice + (text ? `\n\n${text}` : '');
+      }
       if (!toolCalls.length) { await hooks.onCheckpoint?.(messages); await hooks.onTurnEnd?.(); outcome = "ok"; return text; }
 
       const results = new Array(toolCalls.length);

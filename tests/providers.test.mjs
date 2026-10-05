@@ -105,6 +105,30 @@ test("Responses incomplete response is not treated as success", async () => {
   await assert.rejects(callModel({ provider: { ...provider(), api: "responses" }, model: "m", system: "s", messages: [], tools: [] }), /max_output_tokens/);
 });
 
+test('Chat length preserves final delta and usage, drops truncated tools, forwards output controls', async () => {
+  let request, hits = 0;
+  handler = (req, res) => {
+    let body = ''; req.on('data', c => body += c); req.on('end', () => {
+      request = JSON.parse(body); hits++;
+      stream(res, [
+        { choices: [{ delta: { content: 'partial ', tool_calls: [{ index: 0, id: 'a', function: { name: 'write_file', arguments: '{"path":' } }] } }] },
+        { choices: [{ delta: { content: 'final token' }, finish_reason: 'length' }] },
+        { choices: [], usage: { prompt_tokens: 3900, completion_tokens: 196 } },
+      ], true);
+    });
+  };
+  let visible = '';
+  const result = await callModel({ provider: { ...provider(), discovery: 'ollama', maxOutputTokens: 2048, reasoningEffort: 'none' }, model: 'gemma4:26b', messages: [], onDelta: s => visible += s });
+  assert.equal(request.max_tokens, 2048); assert.equal(request.reasoning_effort, 'none');
+  assert.equal(result.text, 'partial final token'); assert.equal(visible, result.text);
+  assert.equal(result.incomplete, 'length'); assert.deepEqual(result.toolCalls, []);
+  assert.equal(result.usage.output_tokens, 196); assert.match(result.completionHint, /num_ctx/); assert.equal(hits, 1);
+});
+
+test('Chat rejects invalid output limits before contacting a provider', async () => {
+  for (const maxOutputTokens of [0, -1, '4096', 1.5]) await assert.rejects(callModel({ provider: { ...provider(), maxOutputTokens }, model: 'm', messages: [] }), /positive integer/);
+});
+
 test("Anthropic streaming preserves initial tool input and detects error events", async () => {
   handler = (_req, res) => stream(res, [
     { type: "message_start", message: { usage: { input_tokens: 12 } } },

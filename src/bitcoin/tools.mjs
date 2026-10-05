@@ -4,6 +4,7 @@ import { resolveNetwork } from "./network.mjs";
 import { esplora } from "./esplora.mjs";
 import { bitcoinRpc } from "./rpc.mjs";
 import { wallet } from "./wallet.mjs";
+import { Address } from '@scure/btc-signer';
 
 const btcOf = (sats) => (Number(sats) / 1e8).toFixed(8) + " BTC";
 
@@ -61,6 +62,8 @@ export function bitcoinTools(config) {
         required: ["address"],
       },
       run: async ({ address }) => {
+        try { Address(ctx.net).decode(address); }
+        catch { throw new Error(`Address is invalid or belongs to a different Bitcoin network (active: ${ctx.name}). Confirm the address and network before querying; no request was sent.`); }
         const [a, utxos] = await Promise.all([api.address(address), api.utxos(address)]);
         const bal =
           a.chain_stats.funded_txo_sum +
