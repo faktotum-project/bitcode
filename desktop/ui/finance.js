@@ -1,6 +1,7 @@
 // Bitcoin area: one tab per protocol. Every state shown comes from the backend
 // (environment proof, balances, proposals); disabled buttons are only a
 // reflection — the finance service enforces test-only, human-confirmed spends.
+import { testSendNote } from '../../src/sat-states.mjs';
 export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerender }) {
   const PROTOS = [['bitcoin', 'Bitcoin'], ['lightning', 'Lightning'], ['cashu', 'Cashu'], ['liquid', 'Liquid'], ['taproot', 'Taproot Assets']];
   const V = { tab: 'bitcoin', data: {}, conns: null, loading: {}, panel: null, proposal: null, showEvidence: false, sendForm: { to: '', amountSats: '', feeRate: '' }, editPolicy: false };
@@ -116,7 +117,7 @@ export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerende
         h('label', {}, t('fin_feeRate')), h('input', { type: 'number', min: 1, class: 'num', value: f.feeRate, placeholder: String(d.fees?.halfHourFee ?? ''), onInput: e => { f.feeRate = e.target.value; } })),
       h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary', onClick: guard(async () => {
         V.proposal = await api('finance.bitcoin.prepare', { to: f.to, amountSats: Number(f.amountSats), feeRate: f.feeRate === '' ? null : Number(f.feeRate) }); rerender();
-      }) }, t('fin_prepare')), h('span', { class: 'status' }, t('fin_prepareNote'))));
+      }) }, t('fin_prepare')), h('span', { class: 'status' }, t('fin_prepareNote')), h('span', { class: 'status' }, `· ${testSendNote(document.documentElement.lang)}`)));
   }
 
   // ---------- other protocols ----------

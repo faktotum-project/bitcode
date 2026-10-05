@@ -409,3 +409,7 @@ table.list th { font-size: 12px; color: var(--muted); font-weight: 500; }
 .form.tight { grid-template-columns: 200px minmax(0, 1fr); max-width: 760px; margin-bottom: 0; gap: 10px 16px; }
 .form.tight label { font-size: 13px; }
 .card h3 { display: flex; align-items: center; gap: 8px; }
+
+/* Sat state labels (wellbeing wording; the plain word is in the tooltip) */
+.slabel { font-size: 12px; font-weight: 400; color: var(--mutedStrong); margin-left: 2px; }
+.sat-info .ethics { color: var(--mutedStrong); font-size: 13px; margin-top: 10px; }

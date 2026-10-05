@@ -12,6 +12,7 @@ import { t, setLang, errorText } from './i18n.js';
 import { logo, sat, typing, SAT_META } from './marks.js';
 import { icon } from './icons.js';
 import { createFinanceView } from './finance.js';
+import { satStateLabel, satStateTable, satEthics } from '../../src/sat-states.mjs';
 
 const SATS = ['node', 'script', 'hash', 'merkle'];
 const MODES = ['manual', 'assisted', 'unattended'];
@@ -47,6 +48,7 @@ const guard = fn => async (...a) => { try { return await fn(...a); } catch (e) {
 const fmtTime = ms => new Date(ms).toLocaleString(document.documentElement.lang === 'en' ? 'en-GB' : 'it-IT', { dateStyle: 'short', timeStyle: 'short' });
 const project = () => S.projects.find(p => p.projectId === S.projectId);
 const satName = s => s[0].toUpperCase() + s.slice(1);
+const satLabel = (id, state) => satStateLabel(id, state, document.documentElement.lang);
 function applyTheme() { document.documentElement.dataset.theme = S.settings?.theme || 'dark'; }
 const isDark = () => (S.settings?.theme || 'dark') === 'dark' || (S.settings?.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
 const activeRun = sessionId => [...S.runs.values()].find(r => r.sessionId === sessionId && !r.endedAt);
@@ -308,6 +310,8 @@ function showSatInfo(info) {
     info.identity ? h('p', { class: 'mono' }, 'Sat Identity · ', info.identity) : null,
     h('h3', {}, 'Sat Workspace'), h('p', { class: 'mono' }, info.workspace),
     info.permissions ? [h('h3', {}, t('satPermissions')), h('div', { class: 'row' }, Object.entries(info.permissions).map(([key, value]) => h('span', { class: 'chip mono' }, `${key}: ${value}`)))] : null,
+    info.id ? [h('h3', {}, t('satStates')), h('div', { class: 'row' }, satStateTable(info.id, document.documentElement.lang).map(x => h('span', { class: 'chip', title: x.plain }, x.label)))] : null,
+    info.permissions && satEthics(info.permissions, document.documentElement.lang).length ? h('p', { class: 'ethics' }, satEthics(info.permissions, document.documentElement.lang).join(' · ')) : null,
     info.tools ? [h('h3', {}, t('satDeclaredTools')), h('p', { class: 'mono' }, info.tools.join(' · '))] : null,
     info.history ? [h('h3', {}, t('satHistory')), info.history.length ? h('ul', {}, info.history.slice(-5).reverse().map(e => h('li', {}, `${fmtTime(e.at)} · ${e.state}`))) : h('p', {}, t('satHistoryEmpty'))] : null,
     info.id ? h('details', {}, h('summary', {}, 'Sat Manifest'), h('pre', {}, JSON.stringify(info, null, 2))) : null);
@@ -328,7 +332,7 @@ function renderTopbar() {
     h('span', { class: 'spacer' }),
     s ? h('div', { class: 'satrow' }, SATS.map(x => h('button', { class: 'iconbtn', 'aria-label': `Sat info ${satName(x)}`, onClick: guard(async () => {
       const res = await api('chat.submit', { sessionId: s.sessionId, text: `/sat info ${x}` }); showSatInfo(res.result);
-    }) }, sat(x, { size: 30, state: S.sats[x].st, title: `${satName(x)} · ${t(`role_${x}`)}` })))) : null,
+    }) }, sat(x, { size: 30, state: S.sats[x].st, title: `${satName(x)} · ${t(`role_${x}`)} — ${satLabel(x, S.sats[x].st).text}` })))) : null,
     p ? h('div', { class: 'tools' }, toggle('files', '▤'), toggle('git', '⎇'), toggle('terminal', '>_'), toggle('agent', '◉')) : null);
 }
 
@@ -348,7 +352,7 @@ function renderThread() {
       if (m.tools?.length) items.push(h('div', { class: 'm-tools mono' }, m.tools.map(x => h('div', {}, x))));
     }
   }
-  for (const [, l] of S.live) items.push(h('div', { class: 'm-bot live' }, h('div', { class: 'who' }, SATS.includes(l.agent) ? sat(l.agent, { size: 20, state: 'drafting' }) : logo({ size: 16 }), SATS.includes(l.agent) ? satName(l.agent) : 'Bitcode', typing(SAT_META[l.agent]?.color)), l.text));
+  for (const [, l] of S.live) items.push(h('div', { class: 'm-bot live' }, h('div', { class: 'who' }, SATS.includes(l.agent) ? sat(l.agent, { size: 20, state: S.sats[l.agent]?.st || 'drafting' }) : logo({ size: 16 }), SATS.includes(l.agent) ? satName(l.agent) : 'Bitcode', typing(SAT_META[l.agent]?.color), SATS.includes(l.agent) ? h('span', { class: 'slabel', title: satLabel(l.agent, S.sats[l.agent]?.st || 'drafting').plain }, satLabel(l.agent, S.sats[l.agent]?.st || 'drafting').label) : null), l.text));
   items.push(...S.pending.filter(a => a.sessionId === s.sessionId).map(approvalCard));
   items.push(...S.notes.map(n => h('div', { class: 'note' }, h('div', { class: 'ntitle' }, n.title), n.lines.length ? h('div', { class: 'nbody mono' }, n.lines.map(l => h('div', {}, l))) : null)));
   if (run) items.push(h('div', { class: 'runline' }, typing(), t(`run_${run.state}`), h('span', { class: 'num' }, `${run.usage.inputTokens + run.usage.outputTokens} ${t('tokens')}`)));

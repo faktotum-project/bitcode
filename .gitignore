@@ -16,3 +16,8 @@ __pycache__/
 .opencode/
 .claude/
 design/instagram/
+
+# Product video: generated stage, stills and renders
+design/video/stage/
+design/video/preview/
+design/video/out/
