@@ -132,6 +132,7 @@ const mainMethods = {
   'pty.resize': ({ ptyId, cols, rows }) => { if (!(cols > 1 && rows > 1 && cols < 1000 && rows < 500)) throw fail('INVALID_PARAMS'); ptyOf(ptyId).resize(cols | 0, rows | 0); return true; },
   'pty.close': ({ ptyId }) => { ptyOf(ptyId).kill(); ptys.delete(ptyId); return true; },
   'clipboard.write': ({ text }) => { if (typeof text !== 'string' || text.length > 1_000_000) throw fail('INVALID_PARAMS'); clipboard.writeText(text); return true; },
+  'clipboard.read': () => clipboard.readText().slice(0, 1_000_000),
   // Links in answers open in the system browser; only plain http(s) URLs, never file:, javascript: or custom schemes.
   'app.openExternal': async ({ url }) => { const u = new URL(String(url)); if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw fail('INVALID_PARAMS'); await shell.openExternal(u.href); return true; },
   'app.quit': quit
