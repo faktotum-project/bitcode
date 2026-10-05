@@ -62,6 +62,15 @@ export function parseMarkdown(src) {
   return out;
 }
 
+// ---- commands the user can run in their own terminal ----
+const SHELL_LANGS = new Set(['bash', 'sh', 'shell', 'zsh', 'console', 'terminal']);
+export const isShellLang = lang => SHELL_LANGS.has(String(lang || '').toLowerCase());
+// "$ sudo apt update" -> "sudo apt update"; comment-only blocks are not runnable.
+export const commandOf = text => String(text ?? '').split('\n').map(l => l.replace(/^\s*\$\s+/, '')).join('\n').trim();
+export const isRunnable = (lang, text) => isShellLang(lang) && commandOf(text).split('\n').some(l => l.trim() && !l.trim().startsWith('#'));
+const RISKY = /(?<!\w)(sudo|su|rm\s+-[a-z]*[rf]|mkfs|dd\s+if=|chmod\s+-R|chown\s+-R|shutdown|reboot|systemctl\s+(stop|disable|mask))(?!\w)|\|\s*(sudo\s+)?(ba|z)?sh\b|>\s*\/dev\/|:\(\)\s*\{/i;
+export const isRisky = text => RISKY.test(commandOf(text));
+
 // ---- inline ----
 const URL_RE = /https?:\/\/[^\s<>()\[\]"']+[^\s<>()\[\]"'.,;:!?]/;
 const RULES = [
@@ -96,7 +105,7 @@ function cachedParse(src) {
 }
 
 // ---- DOM ----
-export function renderMarkdown(src, { h, onCopy, onLink, labels = {} }) {
+export function renderMarkdown(src, { h, onCopy, onLink, onRun, labels = {} }) {
   const il = nodes => nodes.map(n => n.t === 'text' ? n.v : n.t === 'code' ? h('code', { class: 'ic' }, n.v)
     : n.t === 'b' ? h('strong', {}, il(n.c)) : n.t === 'i' ? h('em', {}, il(n.c)) : n.t === 'del' ? h('del', {}, il(n.c))
     : h('a', { class: 'mdlink', href: n.href, title: n.href, onClick: e => { e.preventDefault(); onLink?.(n.href); } }, il(n.c)));
@@ -110,7 +119,9 @@ export function renderMarkdown(src, { h, onCopy, onLink, labels = {} }) {
       case 'table': return h('div', { class: 'tablewrap' }, h('table', {}, h('thead', {}, h('tr', {}, b.head.map((c, i) => h('th', { style: b.align[i] ? `text-align:${b.align[i]}` : null }, il(c))))),
         h('tbody', {}, b.rows.map(r => h('tr', {}, r.map((c, i) => h('td', { style: b.align[i] ? `text-align:${b.align[i]}` : null }, il(c))))))));
       case 'code': return h('div', { class: `codeblock${b.open ? ' open' : ''}` }, h('div', { class: 'codehead' }, h('span', { class: 'lang' }, b.lang || labels.code || 'code'),
-        h('button', { class: 'copy', type: 'button', title: labels.copy || 'Copy', onClick: e => onCopy?.(b.text, e.currentTarget) }, labels.copy || 'Copy')), h('pre', {}, h('code', {}, b.text)));
+        h('span', { class: 'codeactions' },
+          onRun && !b.open && isRunnable(b.lang, b.text) ? h('button', { class: 'run', type: 'button', title: labels.runTitle || 'Run in your terminal', onClick: e => onRun(b.text, e.currentTarget, e) }, '▶ ', labels.run || 'Run') : null,
+          h('button', { class: 'copy', type: 'button', title: labels.copy || 'Copy', onClick: e => onCopy?.(b.text, e.currentTarget) }, labels.copy || 'Copy'))), h('pre', {}, h('code', {}, b.text)));
       default: return null;
     }
   };

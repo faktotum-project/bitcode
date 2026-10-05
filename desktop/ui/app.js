@@ -12,7 +12,7 @@ import { t, setLang, errorText } from './i18n.js';
 import { logo, sat, typing, SAT_META } from './marks.js';
 import { icon } from './icons.js';
 import { createFinanceView } from './finance.js';
-import { renderMarkdown } from './markdown.js';
+import { renderMarkdown, commandOf, isRisky } from './markdown.js';
 import { satStateLabel, satStateTable, satEthics } from '../../src/sat-states.mjs';
 import { workText, closingText, actionText, word } from '../../src/work-meter.mjs';
 
@@ -58,7 +58,24 @@ const copyText = guard(async (text, button) => {
   if (button) { const old = button.textContent; button.textContent = t('copiedText'); button.classList.add('done'); setTimeout(() => { button.textContent = old; button.classList.remove('done'); }, 1400); } else toast(t('copiedText'));
 });
 const openLink = guard(url => api('app.openExternal', { url }));
-const md = text => renderMarkdown(text, { h, onCopy: copyText, onLink: openLink, labels: { copy: t('copyL'), code: t('codeL') } });
+// Play on a shell block: runs it in the USER's terminal (the side panel), only from a real click of theirs.
+// Risky commands (sudo, rm -rf, curl | sh ...) need a second click within a few seconds.
+const runInTerminal = guard(async (text, button, event) => {
+  if (!event?.isTrusted || !S.projectId) return;
+  const command = commandOf(text);
+  if (isRisky(command) && button.dataset.arm !== '1') {
+    const old = button.innerHTML; button.dataset.arm = '1'; button.classList.add('arm'); button.textContent = `⚠ ${t('runConfirm')}`;
+    setTimeout(() => { if (button.isConnected) { button.dataset.arm = ''; button.classList.remove('arm'); button.innerHTML = old; } }, 4000); return;
+  }
+  button.dataset.arm = ''; button.classList.remove('arm');
+  S.panel = 'terminal'; renderShell();
+  for (let i = 0; i < 40 && !(term && ptyId && ptyProject === S.projectId); i++) await new Promise(r => setTimeout(r, 75));
+  if (!ptyId) return toast(t('E_PTY_UNAVAILABLE'), true);
+  term.paste(command); term.focus();
+  await api('pty.write', { ptyId, data: '\r' });
+  toast(t('runSent'));
+});
+const md = text => renderMarkdown(text, { h, onCopy: copyText, onLink: openLink, onRun: S.projectId ? runInTerminal : null, labels: { copy: t('copyL'), code: t('codeL'), run: t('runL'), runTitle: t('runTitle') } });
 // Reading scale: automatic with the window width (so a big monitor is not a narrow column), then the user's own zoom.
 const READ_KEY = 'bitcode.readScale';
 try { S.read = Math.min(2.2, Math.max(0.7, Number(localStorage.getItem(READ_KEY)) || 1)); } catch { S.read = 1; }

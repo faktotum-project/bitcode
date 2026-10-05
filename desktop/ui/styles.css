@@ -462,3 +462,9 @@ table.list th { font-size: 12px; color: var(--muted); font-weight: 500; }
 .ctxmenu button[disabled] { color: var(--muted); cursor: default; }
 .ctxmenu kbd { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: var(--muted); }
 .ctxmenu .sep { height: 1px; background: var(--hairline); margin: 4px 2px; }
+
+/* Play on shell blocks */
+.codeactions { display: inline-flex; gap: 4px; align-items: center; }
+.codeblock .run { border: 1px solid var(--accentSoft); background: var(--accentSoft); color: var(--accent); border-radius: 6px; padding: 2px 10px; font-size: inherit; font-weight: 600; }
+.codeblock .run:hover { background: var(--accent); color: var(--onAccent); }
+.codeblock .run.arm { background: var(--downSoft); border-color: var(--down); color: var(--down); }
