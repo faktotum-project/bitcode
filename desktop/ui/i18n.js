@@ -1,5 +1,6 @@
 // UI strings only: tool names, commands, identifiers and file content are never translated.
 const it = {
+  copyL: 'Copia', codeL: 'codice', copiedText: 'Copiato', scTitle: 'Scorciatoie', scBottom: 'Vai in fondo', scRead: 'Ingrandisci o riduci la lettura (anche Ctrl + rotella)', scReadReset: 'Dimensione di lettura predefinita', scJump: 'Messaggio precedente / successivo', scEnds: 'Inizio / fine della chat', scFocus: 'Scrivi un messaggio', scCopy: 'Copia l’ultima risposta', scPanels: 'File · Git · Terminale · Agente', scSidebar: 'Barra laterale', scSearch: 'Cerca nelle chat', scNew: 'Nuova chat', scHelp: 'Questa guida', scClose: 'Chiudi finestre e menu',
   fin_notConfigured: 'Non configurato', fin_error: 'Errore di connessione', fin_test: 'Test verificato', fin_production: 'Produzione · sola lettura', fin_unverified: 'Ambiente non verificato',
   fin_proof: 'Prova dell\'ambiente', fin_checked: 'verificato alle', fin_connection: 'Connessione', fin_saved: 'Salvato', fin_saveVerify: 'Salva e verifica', fin_sharedConfig: 'Salvato in ~/.bitcode/config.json, condiviso con la CLI.',
   fin_balance: 'Saldo', fin_inMempool: 'in mempool', fin_noWallet: 'Nessun wallet su questa rete.', fin_receive: 'Ricevi', fin_send: 'Invia', fin_createWallet: 'Crea wallet di test',
@@ -46,7 +47,7 @@ const it = {
   role_node: 'infrastruttura Bitcoin', role_script: 'implementazione', role_hash: 'analisi di sicurezza', role_merkle: 'orchestrazione',
   newChat: 'Nuova chat', noChats: 'Nessuna chat', homeTitle: 'Cosa costruiamo in', homeSub: 'Descrivi il lavoro: Bitcode e i Sats leggono il progetto, propongono modifiche e chiedono conferma quando serve.',
   homeNoProject: 'Apri la cartella di un progetto per iniziare una chat.', placeholderNew: 'Chiedi a Bitcode di costruire, correggere o spiegare qualcosa…',
-  hint: 'Invio per inviare · Maiusc+Invio a capo · / per i comandi', terminalShort: 'Terminale', unsaved: 'modifiche non salvate, chiudere?', approved: 'approvato',
+  hint: 'Invio per inviare · Maiusc+Invio a capo · / per i comandi · Ctrl+/ scorciatoie', terminalShort: 'Terminale', unsaved: 'modifiche non salvate, chiudere?', approved: 'approvato',
   sandboxNoNet: 'bwrap · rete negata', activityLead: 'Esecuzioni in corso e concluse in tutti i progetti, richieste in attesa e worktree da integrare.', runsActive: 'Attività in corso',
   cashuEnv: 'solo mint ammessi esplicitamente', connected: 'Connessioni verificate', balanceTest: 'Saldo di test', protocols: 'Protocolli', unavailable: 'non disponibile', appearance: 'Aspetto',
   coding: 'Coding', bitcoin: 'Bitcoin', activity: 'Attività', settings: 'Impostazioni',
@@ -78,6 +79,7 @@ const it = {
   E_PROVIDER_UNAVAILABLE: 'Modello non configurato.', E_PTY_UNAVAILABLE: 'Terminale non disponibile.', E_FORBIDDEN_ORIGIN: 'Origine non autorizzata.', E_WORKTREE_UNAVAILABLE: 'La modalità senza supervisione richiede un repository Git.'
 };
 const en = {
+  copyL: 'Copy', codeL: 'code', copiedText: 'Copied', scTitle: 'Shortcuts', scBottom: 'Jump to bottom', scRead: 'Make reading larger or smaller (also Ctrl + wheel)', scReadReset: 'Default reading size', scJump: 'Previous / next message', scEnds: 'Start / end of the chat', scFocus: 'Write a message', scCopy: 'Copy the last answer', scPanels: 'Files · Git · Terminal · Agent', scSidebar: 'Sidebar', scSearch: 'Search chats', scNew: 'New chat', scHelp: 'This guide', scClose: 'Close dialogs and menus',
   fin_notConfigured: 'Not configured', fin_error: 'Connection error', fin_test: 'Verified test', fin_production: 'Production · read-only', fin_unverified: 'Unverified environment',
   fin_proof: 'Environment proof', fin_checked: 'checked at', fin_connection: 'Connection', fin_saved: 'Saved', fin_saveVerify: 'Save and verify', fin_sharedConfig: 'Saved in ~/.bitcode/config.json, shared with the CLI.',
   fin_balance: 'Balance', fin_inMempool: 'in mempool', fin_noWallet: 'No wallet on this network.', fin_receive: 'Receive', fin_send: 'Send', fin_createWallet: 'Create test wallet',
@@ -100,7 +102,7 @@ const en = {
   role_node: 'Bitcoin infrastructure', role_script: 'implementation', role_hash: 'security analysis', role_merkle: 'orchestration',
   newChat: 'New chat', noChats: 'No chats', homeTitle: 'What are we building in', homeSub: 'Describe the work: Bitcode and the Sats read the project, propose changes and ask before acting when needed.',
   homeNoProject: 'Open a project folder to start a chat.', placeholderNew: 'Ask Bitcode to build, fix or explain something…',
-  hint: 'Enter to send · Shift+Enter for a new line · / for commands', terminalShort: 'Terminal', unsaved: 'unsaved changes, close?', approved: 'approved',
+  hint: 'Enter to send · Shift+Enter for a new line · / for commands · Ctrl+/ shortcuts', terminalShort: 'Terminal', unsaved: 'unsaved changes, close?', approved: 'approved',
   sandboxNoNet: 'bwrap · network denied', activityLead: 'Running and finished runs across all projects, pending requests and worktrees to integrate.', runsActive: 'Active runs',
   cashuEnv: 'explicitly allowed mints only', connected: 'Verified connections', balanceTest: 'Test balance', protocols: 'Protocols', unavailable: 'unavailable', appearance: 'Appearance',
   coding: 'Coding', bitcoin: 'Bitcoin', activity: 'Activity', settings: 'Settings',

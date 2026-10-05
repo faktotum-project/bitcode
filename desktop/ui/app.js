@@ -12,6 +12,7 @@ import { t, setLang, errorText } from './i18n.js';
 import { logo, sat, typing, SAT_META } from './marks.js';
 import { icon } from './icons.js';
 import { createFinanceView } from './finance.js';
+import { renderMarkdown } from './markdown.js';
 import { satStateLabel, satStateTable, satEthics } from '../../src/sat-states.mjs';
 import { workText, closingText, actionText, word } from '../../src/work-meter.mjs';
 
@@ -50,6 +51,64 @@ const fmtTime = ms => new Date(ms).toLocaleString(document.documentElement.lang 
 const project = () => S.projects.find(p => p.projectId === S.projectId);
 const satName = s => s[0].toUpperCase() + s.slice(1);
 const satLabel = (id, state) => satStateLabel(id, state, document.documentElement.lang);
+
+// ---------- reading: markdown, copy, zoom ----------
+const copyText = guard(async (text, button) => {
+  await api('clipboard.write', { text });
+  if (button) { const old = button.textContent; button.textContent = t('copiedText'); button.classList.add('done'); setTimeout(() => { button.textContent = old; button.classList.remove('done'); }, 1400); } else toast(t('copiedText'));
+});
+const openLink = guard(url => api('app.openExternal', { url }));
+const md = text => renderMarkdown(text, { h, onCopy: copyText, onLink: openLink, labels: { copy: t('copyL'), code: t('codeL') } });
+// Reading scale: automatic with the window width (so a big monitor is not a narrow column), then the user's own zoom.
+const READ_KEY = 'bitcode.readScale';
+try { S.read = Math.min(2.2, Math.max(0.7, Number(localStorage.getItem(READ_KEY)) || 1)); } catch { S.read = 1; }
+function applyRead() { document.documentElement.style.setProperty('--read', (Math.min(1.6, Math.max(1, innerWidth / 1500)) * S.read).toFixed(3)); }
+function zoomRead(step) {
+  S.read = step === 'reset' ? 1 : Math.min(2.2, Math.max(0.7, S.read * (step > 0 ? 1.08 : 1 / 1.08)));
+  try { localStorage.setItem(READ_KEY, String(S.read)); } catch {}
+  applyRead();
+  let hint = $('zoomhint'); if (!hint) { hint = h('div', { id: 'zoomhint', class: 'zoomhint' }); document.body.append(hint); }
+  hint.textContent = `${Math.round(S.read * 100)}%`; hint.classList.add('on'); clearTimeout(hint._t); hint._t = setTimeout(() => hint.classList.remove('on'), 900);
+}
+applyRead(); window.addEventListener('resize', applyRead);
+document.addEventListener('wheel', e => {
+  if (!(e.ctrlKey || e.metaKey) || S.view !== 'chat' || !e.target.closest?.('#thread, .composer-wrap')) return;
+  e.preventDefault(); zoomRead(e.deltaY < 0 ? 1 : -1);
+}, { passive: false });
+const lastAnswer = () => [...(S.session?.messages || [])].reverse().find(m => m.role === 'assistant' && m.content)?.content;
+function jumpMessage(dir) {
+  const th = $('thread'); if (!th) return;
+  const msgs = [...th.querySelectorAll('.m-user, .m-bot')]; if (!msgs.length) return;
+  const top = th.getBoundingClientRect().top, cur = msgs.reduce((c, m, i) => (m.getBoundingClientRect().top - top <= 8 ? i : c), -1);
+  const target = dir > 0 ? msgs[Math.min(msgs.length - 1, cur + 1)] : (cur >= 0 && msgs[cur].getBoundingClientRect().top - top < -8 ? msgs[cur] : msgs[Math.max(0, cur - 1)]);
+  target?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+const SHORTCUTS = [
+  ['mod+wheel · mod+= / mod+-', 'scRead'], ['mod+0', 'scReadReset'], ['alt+↑ / alt+↓', 'scJump'], ['End · Home', 'scEnds'], ['mod+L · /', 'scFocus'],
+  ['mod+shift+C', 'scCopy'], ['mod+1 … 4', 'scPanels'], ['mod+B', 'scSidebar'], ['mod+K', 'scSearch'], ['mod+N', 'scNew'], ['mod+/ · ?', 'scHelp'], ['Esc', 'scClose']
+];
+function showShortcuts() {
+  if (document.querySelector('dialog.shortcuts')) return;
+  const mac = /Mac/i.test(navigator.platform), key = k => k.replace(/mod/g, mac ? '⌘' : 'Ctrl').replace(/alt/g, mac ? '⌥' : 'Alt').replace(/shift/g, mac ? '⇧' : 'Shift');
+  const dialog = h('dialog', { class: 'sat-info shortcuts', 'aria-label': t('scTitle') },
+    h('div', { class: 'row' }, h('h2', {}, t('scTitle')), h('button', { class: 'iconbtn', autofocus: true, onClick: () => dialog.close(), 'aria-label': t('close') }, '×')),
+    h('div', { class: 'sclist' }, SHORTCUTS.map(([k, label]) => [h('span', { class: 'keys' }, key(k).split(' ').map(x => /^[·/]$|^…$/.test(x) ? ` ${x} ` : h('kbd', {}, x))), h('span', {}, t(label))])));
+  dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal();
+}
+document.addEventListener('keydown', e => {
+  const inEditor = e.target.closest?.('.cm-editor, .xterm'), typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable || inEditor;
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && !e.altKey && ['=', '+', '-', '_', '0'].includes(e.key) && S.view === 'chat' && !inEditor) { e.preventDefault(); zoomRead(e.key === '0' ? 'reset' : e.key === '-' || e.key === '_' ? -1 : 1); return; }
+  if (mod && e.key === '/') { e.preventDefault(); showShortcuts(); return; }
+  if (mod && !e.altKey && !e.shiftKey && /^[1-4]$/.test(e.key) && S.projectId && S.view === 'chat') { e.preventDefault(); const k = ['files', 'git', 'terminal', 'agent'][Number(e.key) - 1]; S.panel = S.panel === k ? null : k; renderShell(); return; }
+  if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); $('prompt')?.focus(); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'c' && !inEditor && !window.getSelection()?.toString()) { const a = lastAnswer(); if (a) { e.preventDefault(); copyText(a); } return; }
+  if (e.altKey && !mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && S.view === 'chat') { e.preventDefault(); jumpMessage(e.key === 'ArrowDown' ? 1 : -1); return; }
+  if (typing || mod || e.altKey) return;
+  if (e.key === '?') { e.preventDefault(); showShortcuts(); }
+  else if (e.key === '/' && S.view === 'chat') { e.preventDefault(); $('prompt')?.focus(); }
+  else if ((e.key === 'End' || e.key === 'Home') && S.view === 'chat') { e.preventDefault(); const th = $('thread'); th?.scrollTo({ top: e.key === 'End' ? th.scrollHeight : 0, behavior: 'smooth' }); }
+});
 
 // ---------- live work line: rotating phrase + one measured datum, like the CLI ----------
 const wlang = () => (document.documentElement.lang === 'en' ? 'en' : 'it');
@@ -343,7 +402,9 @@ function renderCenter() {
   const el = $('center'); if (!el) return;
   if (S.view === 'chat') {
     el.style.display = '';
-    fill(el, h('header', { class: 'topbar', id: 'topbar' }), h('div', { class: 'scroll', id: 'thread' }), h('div', { class: 'composer-wrap', id: 'composer' }));
+    fill(el, h('header', { class: 'topbar', id: 'topbar' }), h('div', { class: 'scroll', id: 'thread' }), h('div', { class: 'composer-wrap', id: 'composer' }),
+      h('button', { id: 'tobottom', class: 'tobottom', type: 'button', hidden: true, title: `${t('scBottom')} (End)`, 'aria-label': t('scBottom'), onClick: () => $('thread').scrollTo({ top: $('thread').scrollHeight, behavior: 'smooth' }) }, '↓'));
+    $('thread').addEventListener('scroll', () => { const th = $('thread'); $('tobottom').hidden = th.scrollTop + th.clientHeight >= th.scrollHeight - 160; }, { passive: true });
     renderTopbar(); renderThread(); renderComposer();
   } else {
     el.style.display = 'block';
@@ -398,11 +459,11 @@ function renderThread() {
     if (m.role === 'tool') continue;
     if (m.role === 'user') items.push(h('div', { class: 'm-user' }, m.content));
     else {
-      if (m.content) items.push(h('div', { class: 'm-bot' }, h('div', { class: 'who' }, logo({ size: 16 }), 'Bitcode', h('span', { class: 'num' }, `· ${model}`)), m.content));
+      if (m.content) items.push(h('div', { class: 'm-bot' }, h('div', { class: 'who' }, logo({ size: 16 }), 'Bitcode', h('span', { class: 'num' }, `· ${model}`), h('span', { class: 'spacer' }), h('button', { class: 'copy ghost', type: 'button', title: `${t('copyL')} (${/Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl'}+Shift+C)`, onClick: e => copyText(m.content, e.currentTarget) }, t('copyL'))), md(m.content)));
       if (m.tools?.length) items.push(h('div', { class: 'm-tools mono' }, m.tools.map(x => h('div', {}, x))));
     }
   }
-  for (const [, l] of S.live) items.push(h('div', { class: 'm-bot live' }, h('div', { class: 'who' }, SATS.includes(l.agent) ? sat(l.agent, { size: 20, state: S.sats[l.agent]?.st || 'drafting' }) : logo({ size: 16 }), SATS.includes(l.agent) ? satName(l.agent) : 'Bitcode', typing(SAT_META[l.agent]?.color)), l.text));
+  for (const [, l] of S.live) items.push(h('div', { class: 'm-bot live' }, h('div', { class: 'who' }, SATS.includes(l.agent) ? sat(l.agent, { size: 20, state: S.sats[l.agent]?.st || 'drafting' }) : logo({ size: 16 }), SATS.includes(l.agent) ? satName(l.agent) : 'Bitcode', typing(SAT_META[l.agent]?.color)), md(l.text)));
   items.push(...S.pending.filter(a => a.sessionId === s.sessionId).map(approvalCard));
   items.push(...S.notes.map(n => h('div', { class: 'note' }, h('div', { class: 'ntitle' }, n.title), n.lines.length ? h('div', { class: 'nbody mono' }, n.lines.map(l => h('div', {}, l))) : null)));
   if (run) items.push(runLine(run)); else if (S.closing.has(s.sessionId)) items.push(closingLine(S.closing.get(s.sessionId)));

@@ -1,6 +1,6 @@
 // Electron main process: windows, tray, notifications, secret store, PTYs and
 // the trusted origin of every control message. The renderer has no Node.
-import { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, safeStorage, session as electronSession } from 'electron';
+import { app, BrowserWindow, Menu, Notification, Tray, clipboard, dialog, ipcMain, nativeImage, safeStorage, shell, session as electronSession } from 'electron';
 import { existsSync, watch, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -131,6 +131,9 @@ const mainMethods = {
   'pty.write': ({ ptyId, data }) => { if (typeof data !== 'string' || data.length > 65536) throw fail('INVALID_PARAMS'); ptyOf(ptyId).write(data); return true; },
   'pty.resize': ({ ptyId, cols, rows }) => { if (!(cols > 1 && rows > 1 && cols < 1000 && rows < 500)) throw fail('INVALID_PARAMS'); ptyOf(ptyId).resize(cols | 0, rows | 0); return true; },
   'pty.close': ({ ptyId }) => { ptyOf(ptyId).kill(); ptys.delete(ptyId); return true; },
+  'clipboard.write': ({ text }) => { if (typeof text !== 'string' || text.length > 1_000_000) throw fail('INVALID_PARAMS'); clipboard.writeText(text); return true; },
+  // Links in answers open in the system browser; only plain http(s) URLs, never file:, javascript: or custom schemes.
+  'app.openExternal': async ({ url }) => { const u = new URL(String(url)); if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw fail('INVALID_PARAMS'); await shell.openExternal(u.href); return true; },
   'app.quit': quit
 };
 ipcMain.handle('bitcode:invoke', async (event, message) => {

@@ -68,12 +68,13 @@ button { cursor: pointer; }
 .iconbtn.on { border-color: var(--accent); color: var(--ink); background: var(--accentSoft); }
 
 .scroll { overflow: auto; min-height: 0; }
-.col { max-width: 800px; margin: 0 auto; padding: 24px 24px 8px; display: flex; flex-direction: column; gap: 18px; }
-.m-user { align-self: flex-end; max-width: 80%; background: var(--userBubble); color: var(--ink); border-radius: 12px 12px 4px 12px; padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.m-bot { color: var(--body); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
-.m-bot .who { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+:root { --read: 1; }
+.col { font-size: calc(14.5px * var(--read)); max-width: calc(800px * var(--read)); margin: 0 auto; padding: 28px 24px 12px; display: flex; flex-direction: column; gap: calc(20px * var(--read)); }
+.m-user { align-self: flex-end; max-width: 80%; font-size: 1em; background: var(--userBubble); color: var(--ink); border-radius: 12px 12px 4px 12px; padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.m-bot { color: var(--body); overflow-wrap: anywhere; line-height: 1.7; }
+.m-bot .who { display: flex; align-items: center; gap: 8px; font-size: .83em; color: var(--muted); margin-bottom: 4px; }
 .m-bot.live { opacity: .9; }
-.m-tools { display: grid; gap: 4px; font-size: 12px; color: var(--mutedStrong); }
+.m-tools { display: grid; gap: 4px; font-size: .83em; color: var(--mutedStrong); }
 .m-tools div { display: flex; gap: 8px; align-items: center; }
 .m-tools div::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--relayed); }
 .runline { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; }
@@ -420,3 +421,36 @@ table.list th { font-size: 12px; color: var(--muted); font-weight: 500; }
 .runline .rl-phrase { color: var(--body); }
 .runline .rl-datum { color: var(--muted); font-size: 12px; }
 .runline.runend { opacity: .9; }
+
+/* ---- reading: the column grows with the window (and with the user's zoom) ---- */
+.composer-wrap .composer { max-width: calc(800px * var(--read)); }
+.center { position: relative; }
+.md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md p { margin: .75em 0; }
+.md h2, .md h3, .md h4, .md h5, .md h6 { color: var(--ink); line-height: 1.3; margin: 1.5em 0 .5em; font-weight: 650; }
+.md h2 { font-size: 1.4em; padding-bottom: .3em; border-bottom: 1px solid var(--hairline); } .md h3 { font-size: 1.17em; } .md h4, .md h5, .md h6 { font-size: 1em; }
+.md ul, .md ol { padding-left: 1.5em; margin: .65em 0; } .md li { margin: .3em 0; padding-left: .15em; } .md li::marker { color: var(--accent); }
+.md li > ul, .md li > ol { margin: .25em 0; }
+.md strong { color: var(--ink); font-weight: 650; } .md del { color: var(--muted); }
+.md blockquote { margin: .9em 0; padding: .25em 0 .25em 1em; border-left: 3px solid var(--accent); color: var(--mutedStrong); }
+.md hr { border: 0; border-top: 1px solid var(--hairline); margin: 1.5em 0; }
+.md .ic { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .88em; background: var(--card); border: 1px solid var(--hairline); border-radius: 5px; padding: .08em .38em; color: var(--ink); }
+.md a.mdlink { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accentSoft); cursor: pointer; } .md a.mdlink:hover { border-bottom-color: var(--accent); }
+.codeblock { margin: 1em 0; border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); overflow: hidden; }
+.codehead { display: flex; align-items: center; justify-content: space-between; padding: 5px 8px 5px 14px; background: var(--surface); border-bottom: 1px solid var(--hairline); font-size: .78em; color: var(--muted); }
+.codehead .lang { font-family: "JetBrains Mono", ui-monospace, monospace; letter-spacing: .03em; }
+.copy { border: 1px solid transparent; background: transparent; color: var(--mutedStrong); border-radius: 6px; padding: 2px 9px; font-size: inherit; }
+.copy:hover { background: var(--hover); color: var(--ink); } .copy.done { color: var(--up); }
+.codeblock pre { margin: 0; padding: 12px 14px; overflow: auto; font-size: .88em; line-height: 1.6; white-space: pre; color: var(--body); tab-size: 2; }
+.codeblock.open .codehead::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: 8px; }
+.tablewrap { overflow: auto; margin: 1em 0; border: 1px solid var(--hairline); border-radius: 10px; }
+.md table { border-collapse: collapse; width: 100%; font-size: .92em; } .md th, .md td { padding: .5em .85em; border-bottom: 1px solid var(--hairline); text-align: left; }
+.md th { color: var(--ink); background: var(--surface); font-weight: 600; } .md tr:last-child td { border-bottom: 0; }
+.m-bot .who .copy.ghost { opacity: 0; transition: opacity .15s; } .m-bot:hover .who .copy.ghost, .m-bot .who .copy.ghost:focus-visible { opacity: 1; }
+.tobottom { position: absolute; right: 28px; bottom: 128px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--hairlineStrong); background: var(--card); color: var(--ink); box-shadow: 0 6px 18px #0006; z-index: 5; }
+.tobottom:hover { background: var(--elevated); }
+.zoomhint { position: fixed; right: 20px; bottom: 20px; padding: 6px 12px; border-radius: 999px; background: var(--elevated); color: var(--ink); font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; font-variant-numeric: tabular-nums; }
+.zoomhint.on { opacity: 1; }
+.shortcuts .sclist { display: grid; grid-template-columns: auto 1fr; gap: 12px 24px; margin-top: 18px; align-items: center; }
+.shortcuts .keys { display: flex; gap: 4px; align-items: center; white-space: pre; color: var(--muted); }
+.shortcuts kbd { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; background: var(--card); border: 1px solid var(--hairlineStrong); border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px; color: var(--ink); }
