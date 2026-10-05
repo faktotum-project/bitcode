@@ -5,8 +5,10 @@
 (() => {
   const BASE = new Date('2026-10-05T10:42:00').getTime();
   const RealDate = Date;
-  class FixedDate extends RealDate { constructor(...a) { if (a.length) super(...a); else super(BASE); } static now() { return BASE; } }
+  let OFFSET = 0; // advanced by the video engine so clocks in the UI (elapsed seconds) follow the film, not the wall
+  class FixedDate extends RealDate { constructor(...a) { if (a.length) super(...a); else super(BASE + OFFSET); } static now() { return BASE + OFFSET; } }
   window.Date = FixedDate;
+  window.__setNow = ms => { OFFSET = ms; };
   window.confirm = () => true; // native confirm() would block the recording
 
   const GiB = 1024 ** 3, MIN = 60_000, HOUR = 3_600_000;
@@ -229,7 +231,7 @@ index 91ac0de..4be2f70 100644
     approval: () => ({ id: 'apr_5d1c8e7f20a4b963', digest: 'dg_81f2', sessionId: 's_new', kind: 'command', status: 'pending', expiresAt: BASE + 9 * MIN,
       subject: { agentId: 'script', model: DEFAULT_MODEL, mode: 'assisted', shell: 'npm test -- --test-name-pattern="firma|webhook"', argv: ['npm', 'test'], reason: 'Verifica i test dei webhook dopo l\'aggiunta della firma HMAC.', projectId: PROJECT.projectId, project: PROJECT.name } }),
     run: (state, extra = {}) => ({ runId: 'run_01', sessionId: 's_new', projectId: PROJECT.projectId, state, mode: 'assisted', model: DEFAULT_MODEL, prompt: REQUEST,
-      startedAt: BASE - 40_000, endedAt: null, usage: { inputTokens: 4120, outputTokens: 786 }, worktree: null, error: null, ...extra }),
+      startedAt: BASE + 10_000, endedAt: null, usage: { inputTokens: 4120, outputTokens: 786 }, worktree: null, error: null, ...extra }),
     finish: () => {
       messages.s_new = [{ role: 'user', content: REQUEST }, { role: 'assistant', content: 'Ho aggiunto la verifica HMAC-SHA256 con confronto a tempo costante e il controllo del timestamp. I test dei webhook passano (4/4).', tools: ['read_file src/webhooks.js', 'write_file src/signature.js', 'edit_file src/webhooks.js', 'bash npm test'] }];
       S.sessions[0].updatedAt = BASE; emit('session', { sessionId: 's_new', type: 'messages', data: { messages: messages.s_new } });

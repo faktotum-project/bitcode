@@ -1,23 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { VISUAL_STATES, visualState, satStateLabel, satStateTable, satEthics, satLang } from '../src/sat-states.mjs';
+import { VISUAL_STATES, visualState, essentialState, satStateLabel, satStateTable, satEthics, satLang } from '../src/sat-states.mjs';
 import { SAT_STATES } from '../src/sat-events.mjs';
 import { SAT_IDS } from '../src/sats/policy.mjs';
 
-test('every event state maps to a visual state and every Sat/language has a label for each', () => {
+test('every event state maps to a visual state and to one of four essential states', () => {
   for (const s of SAT_STATES) assert.ok(VISUAL_STATES.includes(visualState(s)), s);
-  for (const lang of ['it', 'en']) for (const id of SAT_IDS) {
-    const table = satStateTable(id, lang);
-    assert.equal(table.length, VISUAL_STATES.length);
-    for (const x of table) assert.ok(x.label && x.plain && x.text.includes(' · '));
-  }
+  const seen = new Set(SAT_STATES.map(essentialState));
+  assert.deepEqual([...seen].sort(), ['done', 'idle', 'problem', 'waiting', 'working']);
 });
 
-test('base wording, per-Sat nuance and the plain word', () => {
-  assert.equal(satStateLabel('merkle', 'planning', 'it').text, 'raccoglie i rami · pensa');
-  assert.equal(satStateLabel('script', 'writing', 'en').text, 'weaving the code · writing');
-  assert.equal(satStateLabel('hash', 'error', 'it').label, 'ha trovato qualcosa: guardiamo insieme');
-  assert.equal(satStateLabel('node', 'waiting_approval', 'it').text, 'aspetta il tuo sì · attende la tua conferma');
+test('a resting Sat has no label; the others carry one short wording in both languages', () => {
+  for (const lang of ['it', 'en']) for (const id of SAT_IDS) {
+    assert.equal(satStateLabel(id, 'idle', lang).label, '');
+    for (const s of ['thinking', 'waiting_approval', 'success', 'error']) assert.ok(satStateLabel(id, s, lang).label.length > 0);
+    assert.ok(satStateTable(id, lang).length >= 3);
+  }
+  assert.equal(satStateLabel('node', 'waiting_approval', 'it').label, 'aspetta il tuo sì');
+  assert.equal(satStateLabel('script', 'writing', 'it').label, 'intreccia il codice');
+  assert.equal(satStateLabel('hash', 'success', 'en').label, 'done');
   assert.equal(satStateLabel('node', 'unknown-state', 'it').state, 'thinking');
 });
 

@@ -13,12 +13,13 @@ import { logo, sat, typing, SAT_META } from './marks.js';
 import { icon } from './icons.js';
 import { createFinanceView } from './finance.js';
 import { satStateLabel, satStateTable, satEthics } from '../../src/sat-states.mjs';
+import { workText, closingText, actionText, word } from '../../src/work-meter.mjs';
 
 const SATS = ['node', 'script', 'hash', 'merkle'];
 const MODES = ['manual', 'assisted', 'unattended'];
 const S = {
   view: 'chat', info: null, status: null, settings: null, projects: [], projectId: null, sessions: [], sessionId: null, session: null,
-  collapsed: new Set(), tree: new Map(), expanded: new Set(['.']), git: null, tabs: [], active: null, panel: null, runs: new Map(), pending: [],
+  work: new Map(), closing: new Map(), collapsed: new Set(), tree: new Map(), expanded: new Set(['.']), git: null, tabs: [], active: null, panel: null, runs: new Map(), pending: [],
   sats: Object.fromEntries(SATS.map(s => [s, { st: 'idle' }])), live: new Map(), agentLog: [], worktrees: [], models: [], agent: '', commitMsg: '', draft: '', commands: [], menu: { items: [], index: 0 }, picker: { open: false, data: null, filter: '', loading: false }, notes: [], newModel: null, search: '', searching: false, renaming: null, expandedProjects: new Set(), sideHidden: (() => { try { return localStorage.getItem('bitcode.sideHidden') === '1'; } catch { return false; } })()
 };
 
@@ -49,6 +50,43 @@ const fmtTime = ms => new Date(ms).toLocaleString(document.documentElement.lang 
 const project = () => S.projects.find(p => p.projectId === S.projectId);
 const satName = s => s[0].toUpperCase() + s.slice(1);
 const satLabel = (id, state) => satStateLabel(id, state, document.documentElement.lang);
+
+// ---------- live work line: rotating phrase + one measured datum, like the CLI ----------
+const wlang = () => (document.documentElement.lang === 'en' ? 'en' : 'it');
+const workOf = id => { let w = S.work.get(id); if (!w) S.work.set(id, w = { memory: null, liveBase: 0, liveOff: 0, callStart: null, speed: null, action: null }); return w; };
+const liveChars = () => [...S.live.values()].reduce((n, l) => n + l.text.length, 0);
+function runSnapshot(run, at = Date.now()) {
+  const w = workOf(run.runId), est = w.liveBase + Math.ceil(Math.max(0, liveChars() - w.liveOff) / 4);
+  return { elapsed: Math.max(0, (run.endedAt || at) - run.startedAt), inTokens: run.usage.inputTokens, outTokens: Math.max(run.usage.outputTokens, est), speed: w.speed, action: w.action, memory: w.memory };
+}
+// Who is working: the Sat that is active now (delegation included), else the one chosen for the session.
+const workingSat = sessionId => SATS.find(x => !['idle', 'happy', 'concerned'].includes(S.sats[x].st) && sessionId === S.sessionId) || S.sessions.find(x => x.sessionId === sessionId)?.satId || null;
+function runLine(run) {
+  const waiting = S.pending.some(a => a.sessionId === run.sessionId), id = workingSat(run.sessionId);
+  const mark = id ? sat(id, { size: 18, state: waiting ? 'waiting' : 'thinking' }) : logo({ size: 14 });
+  const el = h('div', { class: 'runline', 'data-run': run.runId, 'data-key': `${id}|${waiting}` }, mark, h('b', {}, id ? satName(id) : 'Bitcode'), h('span', { class: 'rl-phrase' }), h('span', { class: 'rl-datum num' }));
+  fillRunLine(el, run, waiting);
+  return el;
+}
+function fillRunLine(el, run, waiting) {
+  const { phrase, datum } = workText({ id: workingSat(run.sessionId) || 'bitcode', snap: runSnapshot(run), ms: Date.now() - run.startedAt, lang: wlang() });
+  el.querySelector('.rl-phrase').textContent = waiting ? word('waiting', wlang()) : `${phrase}…`;
+  el.querySelector('.rl-datum').textContent = waiting ? '' : datum;
+}
+function closingLine(c) {
+  const mark = c.id ? sat(c.id, { size: 16, state: c.ok ? 'happy' : 'concerned' }) : logo({ size: 14 });
+  return h('div', { class: 'runline runend' }, mark, h('b', {}, c.id ? satName(c.id) : 'Bitcode'), h('span', { class: 'rl-datum num' }, c.text));
+}
+// Update texts in place: replacing the node would restart the avatar's animation every second.
+function tickRunLines() {
+  for (const el of document.querySelectorAll('.runline[data-run]')) {
+    const run = S.runs.get(el.dataset.run); if (!run || run.endedAt) continue;
+    const waiting = S.pending.some(a => a.sessionId === run.sessionId), key = `${workingSat(run.sessionId)}|${waiting}`;
+    if (key !== el.dataset.key) el.replaceWith(runLine(run)); else fillRunLine(el, run, waiting);
+  }
+}
+document.addEventListener('bitcode:tick', tickRunLines);
+setInterval(() => document.dispatchEvent(new Event('bitcode:tick')), 1000);
 function applyTheme() { document.documentElement.dataset.theme = S.settings?.theme || 'dark'; }
 const isDark = () => (S.settings?.theme || 'dark') === 'dark' || (S.settings?.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
 const activeRun = sessionId => [...S.runs.values()].find(r => r.sessionId === sessionId && !r.endedAt);
@@ -160,7 +198,11 @@ window.bitcode.subscribe(({ channel, payload }) => {
     renderSidebar(); if (S.view === 'chat') renderThread(); else if (S.view === 'activity') renderCenter();
   } else if (channel === 'run') {
     S.runs.set(payload.runId, payload);
+    { const w = workOf(payload.runId); w.liveBase = payload.usage.outputTokens; w.liveOff = liveChars(); }
+    if (!payload.endedAt) S.closing.delete(payload.sessionId);
     if (payload.endedAt) {
+      const sid = S.sessions.find(x => x.sessionId === payload.sessionId)?.satId || null;
+      S.closing.set(payload.sessionId, { id: sid, ok: payload.state === 'success', text: closingText({ outcome: payload.state === 'success' ? 'ok' : payload.state === 'cancelled' ? 'cancelled' : 'error', snap: runSnapshot(payload), lang: wlang() }) });
       S.live.delete(payload.runId); refreshGit();
       if (payload.error && payload.sessionId === S.sessionId) toast(payload.error, true);
       if (payload.worktree) api('worktree.list').then(w => { S.worktrees = w; });
@@ -170,14 +212,22 @@ window.bitcode.subscribe(({ channel, payload }) => {
   } else if (channel === 'session' && payload.sessionId === S.sessionId) {
     const { type, data } = payload;
     if (type === 'plan.saved') note(t('planSaved'), [data.file, t('planBuildHint')]);
-    if (type === 'messages') { S.session.messages = data.messages; S.live.clear(); renderThread(); }
-    if (type === 'message.delta') { S.live.set(data.runId, { agent: data.agentId, text: (S.live.get(data.runId)?.text || '') + data.text }); renderThread(); }
+    if (type === 'messages') { S.session.messages = data.messages; S.live.clear(); for (const w of S.work.values()) { w.liveOff = 0; w.callStart = null; } renderThread(); }
+    if (type === 'message.delta') {
+      { // speed over a sliding ~4 s window; it keeps its last value while the model is silent (tools running)
+        const w = workOf(data.runId), t0 = Date.now(); w.total = (w.total || 0) + data.text.length;
+        (w.samples ||= []).push({ t: t0, c: w.total }); while (w.samples.length > 1 && t0 - w.samples[0].t > 4000) w.samples.shift();
+        const first = w.samples[0], secs = (t0 - first.t) / 1000; if (secs >= 1) w.speed = Math.max(1, Math.round((w.total - first.c) / 4 / secs)); } S.live.set(data.runId, { agent: data.agentId, text: (S.live.get(data.runId)?.text || '') + data.text }); renderThread(); }
     if (type === 'tool.detail') { S.agentLog.push({ at: Date.now(), text: `${data.auto ? 'auto' : t('approved')} · ${data.tool} · ${data.summary}` }); if (S.panel === 'agent') renderPanel(); }
   } else if (channel === 'sat' && payload.sessionId === S.sessionId && SATS.includes(payload.satId)) {
     const visual = { writing: 'drafting', waiting_approval: 'waiting', success: 'happy', error: 'concerned', planning: 'thinking', delegating: 'running' };
     S.sats[payload.satId] = { st: visual[payload.state] || payload.state };
     renderTopbar();
+  } else if (channel === 'metrics') {
+    workOf(payload.runId).memory = payload.memory;
   } else if (channel === 'feed') {
+    if (payload.type === 'tool.started') for (const r of S.runs.values()) if (r.sessionId === payload.sessionId && !r.endedAt) workOf(r.runId).action = actionText(payload.data, wlang());
+    if (['tool.finished', 'model.started'].includes(payload.type)) for (const r of S.runs.values()) if (r.sessionId === payload.sessionId) workOf(r.runId).action = null;
     const line = `${payload.agentId} · ${payload.type}${payload.data.summary ? ' · ' + payload.data.summary : ''}${payload.data.outcome ? ' · ' + payload.data.outcome : ''}`;
     S.agentLog.push({ at: Date.now(), text: line }); if (S.agentLog.length > 500) S.agentLog.shift();
     if (SATS.includes(payload.agentId) && payload.sessionId === S.sessionId) {
@@ -332,7 +382,7 @@ function renderTopbar() {
     h('span', { class: 'spacer' }),
     s ? h('div', { class: 'satrow' }, SATS.map(x => h('button', { class: 'iconbtn', 'aria-label': `Sat info ${satName(x)}`, onClick: guard(async () => {
       const res = await api('chat.submit', { sessionId: s.sessionId, text: `/sat info ${x}` }); showSatInfo(res.result);
-    }) }, sat(x, { size: 30, state: S.sats[x].st, title: `${satName(x)} · ${t(`role_${x}`)} — ${satLabel(x, S.sats[x].st).text}` })))) : null,
+    }) }, sat(x, { size: 30, state: S.sats[x].st, title: `${satName(x)} · ${t(`role_${x}`)}${satLabel(x, S.sats[x].st).text ? ` — ${satLabel(x, S.sats[x].st).text}` : ''}` })))) : null,
     p ? h('div', { class: 'tools' }, toggle('files', '▤'), toggle('git', '⎇'), toggle('terminal', '>_'), toggle('agent', '◉')) : null);
 }
 
@@ -352,10 +402,10 @@ function renderThread() {
       if (m.tools?.length) items.push(h('div', { class: 'm-tools mono' }, m.tools.map(x => h('div', {}, x))));
     }
   }
-  for (const [, l] of S.live) items.push(h('div', { class: 'm-bot live' }, h('div', { class: 'who' }, SATS.includes(l.agent) ? sat(l.agent, { size: 20, state: S.sats[l.agent]?.st || 'drafting' }) : logo({ size: 16 }), SATS.includes(l.agent) ? satName(l.agent) : 'Bitcode', typing(SAT_META[l.agent]?.color), SATS.includes(l.agent) ? h('span', { class: 'slabel', title: satLabel(l.agent, S.sats[l.agent]?.st || 'drafting').plain }, satLabel(l.agent, S.sats[l.agent]?.st || 'drafting').label) : null), l.text));
+  for (const [, l] of S.live) items.push(h('div', { class: 'm-bot live' }, h('div', { class: 'who' }, SATS.includes(l.agent) ? sat(l.agent, { size: 20, state: S.sats[l.agent]?.st || 'drafting' }) : logo({ size: 16 }), SATS.includes(l.agent) ? satName(l.agent) : 'Bitcode', typing(SAT_META[l.agent]?.color)), l.text));
   items.push(...S.pending.filter(a => a.sessionId === s.sessionId).map(approvalCard));
   items.push(...S.notes.map(n => h('div', { class: 'note' }, h('div', { class: 'ntitle' }, n.title), n.lines.length ? h('div', { class: 'nbody mono' }, n.lines.map(l => h('div', {}, l))) : null)));
-  if (run) items.push(h('div', { class: 'runline' }, typing(), t(`run_${run.state}`), h('span', { class: 'num' }, `${run.usage.inputTokens + run.usage.outputTokens} ${t('tokens')}`)));
+  if (run) items.push(runLine(run)); else if (S.closing.has(s.sessionId)) items.push(closingLine(S.closing.get(s.sessionId)));
   if (!items.length) return fill(el, home(p));
   fill(el, h('div', { class: 'col' }, items));
   if (stick) el.scrollTop = el.scrollHeight;

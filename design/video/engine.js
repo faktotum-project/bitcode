@@ -132,6 +132,7 @@
   let sorted = false;
   async function step(t, { settle = false } = {}) {
     if (!sorted) { sorted = true; tl.cams.sort((a, b) => a.t0 - b.t0); tl.curs.sort((a, b) => a.t0 - b.t0); tl.taps.sort((a, b) => a.t - b.t); tl.actions.sort((a, b) => a.t - b.t); }
+    try { fwin().__setNow?.(Math.round(t * 1000)); } catch {}
     let waited = 0;
     for (const a of tl.actions) {
       if (a.done || a.t > t) continue;
@@ -140,6 +141,7 @@
     if (waited) await sleep(waited);
 
     for (const n of [$id('view'), document.documentElement, document.body, $id('world'), $id('winwrap'), $id('winclip')]) { if (n.scrollLeft || n.scrollTop) { n.scrollLeft = 0; n.scrollTop = 0; } }
+    try { fdoc().dispatchEvent(new (fwin().Event)('bitcode:tick')); } catch {}
     const c = camAt(t);
     const dr = { x: 5 * Math.sin(t * .45), y: 3.5 * Math.sin(t * .37 + 1.3) };
     Object.assign(cam, c);

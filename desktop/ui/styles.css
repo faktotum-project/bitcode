@@ -413,3 +413,10 @@ table.list th { font-size: 12px; color: var(--muted); font-weight: 500; }
 /* Sat state labels (wellbeing wording; the plain word is in the tooltip) */
 .slabel { font-size: 12px; font-weight: 400; color: var(--mutedStrong); margin-left: 2px; }
 .sat-info .ethics { color: var(--mutedStrong); font-size: 13px; margin-top: 10px; }
+
+/* live work line (phrase + one datum) and the fixed closing line */
+.runline { display: flex; align-items: center; gap: 8px; color: var(--mutedStrong); font-size: 13px; min-height: 24px; }
+.runline b { color: var(--ink); font-weight: 600; }
+.runline .rl-phrase { color: var(--body); }
+.runline .rl-datum { color: var(--muted); font-size: 12px; }
+.runline.runend { opacity: .9; }

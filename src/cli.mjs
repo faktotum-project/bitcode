@@ -25,9 +25,10 @@ import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { runSubagent } from "./subagents.mjs";
 import { runSat } from "./sat-runtime.mjs";
 import { loadSats, findSat } from "./sats.mjs";
-import { satStateLabel, satLang } from "./sat-states.mjs";
+import { satLang } from "./sat-states.mjs";
 import { detectCaps } from "./term-caps.mjs";
-import { headerRows, legacyHeader, satCards, approvalCard, LOGO_PIECES, diffLine, reviewCard, financeBox, welcomeSats } from "./cli-brand.mjs";
+import { randomUUID } from "node:crypto";
+import { headerLine, legacyHeader, satCards, approvalCard, WORDMARK, diffLine, reviewCard, financeBox, welcomeSats } from "./cli-brand.mjs";
 import { createLiveLine } from "./cli-live.mjs";
 import { satWorkspace, satHistory } from "./sat-workspace.mjs";
 import { createEventBus, createRunContext } from "./runtime/events.mjs";
@@ -669,35 +670,38 @@ async function withInterrupt(work) {
 }
 export function runWithInterrupt(options) {
   return withInterrupt(async signal => {
-    if (!options.context?.satId) return runAgent({ ...options, signal });
-    const live = options.onSatEvent ? null : createLiveLine({ caps: detectCaps(), registry: loadSats(), lang: satLang() });
+    if (options.onSatEvent) return options.context?.satId ? runSat({ ...options, signal, satId: options.context.satId, persistence: options.context.satPersistence !== false }) : runAgent({ ...options, signal });
+    const satId = options.context?.satId || null, bus = options.context?.bus || createEventBus(), runId = options.context?.runId || randomUUID();
+    const provider = options.target?.provider || {};
+    const live = createLiveLine({ caps: detectCaps(), registry: loadSats(), lang: satLang(), subject: { satId, runId, providerName: options.target?.providerName, baseURL: provider.baseURL, model: options.target?.model } });
+    const hooks = { ...options.hooks, onDelta: p => { live.hooks.onDelta(p); options.hooks?.onDelta?.(p); }, onUsage: u => { live.hooks.onUsage(u); options.hooks?.onUsage?.(u); } };
+    const unsubscribe = bus.subscribe(event => { if (event.runId === runId || event.parentRunId === runId) live.onEvent(event); });
+    const context = { ...options.context, bus, runId };
+    let outcome = "error";
     try {
-      return await runSat({ ...options, signal, satId: options.context.satId, persistence: options.context.satPersistence !== false, onSatEvent: options.onSatEvent || live.onSatEvent });
-    } finally { live?.stop(); }
+      const result = await (satId ? runSat({ ...options, hooks, context, signal, satId, persistence: options.context.satPersistence !== false }) : runAgent({ ...options, hooks, context, signal }));
+      outcome = signal.aborted ? "cancelled" : "ok";
+      return result;
+    } catch (error) { outcome = signal.aborted ? "cancelled" : "error"; throw error; } finally { unsubscribe(); live.stop(outcome); }
   });
 }
 
-// Banner: animated pixel "b" on a capable terminal, static logo when reduced, the classic one-liner otherwise.
+// Banner: one line. On a capable terminal the wordmark types itself in (the "b" in orange), otherwise it is simply printed.
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function banner(modelSpec, network, { animate }) {
   const caps = detectCaps();
-  if (caps.level === "text" || caps.columns < 44) return out(legacyHeader(modelSpec, network));
-  if (!(animate && caps.level === "full") || process.env.BITCODE_NO_INTRO) return out(headerRows(modelSpec, network, caps).join("\n"));
-  const show = process.stdout.write.bind(process.stdout);
-  const restore = () => show("\x1b[?25h");
-  process.once("exit", restore);
-  try {
-    show("\x1b[?25l");
-    out(headerRows(modelSpec, network, caps, 0).join("\n"));
-    for (let shown = 1; shown <= LOGO_PIECES; shown++) {
-      await sleep(95);
-      show("\x1b[3A\r" + headerRows(modelSpec, network, caps, shown).map(l => l + "\x1b[K").join("\n") + "\n");
-    }
-    await sleep(120);
-    show("\x1b[3A\r" + headerRows(modelSpec, network, caps).map(l => l + "\x1b[K").join("\n") + "\n");
-  } finally { restore(); process.removeListener("exit", restore); }
+  if (caps.level === "text") return out(legacyHeader(modelSpec, network));
+  if (animate && caps.level === "full" && !process.env.BITCODE_NO_INTRO) {
+    const show = process.stdout.write.bind(process.stdout), restore = () => show("\x1b[?25h");
+    process.once("exit", restore);
+    try {
+      show("\x1b[?25l");
+      for (let n = 1; n < WORDMARK.length; n++) { show("\r" + headerLine(modelSpec, network, caps, n) + "\x1b[K"); await sleep(70); }
+    } finally { restore(); process.removeListener("exit", restore); }
+    show("\r");
+  }
+  out(headerLine(modelSpec, network, caps));
 }
-
 async function oneShot({ target, system, tools, network, prompt, limits, fallbacks, opts, permissions, root, profile, project }) {
   if (!opts.json) { await banner(target.spec, network, { animate: false }); out(""); }
   const cwd = process.cwd();
@@ -778,7 +782,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   out("");
   await banner(active.spec, network, { animate: true });
   out("  " + t.faint(cwd));
-  { const caps = detectCaps(); out("  " + (caps.level === "text" ? t.stageLegend() : welcomeSats(loadSats(), caps, satLang()))); }
+  { const caps = detectCaps(); out("  " + (caps.level === "text" ? t.stageLegend() : welcomeSats(loadSats()))); }
   out("");
   out(t.faint("type a request, or /help for commands. Ctrl+D to quit."));
   out("");
@@ -790,7 +794,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   const approve = async (tc, tool, { signal } = {}) => {
     if (!requiresPaymentApproval(tool) && mayAutoApprove({ tool, args: tc.args, permissions })) return true;
     if (["write_file", "edit_file", "patch"].includes(tool.name)) out(previewMutation(tc));
-    out(approvalCard({ satId: session.satId, tool: tool.name, network, financial: requiresPaymentApproval(tool), lang: satLang() }, detectCaps()));
+    out(approvalCard({ satId: session.satId, tool: tool.name, financial: requiresPaymentApproval(tool), lang: satLang() }, detectCaps()));
     out(t.faint(JSON.stringify(tc.args || {}, null, 2)));
     const ans = await question("  " + t.accent("approve") + " " + t.bold(tool.name) + ` on ${network} (y/N) `, { signal });
     return /^y(es)?$/i.test(ans.trim());
@@ -871,8 +875,8 @@ export async function handleSlash(input, ctx) {
   switch (cmd) {
     case "sats":
       { const caps = detectCaps();
-        if (caps.level !== "text") return out(satCards(loadSats(), caps, satLang()));
-        return printData(loadSats().map(({ id, role }) => ({ id, role, breath: satStateLabel(id, "idle", satLang()).text }))); }
+        if (caps.level !== "text") return out(satCards(loadSats(), caps));
+        return printData(loadSats().map(({ id, role }) => ({ id, role }))); }
     case "sat": {
       try {
         const [action, name, extra] = rest;

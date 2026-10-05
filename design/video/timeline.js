@@ -72,6 +72,8 @@
   // 10-18 s  The four Sats at work, then the Sat info dialog
   // =========================================================================
   at(10.0, () => emit('run', demo().run('running')), 40);
+  for (let k = 0; k < 22; k++) at(11 + k, () => emit('run', demo().run('running', { usage: { inputTokens: 4120, outputTokens: 120 + k * 95 } })), 0);
+  at(10.6, () => emit('metrics', { runId: 'run_01', sessionId: 's_new', memory: { bytes: 18.6 * 1024 ** 3, vram: 17.3 * 1024 ** 3 } }), 40);
   cam(9.8, 11.3, { el: el('.satrow'), z: 3.4, dx: -4 });
   satState(10.05, 'merkle', 'planning');
   satState(11.0, 'node', 'reading');

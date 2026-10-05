@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { callModel } from '../../src/providers.mjs';
 import { loadConfig, saveConfig, resolveModel, allProviders } from '../../src/config.mjs';
 import { localInventory, KNOWN_RUNTIMES, bestLocalModel, runtimeProvider } from '../../src/local-inventory.mjs';
+import { createMemoryProbe } from '../../src/local-memory.mjs';
 import { isLocalProvider, discoverLocalModels, describeLocalModel, localSetupHint } from '../../src/local-models.mjs';
 import { loadCommands, expandCommand } from '../../src/commands.mjs';
 import { savePlan, latestPlan } from '../../src/plans.mjs';
@@ -112,7 +113,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   const lockFor = root => { if (!projectLocks.has(root)) projectLocks.set(root, new Semaphore(1)); return projectLocks.get(root); };
   const publicRun = r => ({ runId: r.runId, sessionId: r.sessionId, projectId: r.projectId, state: r.state, mode: r.config.mode, model: r.config.model,
     prompt: r.prompt.slice(0, 160), startedAt: r.startedAt, endedAt: r.endedAt || null, usage: r.usage, worktree: r.worktree?.dir || null, error: r.error || null });
-  const setState = (r, state, extra = {}) => { Object.assign(r, { state }, extra); if (['success', 'error', 'cancelled', 'interrupted'].includes(state)) r.endedAt = now(); emit('run', publicRun(r)); };
+  const setState = (r, state, extra = {}) => { Object.assign(r, { state }, extra); if (['success', 'error', 'cancelled', 'interrupted'].includes(state)) { r.endedAt = now(); r.probe?.stop(); } emit('run', publicRun(r)); };
   const sessionEvent = (sessionId, type, data) => emit('session', { sessionId, type, data });
 
   // ---- model routing (§8): workers never hold provider credentials ----
@@ -133,6 +134,8 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   async function modelRequest(r, { agent, system, messages, tools }) {
     const spec = SATS.includes(agent) && r.config.satModels[agent] ? r.config.satModels[agent] : r.config.model;
     const target = resolveTarget(spec);
+    // Memory of the local model's own process, reported to the UI while the run is active (never for cloud models).
+    if (target.locality === 'local' && !r.probe) r.probe = createMemoryProbe({ providerName: target.providerName, baseURL: target.provider.baseURL, model: target.model }, { onValue: memory => emit('metrics', { runId: r.runId, sessionId: r.sessionId, memory }) });
     if (target.locality === 'cloud' && r.config.locality === 'local') {
       if (r.config.localOnly) throw fail('LOCAL_ONLY', 'This session is local-only');
       if (!r.egress.has(target.spec)) {
