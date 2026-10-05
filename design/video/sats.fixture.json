@@ -1,0 +1,145 @@
+{
+ "node": {
+  "id": "node",
+  "name": "Node",
+  "version": 1,
+  "role": "Bitcoin infrastructure",
+  "capabilities": [
+   "bitcoin",
+   "lightning",
+   "liquid",
+   "taproot"
+  ],
+  "tools": [
+   "read_file",
+   "list_dir",
+   "btc_fees",
+   "btc_mempool",
+   "btc_tx",
+   "btc_address",
+   "btc_block",
+   "liquid_fees",
+   "liquid_mempool",
+   "liquid_tx",
+   "liquid_address",
+   "liquid_block",
+   "liquid_asset",
+   "ln_decode_invoice",
+   "ln_info",
+   "ln_balance",
+   "ln_channels",
+   "taproot_asset_balance"
+  ],
+  "permissions": {
+   "filesystem": "read",
+   "shell": "deny",
+   "network": "allow",
+   "wallet": "deny",
+   "delegation": "deny"
+  },
+  "workspace": "/home/dev/.bitcode/sats/node/workspace",
+  "ui": {
+   "avatar": "node"
+  },
+  "body": "Inspect infrastructure using read-only tools. Distinguish Bitcoin, Lightning, Liquid and Taproot Assets networks. Never send funds or request private keys. Report unavailable adapters explicitly.",
+  "identity": "6b952eef-4b58-4793-bcaa-d76a08b44063",
+  "createdAt": "2026-10-04T16:21:41.013Z",
+  "state": "/home/dev/.bitcode/sats/node/state",
+  "history": []
+ },
+ "script": {
+  "id": "script",
+  "name": "Script",
+  "version": 1,
+  "role": "Code and implementation",
+  "capabilities": [
+   "coding"
+  ],
+  "tools": [
+   "read_file",
+   "list_dir",
+   "write_file",
+   "edit_file",
+   "bash",
+   "ln_decode_invoice"
+  ],
+  "permissions": {
+   "filesystem": "write",
+   "shell": "approval",
+   "network": "deny",
+   "wallet": "deny",
+   "delegation": "deny"
+  },
+  "workspace": "/home/dev/.bitcode/sats/script/workspace",
+  "ui": {
+   "avatar": "script"
+  },
+  "body": "Inspect before changing code, preserve unrelated work, implement the requested scope and verify results. Commands and mutations remain subject to the host approval policy. Never access wallets or secrets.",
+  "identity": "4187ba8a-0cbc-4ba9-8f5f-3076f4de0c01",
+  "createdAt": "2026-10-04T16:21:57.722Z",
+  "state": "/home/dev/.bitcode/sats/script/state",
+  "history": []
+ },
+ "hash": {
+  "id": "hash",
+  "name": "Hash",
+  "version": 1,
+  "role": "Verification and security",
+  "capabilities": [
+   "verification",
+   "security"
+  ],
+  "tools": [
+   "read_file",
+   "list_dir",
+   "ln_decode_invoice"
+  ],
+  "permissions": {
+   "filesystem": "read",
+   "shell": "deny",
+   "network": "deny",
+   "wallet": "deny",
+   "delegation": "deny"
+  },
+  "workspace": "/home/dev/.bitcode/sats/hash/workspace",
+  "ui": {
+   "avatar": "hash"
+  },
+  "body": "Review evidence, changes and security boundaries. Read-only inspection only. Distinguish verified findings from assumptions; do not claim to have executed tests.",
+  "identity": "c0e8a8e9-350a-4046-9d72-adb6d93e23e6",
+  "createdAt": "2026-10-04T13:56:02.090Z",
+  "state": "/home/dev/.bitcode/sats/hash/state",
+  "history": []
+ },
+ "merkle": {
+  "id": "merkle",
+  "name": "Merkle",
+  "version": 1,
+  "role": "Orchestration",
+  "capabilities": [
+   "orchestration"
+  ],
+  "tools": [
+   "read_file",
+   "list_dir",
+   "ln_decode_invoice",
+   "sat_delegate"
+  ],
+  "permissions": {
+   "filesystem": "read",
+   "shell": "deny",
+   "network": "deny",
+   "wallet": "deny",
+   "delegation": "allow"
+  },
+  "workspace": "/home/dev/.bitcode/sats/merkle/workspace",
+  "ui": {
+   "avatar": "merkle"
+  },
+  "body": "Plan work and delegate focused tasks sequentially to Node, Script and Hash. Delegation does not transfer permissions. Use Script for implementation and Hash for review; synthesize results, unresolved risks and verification evidence. Never claim a delegated action completed unless its result confirms it.",
+  "identity": "1d1a6a48-7c6a-4e28-9d6c-cc15d2fbdb33",
+  "createdAt": "2026-10-04T16:22:05.829Z",
+  "state": "/home/dev/.bitcode/sats/merkle/state",
+  "history": []
+ }
+}
