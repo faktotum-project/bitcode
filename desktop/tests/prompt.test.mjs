@@ -4,7 +4,7 @@ import { DESKTOP_CAPABILITIES } from '../core/prompt.mjs';
 import { isRunnable, isRisky, commandOf, isShellLang, parseMarkdown } from '../ui/markdown.js';
 
 test('the system prompt states real capabilities and limits and the Play contract', () => {
-  for (const must of ['never describe yourself as a language-only assistant', 'isolated sandbox', 'no sudo', 'network_fetch', 'cannot install system software', 'fenced ```bash block', 'Play button', 'user\'s own terminal', 'secrets, seed phrases']) assert.ok(DESKTOP_CAPABILITIES.includes(must), must);
+  for (const must of ['never describe yourself as a language-only assistant', 'isolated sandbox', 'no sudo', 'network_fetch', 'cannot install system software', 'fenced ```bash block', 'Play button', 'user\'s own terminal', 'secrets, seed phrases', 'allegati/', 'cannot see images']) assert.ok(DESKTOP_CAPABILITIES.includes(must), must);
 });
 
 test('only shell blocks with a real command are runnable; prompts are stripped', () => {

@@ -9,6 +9,7 @@ import { loadAgents } from '../src/agents.mjs';
 import { createController, fileVersion } from './core/controller.mjs';
 import { probeSandbox, spawnWorker } from './core/sandbox.mjs';
 import { atomicJSON, fail, loadJSON, workspacePath } from './core/primitives.mjs';
+import { createAttachments } from './core/attachments.mjs';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url)); // dist/
 const home = bitcodeHome();
@@ -121,6 +122,15 @@ async function quit() {
   quitting = true; controller.shutdown(); for (const t of ptys.values()) t.kill(); app.quit();
 }
 
+// ---- attachments: files and folders shared in a chat are copied into the project's allegati/ ----
+const attachments = new Map();
+async function attachmentsFor(projectId) {
+  const project = (await controller.invoke('project.list')).find(p => p.projectId === projectId); if (!project) throw fail('NOT_FOUND');
+  if (!attachments.has(projectId)) attachments.set(projectId, createAttachments(project.root));
+  return attachments.get(projectId);
+}
+const asBytes = data => (data instanceof ArrayBuffer ? new Uint8Array(data) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null);
+
 // ---- trusted IPC: origin comes from the verified sender, never the payload ----
 const mainMethods = {
   'app.info': () => ({ version: app.getVersion(), home, secretStore: secretStore(), secrets: secrets.names(), platform: process.platform }),
@@ -131,6 +141,17 @@ const mainMethods = {
   'pty.write': ({ ptyId, data }) => { if (typeof data !== 'string' || data.length > 65536) throw fail('INVALID_PARAMS'); ptyOf(ptyId).write(data); return true; },
   'pty.resize': ({ ptyId, cols, rows }) => { if (!(cols > 1 && rows > 1 && cols < 1000 && rows < 500)) throw fail('INVALID_PARAMS'); ptyOf(ptyId).resize(cols | 0, rows | 0); return true; },
   'pty.close': ({ ptyId }) => { ptyOf(ptyId).kill(); ptys.delete(ptyId); return true; },
+  // Dropped or pasted bytes come from the UI; picked paths never do (they come from a native dialog owned by this process).
+  'attach.put': async ({ projectId, group, top, rel, data }) => {
+    const bytes = asBytes(data); if (!bytes || typeof group !== 'string' || group.length > 80 || typeof rel !== 'string') throw fail('INVALID_PARAMS');
+    try { return (await attachmentsFor(projectId)).put({ group, top: typeof top === 'string' ? top : undefined, rel, bytes }); } catch (e) { throw fail(e.code || 'INVALID_PARAMS', e.message); }
+  },
+  'attach.pick': async ({ projectId, kind }) => {
+    const store = await attachmentsFor(projectId);
+    const r = await dialog.showOpenDialog(win, { properties: kind === 'folder' ? ['openDirectory', 'multiSelections'] : ['openFile', 'multiSelections'] });
+    return r.canceled ? { items: [], skipped: [] } : store.importPaths(r.filePaths);
+  },
+  'attach.remove': async ({ projectId, top }) => { try { return (await attachmentsFor(projectId)).remove(String(top)); } catch (e) { throw fail(e.code || 'INVALID_PARAMS', e.message); } },
   'clipboard.write': ({ text }) => { if (typeof text !== 'string' || text.length > 1_000_000) throw fail('INVALID_PARAMS'); clipboard.writeText(text); return true; },
   'clipboard.read': () => clipboard.readText().slice(0, 1_000_000),
   // Links in answers open in the system browser; only plain http(s) URLs, never file:, javascript: or custom schemes.

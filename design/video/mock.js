@@ -279,6 +279,8 @@ index 91ac0de..4be2f70 100644
     'git.commit': () => { S.committed = true; return ''; },
     'pty.open': () => { S.ptyId = 'pty_1'; return { ptyId: S.ptyId, shell: '/bin/bash' }; },
     'pty.write': () => true, 'pty.resize': () => true, 'pty.close': () => true,
+    'attach.put': ({ top, rel, data }) => ({ top: top || rel, rel: `allegati/${top || rel}`, size: data.byteLength }), 'attach.remove': () => true,
+    'attach.pick': () => ({ items: [{ name: 'documentazione', rel: 'allegati/documentazione', isDir: true, files: 12, size: 340_000, kind: 'folder' }], skipped: [] }),
     'clipboard.write': () => true, 'app.openExternal': () => true,
     'settings.set': ({ key, value }) => { settings[key] = value; return settings; },
     'finance.overview': ({ protocol }) => OVERVIEW[protocol](),

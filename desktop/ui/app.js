@@ -20,7 +20,7 @@ const SATS = ['node', 'script', 'hash', 'merkle'];
 const MODES = ['manual', 'assisted', 'unattended'];
 const S = {
   view: 'chat', info: null, status: null, settings: null, projects: [], projectId: null, sessions: [], sessionId: null, session: null,
-  work: new Map(), closing: new Map(), collapsed: new Set(), tree: new Map(), expanded: new Set(['.']), git: null, tabs: [], active: null, panel: null, runs: new Map(), pending: [],
+  work: new Map(), closing: new Map(), attachments: [], collapsed: new Set(), tree: new Map(), expanded: new Set(['.']), git: null, tabs: [], active: null, panel: null, runs: new Map(), pending: [],
   sats: Object.fromEntries(SATS.map(s => [s, { st: 'idle' }])), live: new Map(), agentLog: [], worktrees: [], models: [], agent: '', commitMsg: '', draft: '', commands: [], menu: { items: [], index: 0 }, picker: { open: false, data: null, filter: '', loading: false }, notes: [], newModel: null, search: '', searching: false, renaming: null, expandedProjects: new Set(), sideHidden: (() => { try { return localStorage.getItem('bitcode.sideHidden') === '1'; } catch { return false; } })()
 };
 
@@ -102,7 +102,7 @@ function jumpMessage(dir) {
 }
 const SHORTCUTS = [
   ['mod+wheel · mod+= / mod+-', 'scRead'], ['mod+0', 'scReadReset'], ['alt+↑ / alt+↓', 'scJump'], ['End · Home', 'scEnds'], ['mod+L · /', 'scFocus'],
-  ['mod+shift+C', 'scCopy'], ['mod+1 … 4', 'scPanels'], ['mod+B', 'scSidebar'], ['mod+K', 'scSearch'], ['mod+N', 'scNew'], ['mod+/ · ?', 'scHelp'], ['Esc', 'scClose']
+  ['mod+shift+C', 'scCopy'], ['mod+U', 'scAttach'], ['mod+1 … 4', 'scPanels'], ['mod+B', 'scSidebar'], ['mod+K', 'scSearch'], ['mod+N', 'scNew'], ['mod+/ · ?', 'scHelp'], ['Esc', 'scClose']
 ];
 function showShortcuts() {
   if (document.querySelector('dialog.shortcuts')) return;
@@ -117,6 +117,7 @@ document.addEventListener('keydown', e => {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && !e.altKey && ['=', '+', '-', '_', '0'].includes(e.key) && S.view === 'chat' && !inEditor) { e.preventDefault(); zoomRead(e.key === '0' ? 'reset' : e.key === '-' || e.key === '_' ? -1 : 1); return; }
   if (mod && e.key === '/') { e.preventDefault(); showShortcuts(); return; }
+  if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'u' && S.view === 'chat' && S.projectId) { e.preventDefault(); pickAttachments('files'); return; }
   if (mod && !e.altKey && !e.shiftKey && /^[1-4]$/.test(e.key) && S.projectId && S.view === 'chat') { e.preventDefault(); const k = ['files', 'git', 'terminal', 'agent'][Number(e.key) - 1]; S.panel = S.panel === k ? null : k; renderShell(); return; }
   if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); $('prompt')?.focus(); return; }
   if (mod && e.shiftKey && e.key.toLowerCase() === 'c' && !inEditor) { const picked = String(window.getSelection() || ''), a = picked || lastAnswer(); if (a) { e.preventDefault(); copyText(a); } return; }
@@ -176,6 +177,62 @@ document.addEventListener('contextmenu', e => {
   items.push('-', { label: t('selectAllL'), hint: `${modKey}+A`, run: () => { const th = $('thread'); if (th) { const r = document.createRange(); r.selectNodeContents(th); const s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(r); } else document.execCommand('selectAll'); } });
   openMenu(x, y, items);
 });
+
+// ---------- attachments: drag & drop, paste, or pick files / folders ----------
+const KIND_ICON = { folder: '📁', image: '🖼', pdf: '📕', text: '📄', archive: '🗜', audio: '🎵', video: '🎞', file: '📎' };
+const fmtSize = n => (n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${Math.round(n / 1024)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)} MB` : `${(n / 1024 ** 3).toFixed(1)} GB`).replace('.', wlang() === 'it' ? ',' : '.');
+const kindFor = (name, isDir) => (isDir ? 'folder' : /\.(png|jpe?g|gif|webp|svg|bmp|heic|avif)$/i.test(name) ? 'image' : /\.pdf$/i.test(name) ? 'pdf' : /\.(zip|tar|gz|tgz|7z|rar|xz|bz2)$/i.test(name) ? 'archive'
+  : /\.(mp3|wav|flac|ogg|m4a)$/i.test(name) ? 'audio' : /\.(mp4|mov|mkv|webm|avi)$/i.test(name) ? 'video' : /\.(txt|md|json|ya?ml|toml|csv|log|xml|html?|css|m?[jt]sx?|py|rs|go|java|sh|sql|c|h|cpp)$/i.test(name) ? 'text' : 'file');
+function addAttachments(items, skipped = []) {
+  for (const it of items) S.attachments.push(it);
+  if (skipped.length) toast(`${skipped.length} ${t('attachSkipped')}: ${skipped.slice(0, 3).map(x => x.name).join(', ')}`, true);
+  renderComposer();
+}
+const pickAttachments = guard(async kind => {
+  if (!S.projectId) return toast(t('noProject'), true);
+  const r = await api('attach.pick', { projectId: S.projectId, kind }); addAttachments(r.items, r.skipped);
+});
+const attachMenu = button => { const r = button.getBoundingClientRect(); openMenu(r.left, r.top - 96, [{ label: t('attachFiles'), hint: `${modKey}+U`, run: () => pickAttachments('files') }, { label: t('attachFolder'), run: () => pickAttachments('folder') }]); };
+// Folder drops are walked in the UI (webkitGetAsEntry) and sent file by file, so the main process never trusts a path from the page.
+const readEntries = dir => new Promise((resolve, reject) => { const all = [], r = dir.createReader(); (function next() { r.readEntries(batch => { if (!batch.length) resolve(all); else { all.push(...batch); next(); } }, reject); })(); });
+const fileOf = entry => new Promise((resolve, reject) => entry.file(resolve, reject));
+async function* walkEntry(entry, prefix) {
+  if (entry.isFile) yield { rel: `${prefix}${entry.name}`, file: await fileOf(entry) };
+  else if (entry.isDirectory) for (const child of await readEntries(entry)) yield* walkEntry(child, `${prefix}${entry.name}/`);
+}
+const importDropped = guard(async dataTransfer => {
+  if (!S.projectId) return toast(t('noProject'), true);
+  const roots = [...(dataTransfer.items || [])].filter(i => i.kind === 'file').map(i => i.webkitGetAsEntry?.()).filter(Boolean);
+  const plain = roots.length ? null : [...(dataTransfer.files || [])].map(f => ({ isFile: true, isDirectory: false, name: f.name, file: cb => cb(f) }));
+  toast(t('attachBusy'));
+  const items = [], skipped = [];
+  for (const entry of plain || roots) {
+    const group = crypto.randomUUID(); let top = null, count = 0, size = 0, finalTop = null;
+    try {
+      for await (const { rel, file } of walkEntry(entry, '')) {
+        const res = await api('attach.put', { projectId: S.projectId, group, top: entry.name, rel, data: new Uint8Array(await file.arrayBuffer()) });
+        finalTop = res.top; count++; size += res.size;
+      }
+    } catch (e) { skipped.push({ name: entry.name, reason: e.code }); if (['TOO_LARGE', 'TOO_MANY'].includes(e.code)) toast(errorText(e), true); }
+    if (finalTop) items.push({ name: finalTop, rel: `allegati/${finalTop}`, isDir: !!entry.isDirectory, files: count, size, kind: kindFor(entry.name, entry.isDirectory) });
+  }
+  addAttachments(items, skipped.filter(x => !['TOO_LARGE', 'TOO_MANY'].includes(x.reason)));
+});
+const dropzone = h('div', { class: 'dropzone', hidden: true }, h('div', { class: 'dropcard' }, icon('paperclip', { size: 28 }), h('div', {}, t('dropHint'))));
+document.body.append(dropzone);
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+document.addEventListener('dragenter', e => { if (!hasFiles(e) || S.view !== 'chat' || !S.projectId) return; e.preventDefault(); dragDepth++; dropzone.querySelector('.dropcard div').textContent = t('dropHint'); dropzone.hidden = false; });
+document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+document.addEventListener('dragleave', e => { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) dropzone.hidden = true; });
+document.addEventListener('drop', e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; dropzone.hidden = true; if (S.view === 'chat' && S.projectId) importDropped(e.dataTransfer); });
+const attachmentLines = () => S.attachments.map(a => `📎 ${a.rel}${a.isDir ? '/' : ''} · ${t(`kind_${a.kind}`)}${a.isDir ? ` · ${a.files} ${t('filesN')}` : ''} · ${fmtSize(a.size)}`).join('\n');
+function attachmentChips() {
+  if (!S.attachments.length) return null;
+  return h('div', { class: 'attachments' }, S.attachments.map((a, i) => h('span', { class: 'achip', title: `${a.rel}${a.isDir ? '/' : ''}` },
+    h('span', { class: 'aicon' }, KIND_ICON[a.kind] || '📎'), h('span', { class: 'aname' }, a.name), h('span', { class: 'asize num' }, a.isDir ? `${a.files} · ${fmtSize(a.size)}` : fmtSize(a.size)),
+    h('button', { type: 'button', class: 'ax', 'aria-label': t('attachRemove'), title: t('attachRemove'), onClick: guard(async () => { await api('attach.remove', { projectId: S.projectId, top: a.name }).catch(() => {}); S.attachments.splice(i, 1); renderComposer(); }) }, '×'))));
+}
 
 // ---------- live work line: rotating phrase + one measured datum, like the CLI ----------
 const wlang = () => (document.documentElement.lang === 'en' ? 'en' : 'it');
@@ -590,6 +647,7 @@ function renderComposer() {
   const s = S.session, run = s && activeRun(s.sessionId);
   const menuEl = h('div', { class: 'cmdmenu', role: 'listbox', hidden: true });
   const input = h('textarea', { id: 'prompt', rows: 2, placeholder: s ? t('placeholder') : t('placeholderNew'), 'aria-label': t('placeholder'), 'aria-autocomplete': 'list',
+    onPaste: e => { const files = [...(e.clipboardData?.files || [])]; if (!files.length || !S.projectId) return; e.preventDefault(); const dt = new DataTransfer(); for (const f of files) dt.items.add(f.name === 'image.png' ? new File([f], `immagine-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.png`, { type: f.type }) : f); importDropped(dt); },
     onInput: e => { S.draft = e.target.value; e.target.style.height = 'auto'; e.target.style.height = `${Math.min(240, e.target.scrollHeight)}px`; updateMenu(); },
     onKeydown: e => {
       if (S.menu.items.length) {
@@ -619,7 +677,7 @@ function renderComposer() {
     if (submitNow && !c.args) submit();
   }
   const submit = guard(async () => {
-    const text = input.value.trim(); if (!text) return;
+    let text = input.value.trim(); if (!text && !S.attachments.length) return; if (!text) text = t('attachDefault');
     const [cmdName] = text.slice(1).split(/\s+/);
     if (text.startsWith('/') && UI_COMMANDS[cmdName]) { S.draft = ''; input.value = ''; S.menu.items = []; drawMenu(); return UI_COMMANDS[cmdName](); }
     let session = S.session;
@@ -627,7 +685,9 @@ function renderComposer() {
       const meta = await api('session.create', { projectId: S.projectId, name: text.replace(/^\/\S+\s*/, '').replace(/\s+/g, ' ').slice(0, 48) || text.slice(0, 48), mode: S.newMode || 'assisted', satId: S.agent, model: S.newModel || undefined });
       await loadSessions(); await openSession(meta.sessionId); session = S.session; renderShell();
     }
-    const res = await api('chat.submit', { sessionId: session.sessionId, text, agent: S.agent });
+    const withFiles = S.attachments.length && !text.startsWith('/') ? `${text}\n\n${attachmentLines()}` : text;
+    const res = await api('chat.submit', { sessionId: session.sessionId, text: withFiles, agent: S.agent });
+    if (withFiles !== text) S.attachments = [];
     S.draft = ''; if ($('prompt')) $('prompt').value = '';
     if (res.command) showResult(res);
     else { S.notes = []; S.session = await api('session.open', { sessionId: session.sessionId }); renderThread(); renderComposer(); renderSidebar(); }
@@ -637,8 +697,9 @@ function renderComposer() {
     const r = await api('mode.set', { sessionId: s.sessionId, mode: e.target.value }); S.session.mode = r.mode; await loadSessions();
   }) }, MODES.map(m => h('option', { value: m, selected: (s?.mode || S.newMode || 'assisted') === m }, t(m))));
   const currentModel = s?.model || S.newModel || S.status?.defaultModel?.spec || '—';
-  fill(el, h('div', { class: 'composer' }, menuEl, input,
+  fill(el, h('div', { class: 'composer' }, menuEl, attachmentChips(), input,
     h('div', { class: 'bar' },
+      h('button', { type: 'button', class: 'attachbtn', title: `${t('attachL')} (${modKey}+U)`, 'aria-label': t('attachL'), disabled: !!run, onClick: e => attachMenu(e.currentTarget) }, icon('paperclip', { size: 16 })),
       h('select', { 'aria-label': t('agentL'), disabled: !!run, onChange: guard(async e => {
         const id = e.target.value;
         if (s) await api('session.update', { sessionId: s.sessionId, satId: id });
