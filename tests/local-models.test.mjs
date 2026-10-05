@@ -117,7 +117,10 @@ test("/models lists installed local models, switches and saves the choice", asyn
     process.stdout.write = write;
   }
   assert.match(printed.join(""), /ollama\/qwen3:8b/);
-  assert.doesNotMatch(printed.join(""), /gpt-oss/, "only really installed models are offered");
+  // Numbered rows are the selectable entries; models found on disk but not
+  // served by any server are listed below without a number.
+  const selectable = printed.join("").split("\n").filter(l => /^\s+\d+\s/.test(l)).join("\n");
+  assert.doesNotMatch(selectable, /gpt-oss/, "only really installed models are offered");
   assert.equal(active.spec, "ollama/llama3.2:3b");
   assert.equal(JSON.parse(readFileSync(path.join(home, "config.json"), "utf8")).model, "ollama/llama3.2:3b");
 });

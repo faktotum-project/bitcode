@@ -1,7 +1,7 @@
 // UI strings only: tool names, commands, identifiers and file content are never translated.
 const it = {
-  fit_gpu: 'GPU', fit_ram: 'RAM', fit_tight: 'al limite', 'fit_too-big': 'troppo grande', fitHint_gpu: 'entra nella memoria della GPU', fitHint_ram: 'entra nella RAM disponibile',
-  fitHint_tight: 'supera la RAM libera: chiudi altre applicazioni', 'fitHint_too-big': 'più grande della memoria di questa macchina', sharedMem: 'memoria condivisa', free: 'libera',
+  fit_gpu: 'GPU', fit_ram: 'RAM', fit_tight: 'al limite', 'fit_too-big': 'troppo grande', fitHint_gpu: 'entra nella memoria della GPU', fitHint_ram: 'entra nella RAM lasciando margine al sistema',
+  fitHint_tight: 'occupa quasi tutta la RAM: chiudi altre applicazioni', 'fitHint_too-big': 'più grande della memoria di questa macchina', sharedMem: 'memoria condivisa', free: 'libera',
   detected: 'rilevato', addRuntime: 'Aggiungi', added: 'aggiunto ai provider', noLocalModels: 'Nessun modello locale servito. Avvia Ollama, LM Studio o un server compatibile OpenAI.',
   idleModels: 'Scaricati ma non serviti', copy: 'Copia il comando', copied: 'Comando copiato', customModel: 'Modello personalizzato', typed: 'scritto a mano',
   fitsOnly: 'Solo quelli che entrano in memoria', auto: 'automatico',
@@ -55,8 +55,8 @@ const it = {
   E_PROVIDER_UNAVAILABLE: 'Modello non configurato.', E_PTY_UNAVAILABLE: 'Terminale non disponibile.', E_FORBIDDEN_ORIGIN: 'Origine non autorizzata.', E_WORKTREE_UNAVAILABLE: 'La modalità senza supervisione richiede un repository Git.'
 };
 const en = {
-  fit_gpu: 'GPU', fit_ram: 'RAM', fit_tight: 'tight', 'fit_too-big': 'too big', fitHint_gpu: 'fits in GPU memory', fitHint_ram: 'fits in available RAM',
-  fitHint_tight: 'exceeds free RAM: close other apps', 'fitHint_too-big': 'larger than this machine\'s memory', sharedMem: 'shared memory', free: 'free',
+  fit_gpu: 'GPU', fit_ram: 'RAM', fit_tight: 'tight', 'fit_too-big': 'too big', fitHint_gpu: 'fits in GPU memory', fitHint_ram: 'fits in RAM with headroom for the system',
+  fitHint_tight: 'uses nearly all RAM: close other apps', 'fitHint_too-big': 'larger than this machine\'s memory', sharedMem: 'shared memory', free: 'free',
   detected: 'detected', addRuntime: 'Add', added: 'added to providers', noLocalModels: 'No local model is being served. Start Ollama, LM Studio or an OpenAI-compatible server.',
   idleModels: 'Downloaded, not served', copy: 'Copy command', copied: 'Command copied', customModel: 'Custom model', typed: 'typed',
   fitsOnly: 'Only models that fit in memory', auto: 'automatic',

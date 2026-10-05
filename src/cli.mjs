@@ -8,7 +8,8 @@ import path from "node:path";
 import { loadConfig, resolveModel, allProviders, configPath, configGet, configSet, saveConfig } from "./config.mjs";
 import { providerRows, providerAdd, providerLogin } from "./settings.mjs";
 import { providerHealth } from "./providers.mjs";
-import { discoverLocalModels, isLocalProvider, pickLocalModel, describeLocalModel, localSetupHint } from "./local-models.mjs";
+import { isLocalProvider, describeLocalModel, localSetupHint } from "./local-models.mjs";
+import { localInventory, bestLocalModel, runtimeProvider } from "./local-inventory.mjs";
 import { loadPlugins } from "./plugins.mjs";
 import { dependencyReport } from "./diagnostics.mjs";
 import { VERSION } from "./version.mjs";
@@ -267,8 +268,9 @@ export async function main(argv) {
   if (opts.command === "config") return out(configPath());
   if (opts.command === "models") {
     if (!opts.json) return printModels(config);
-    const local = await discoverLocalModels(config);
-    return printData({ providers: redact(allProviders(config)), local: local.map(({ name, provider, running, models }) => ({ name, baseURL: provider.baseURL, running, models })) }, opts);
+    const inv = await localInventory(config);
+    return printData({ providers: redact(allProviders(config)), machine: inv.machine,
+      local: inv.servers.map(({ name, label, baseURL, configured, running, models }) => ({ name, label, baseURL, configured, running, models })), idle: inv.idle }, opts);
   }
   if (opts.command === "wallet") return walletCommand(opts.walletSub, config);
   if (opts.command === "finance") return financeCommand(opts.commandArgs || [], config, opts);
@@ -345,7 +347,7 @@ async function startupModel(opts, config) {
   if (opts.model || process.env.BITCODE_MODEL || config.model) return opts.model;
   const fallback = resolveModel({ config });
   if (fallback.apiKey || isLocalProvider(fallback.provider)) return undefined;
-  const spec = pickLocalModel(await discoverLocalModels(config));
+  const spec = bestLocalModel(await localInventory(config), config);
   if (!spec) return undefined;
   const note = t.faint(`no model configured and no ${fallback.providerName} key — using local ${spec} (change with /models)`);
   if (opts.json || opts.prompt) process.stderr.write(note + "\n");
@@ -459,20 +461,47 @@ function providerLines(config) {
   });
 }
 
-// Query this machine's local servers and render them as selectable entries:
-// { header, hint?, entries: [{ spec, line }] } per local provider.
+// Everything this machine can run, whoever downloaded it: servers on
+// well-known ports (configured or merely detected) with a memory-fit badge per
+// model, plus models on disk that no server is serving yet.
+// → { machine, sections: [{ header, hint?, entries: [{ spec, line, addProvider? }] }], idle }
+const GIB = 1024 ** 3;
+const gib = n => (n ? `${(n / GIB).toFixed(n < 10 * GIB ? 1 : 0)} GB` : "");
+const FIT = { gpu: () => t.ok("GPU"), ram: () => t.ok("RAM"), tight: () => t.accent("tight"), "too-big": () => t.danger("too big"), unknown: () => "" };
+function machineLine({ ram, gpus, cpus }) {
+  const gpu = gpus.map(g => `${g.name}${g.vram ? ` ${gib(g.vram)}` : ""}${g.unified ? " shared" : ""}`).join(", ");
+  return t.faint(`RAM ${gib(ram.total)} (${gib(ram.available)} free)${gpu ? ` · GPU ${gpu}` : ""} · ${cpus} cores`);
+}
 async function localSections(config) {
-  const discovered = await discoverLocalModels(config);
-  // Ollama is always shown (with setup help); other local servers only when
-  // they answer or the user configured them explicitly.
-  return discovered.filter(({ name, running }) => running || name === "ollama" || config.providers?.[name]).map(({ name, provider, running, models }) => ({
-    header: `${t.accent(name)}  ${t.faint(provider.baseURL)}`,
-    hint: models.length ? null : localSetupHint(name, running),
-    entries: models.map(m => ({
-      spec: `${name}/${m.id}`,
-      line: `${t.body(`${name}/${m.id}`)}  ${t.faint(describeLocalModel(m))}`,
+  const inv = await localInventory(config);
+  // Ollama is always shown (with setup help); other servers only when they
+  // answer or the user configured them explicitly.
+  const sections = inv.servers.filter(s => s.running || s.name === "ollama" || config.providers?.[s.name]).map(s => ({
+    header: `${t.accent(s.label || s.name)}  ${t.faint(s.baseURL)}${s.configured ? "" : `  ${t.accent("detected · added on selection")}`}`,
+    hint: s.models.length ? null : localSetupHint(s.name, s.running),
+    entries: s.models.map(m => ({
+      spec: m.spec,
+      addProvider: s.configured ? null : s.name,
+      line: `${t.body(m.spec)}  ${FIT[m.fit]?.() || ""}  ${t.faint([gib(m.size), describeLocalModel({ ...m, size: 0 })].filter(Boolean).join(" · "))}`,
     })),
   }));
+  return { machine: inv.machine, sections, idle: inv.idle };
+}
+function idleLines(idle) {
+  if (!idle.length) return [];
+  return [t.label("Downloaded, not served"), ...idle.flatMap(d => [
+    `    ${t.body(d.name)}  ${FIT[d.fit]?.() || ""}  ${t.faint(`${d.runtime} · ${gib(d.size)}`)}`,
+    ...(d.hint ? [t.faint(`      serve: ${d.hint}`)] : []),
+  ])];
+}
+// Persist a detected runtime as a local provider so its models resolve.
+function ensureRuntimeProvider(config, name) {
+  if (!name || config.providers?.[name]) return false;
+  const entry = runtimeProvider(name);
+  if (!entry) return false;
+  config.providers = { ...(config.providers || {}), [name]: entry };
+  saveConfig(config);
+  return true;
 }
 
 // Load user extensions: plugins (~/.bitcode/plugins/*.mjs) and MCP servers
@@ -532,12 +561,14 @@ async function printModels(config) {
   out(t.label("Providers"));
   for (const { line } of providerLines(config)) out(`  ${line}`);
   out("");
-  out(t.label("Local models (this machine)"));
-  for (const section of await localSections(config)) {
+  const local = await localSections(config);
+  out(t.label("Local models (this machine)") + "  " + machineLine(local.machine));
+  for (const section of local.sections) {
     out(`  ${section.header}`);
     for (const { line } of section.entries) out(`    ${line}`);
     if (section.hint) out(t.faint(`    ${section.hint}`));
   }
+  for (const line of idleLines(local.idle)) out(`  ${line}`);
   out("");
   out(t.faint("use:  bitcode -m <provider>/<model>   or pick interactively with /models"));
 }
@@ -871,16 +902,20 @@ export async function handleSlash(input, ctx) {
       };
       out(t.label("Providers"));
       for (const e of providerLines(ctx.config)) row(e);
-      out(t.label("Local models (this machine)"));
-      for (const section of await localSections(ctx.config)) {
+      const local = await localSections(ctx.config);
+      out(t.label("Local models (this machine)") + "  " + machineLine(local.machine));
+      for (const section of local.sections) {
         out(`       ${section.header}`);
         for (const e of section.entries) row(e, "  ");
         if (section.hint) out(t.faint(`         ${section.hint}`));
       }
+      for (const line of idleLines(local.idle)) out(`     ${line}`);
       out("");
       const ans = (await ctx.ask(t.faint("select # or type provider/model (enter to cancel): "))).trim();
       if (!ans) return;
-      const spec = /^\d+$/.test(ans) ? entries[Number(ans) - 1]?.spec : ans;
+      const chosen = /^\d+$/.test(ans) ? entries[Number(ans) - 1] : null;
+      const spec = chosen ? chosen.spec : ans;
+      if (chosen?.addProvider && ensureRuntimeProvider(ctx.config, chosen.addProvider)) out(t.faint(`added local provider ${chosen.addProvider} to ${configPath()}`));
       if (!spec) {
         out(t.danger(`no such entry: ${ans}`));
         return;

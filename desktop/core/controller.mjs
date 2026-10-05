@@ -7,7 +7,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { callModel } from '../../src/providers.mjs';
 import { loadConfig, saveConfig, resolveModel, allProviders } from '../../src/config.mjs';
-import { localInventory, KNOWN_RUNTIMES } from '../../src/local-inventory.mjs';
+import { localInventory, KNOWN_RUNTIMES, bestLocalModel, runtimeProvider } from '../../src/local-inventory.mjs';
 import { isLocalProvider, discoverLocalModels, describeLocalModel, localSetupHint } from '../../src/local-models.mjs';
 import { loadCommands, expandCommand } from '../../src/commands.mjs';
 import { savePlan, latestPlan } from '../../src/plans.mjs';
@@ -125,12 +125,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   // local model this machine is serving and can hold in memory.
   let autoLocal = null;
   const defaultSpec = () => settings.model || config().model || process.env.BITCODE_MODEL || autoLocal || undefined;
-  function pickAutoLocal(inv) {
-    const providers = allProviders(config());
-    const fits = inv.servers.filter(sv => sv.configured).flatMap(sv => sv.models.filter(m => ['gpu', 'ram'].includes(m.fit)).map(m => ({ ...m, preferred: providers[sv.name]?.defaultModel === m.id })));
-    const best = fits.find(m => m.preferred) || fits.sort((a, b) => (b.size || 0) - (a.size || 0))[0];
-    autoLocal = best?.spec || null;
-  }
+  function pickAutoLocal(inv) { autoLocal = bestLocalModel(inv, config()); }
   const refreshAutoLocal = () => localInventory(config(), { timeoutMs: 1500, home: inventoryHome }).then(pickAutoLocal).catch(() => {});
   const describeModel = spec => { try { const t = resolveTarget(spec); return { spec: t.spec, locality: t.locality }; } catch (e) { return { spec: spec || null, locality: 'unknown', error: e.message }; } };
 
@@ -480,7 +475,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     'models.addLocalProvider': ({ name, baseURL }) => {
       const known = KNOWN_RUNTIMES.find(r => r.name === name && r.baseURL === baseURL);
       if (!known) throw fail('INVALID_PARAMS', 'Unknown local runtime');
-      const entry = { api: 'openai', baseURL: known.baseURL, keyEnv: null, local: true, ...(known.discovery ? { discovery: known.discovery } : {}) };
+      const entry = runtimeProvider(name);
       if (configOverride) { configOverride.providers = { ...configOverride.providers, [name]: entry }; return entry; }
       const cfg = loadConfig(); cfg.providers = { ...(cfg.providers || {}), [name]: entry }; saveConfig(cfg); return entry;
     },

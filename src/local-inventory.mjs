@@ -57,7 +57,9 @@ export function fitFor(sizeBytes, machine) {
   const need = sizeBytes * 1.2 + 0.5 * GB;
   const dedicated = Math.max(0, ...machine.gpus.filter(g => !g.unified).map(g => g.vram));
   if (dedicated && need <= dedicated) return { fit: "gpu", need };
-  if (need <= machine.ram.available) return { fit: "ram", need };
+  // Judge against total RAM minus a reserve for the OS and other apps, not the
+  // momentary free memory (which drops while a runtime keeps a model loaded).
+  if (need <= machine.ram.total * 0.75) return { fit: "ram", need };
   if (need <= machine.ram.total * 0.9) return { fit: "tight", need };
   return { fit: "too-big", need };
 }
@@ -116,7 +118,9 @@ export async function localInventory(config = {}, { timeoutMs = 800, home } = {}
   const machine = machineResources();
   const providers = Object.entries(allProviders(config)).filter(([, p]) => isLocalProvider(p));
   const configured = await Promise.all(providers.map(async ([name, provider]) => ({ name, baseURL: provider.baseURL, configured: true, ...(await listLocalModels(name, provider, { timeoutMs })) })));
-  const others = KNOWN_RUNTIMES.filter(r => !providers.some(([, p]) => sameBase(p.baseURL, r.baseURL)));
+  // A runtime is "detected" only if no configured provider already owns its
+  // address or its name: two providers called "ollama" would make specs ambiguous.
+  const others = KNOWN_RUNTIMES.filter(r => !providers.some(([name, p]) => name === r.name || sameBase(p.baseURL, r.baseURL)));
   const detected = (await Promise.all(others.map(async r => ({ name: r.name, label: r.label, baseURL: r.baseURL, configured: false, ...(await listLocalModels(r.name, { api: "openai", baseURL: r.baseURL, discovery: r.discovery }, { timeoutMs })) }))))
     .filter(d => d.running);
   const disk = diskModels({ home });
@@ -141,4 +145,20 @@ function serveHint(d) {
   if (d.format === "gguf") return `llama-server -m "${d.path}" --port 8080`;
   if (d.runtime === "huggingface") return `vllm serve ${d.name}`;
   return null;
+}
+
+// Best local model to start on: the provider's declared default if it fits in
+// memory, otherwise the largest served model that fits (GPU or free RAM).
+export function bestLocalModel(inventory, config = {}) {
+  const providers = allProviders(config);
+  const fits = inventory.servers.filter(s => s.configured).flatMap(s => s.models
+    .filter(m => ["gpu", "ram"].includes(m.fit))
+    .map(m => ({ ...m, preferred: providers[s.name]?.defaultModel === m.id })));
+  return (fits.find(m => m.preferred) || fits.sort((a, b) => (b.size || 0) - (a.size || 0))[0])?.spec || null;
+}
+
+// Provider entry for a runtime found on a well-known port but not configured.
+export function runtimeProvider(name) {
+  const r = KNOWN_RUNTIMES.find(x => x.name === name);
+  return r ? { api: "openai", baseURL: r.baseURL, keyEnv: null, local: true, ...(r.discovery ? { discovery: r.discovery } : {}) } : null;
 }

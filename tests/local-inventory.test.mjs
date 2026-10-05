@@ -8,7 +8,7 @@ import { diskModels, fitFor } from "../src/local-inventory.mjs";
 const GB = 1024 ** 3;
 const machine = (ram, gpus = []) => ({ ram: { total: ram, available: ram * 0.8 }, gpus, cpus: 8 });
 
-test("fitFor prefers dedicated GPU memory, then free RAM, and flags models too large for the machine", () => {
+test("fitFor prefers dedicated GPU memory, then RAM minus a reserve, and flags models too large for the machine", () => {
   const nvidia = [{ vendor: "nvidia", vram: 24 * GB, unified: false }];
   assert.equal(fitFor(8 * GB, machine(64 * GB, nvidia)).fit, "gpu");
   assert.equal(fitFor(30 * GB, machine(64 * GB, nvidia)).fit, "ram");
@@ -40,4 +40,10 @@ test("diskModels finds models downloaded by Ollama, LM Studio, llama.cpp and Hug
   assert.ok(!found.some(f => /mmproj/.test(f.name)), "vision projectors are not models");
   assert.equal(by("phi-4").runtime, "llamacpp");
   assert.equal(by("org/tiny").format, "safetensors");
+});
+
+test("a runtime is not detected twice when the configured provider of the same name points elsewhere", async () => {
+  const { localInventory } = await import("../src/local-inventory.mjs");
+  const inv = await localInventory({ providers: { ollama: { api: "openai", baseURL: "http://127.0.0.1:9/v1", local: true, discovery: "ollama" } } }, { timeoutMs: 300, home: "/nonexistent" });
+  assert.equal(inv.servers.filter(s => s.name === "ollama").length, 1);
 });
