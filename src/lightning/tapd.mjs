@@ -2,6 +2,7 @@
 // runs on over Lightning today (live since March 2026), unlike RGB which
 // has no live network yet. Endpoints verified against Lightning Labs' API
 // reference (lightning.engineering/api-docs/api/taproot-assets):
+//   GET  /v1/taproot-assets/getinfo          - daemon network and chain info
 //   GET  /v1/taproot-assets/assets/balance   - asset balances
 //   GET  /v1/taproot-assets/assets           - list assets
 //   POST /v1/taproot-assets/addrs            - new receive address
@@ -18,6 +19,7 @@ export function tapd(cfg) {
   const p = (path, body) => httpPostJson(`${cfg.restUrl}${path}`, body, { headers: authHeaders, tls: cfg.tls });
 
   return {
+    getInfo: () => g("/v1/taproot-assets/getinfo"),
     listBalances: () => g("/v1/taproot-assets/assets/balance"),
     listAssets: () => g("/v1/taproot-assets/assets"),
     newAddress: ({ assetIdHex, amount }) =>

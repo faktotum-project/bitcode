@@ -11,6 +11,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { t, setLang, errorText } from './i18n.js';
 import { logo, sat, typing, SAT_META } from './marks.js';
 import { icon } from './icons.js';
+import { createFinanceView } from './finance.js';
 
 const SATS = ['node', 'script', 'hash', 'merkle'];
 const MODES = ['manual', 'assisted', 'unattended'];
@@ -193,6 +194,7 @@ window.bitcode.subscribe(({ channel, payload }) => {
     clearTimeout(S.gitTimer); S.gitTimer = setTimeout(refreshGit, 400);
   } else if (channel === 'pty' && payload.ptyId === ptyId) {
     if (payload.data) term?.write(payload.data); if (payload.exit !== undefined) { term?.write('\r\n[exit]\r\n'); ptyId = null; ptyProject = null; }
+  } else if (channel === 'finance') { finView.onEvent(payload);
   } else if (channel === 'navigate') { S.view = payload.view; renderShell(); }
 });
 
@@ -658,16 +660,8 @@ function activityPage() {
       h('button', { class: 'btn sm primary', onClick: guard(async () => { if (!confirm(t('integrate') + '?')) return; await api('worktree.integrate', { runId: w.runId }); S.worktrees = await api('worktree.list'); refreshGit(); renderCenter(); }) }, t('integrate')),
       h('button', { class: 'btn sm danger', onClick: guard(async () => { if (!confirm(t('discard') + '?')) return; await api('worktree.discard', { runId: w.runId }); S.worktrees = await api('worktree.list'); renderCenter(); }) }, t('discard'))))))) : h('p', { class: 'status' }, t('none')));
 }
-function bitcoinPage() {
-  const protos = [['Bitcoin', 'signet · testnet4 · regtest'], ['Lightning', 'LND · signet / testnet / regtest'], ['Cashu', t('cashuEnv')], ['Liquid', 'liquidtestnet · elementsregtest'], ['Taproot Assets', 'tapd · LND test']];
-  return h('div', { class: 'page' }, h('h1', {}, t('bitcoin')), h('p', { class: 'lead' }, t('bitcoinLead')),
-    h('div', { class: 'stats' },
-      h('div', { class: 'card stat' }, h('div', { class: 'n num' }, '0 / 5'), h('div', { class: 'l' }, t('connected'))),
-      h('div', { class: 'card stat' }, h('div', { class: 'n num', style: 'color:var(--muted)' }, '—'), h('div', { class: 'l' }, t('balanceTest')))),
-    h('div', { class: 'section' }, t('protocols')),
-    h('div', { class: 'cards' }, protos.map(([name, envs]) => h('div', { class: 'card' }, h('h3', {}, name), h('div', { class: 'status num' }, envs),
-      h('div', { style: 'margin-top:12px' }, h('span', { class: 'chip' }, t('unavailable'))), h('p', {}, t('adapterMissing'))))));
-}
+const finView = createFinanceView({ h, fill, api, toast, guard, t, icon, rerender: () => { if (S.view === 'bitcoin') renderCenter(); } });
+const bitcoinPage = () => finView.page();
 function settingsPage() {
   const st = S.settings, info = S.info;
   const set = (key, parse = v => v) => guard(async e => {

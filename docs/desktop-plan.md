@@ -351,7 +351,13 @@ Implementato:
   tema chiaro/scuro/sistema.
 
 Non ancora implementato (non presentare come disponibile):
-- area Bitcoin: solo una schermata che indica gli adapter come non disponibili (D4);
+- area Bitcoin, parziale (`desktop/core/finance.mjs`): verifica dell'ambiente dal
+  blocco genesi (Bitcoin, Liquid) o dall'API del nodo (LND, tapd), produzione e
+  ambienti non verificati in sola lettura nel backend; Bitcoin di test con saldo,
+  transazioni, ricezione, policy e invio con proposta, conferma e riconciliazione
+  (solo con Esplora locale); Lightning, Taproot Assets, Liquid e Cashu in sola
+  consultazione. Mancano le operazioni di test per questi quattro protocolli, il
+  wallet Liquid, il saldo Cashu nel desktop e un Finance service in processo separato;
 - gateway di rete con enforcement OS per i comandi (2A): oggi i comandi non hanno
   rete; `network_fetch` passa dal controller con allowlist e consenso, senza
   redirect automatici né verifica degli IP risolti;

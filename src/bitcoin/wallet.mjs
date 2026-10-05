@@ -184,6 +184,9 @@ export function wallet(ctx) {
 
     receiveAddress: (index = 0) => addrAt(0, index).address,
 
+    // Public addresses only (no keys): receive (change 0) and change (1) chains.
+    addresses: ({ gap = 20 } = {}) => [0, 1].flatMap(change => Array.from({ length: gap }, (_, index) => ({ address: addrAt(change, index).address, change, index }))),
+
     async listUtxos({ gap = 10 } = {}) {
       const utxos = await scanUtxos(gap);
       return utxos.map((u) => ({
