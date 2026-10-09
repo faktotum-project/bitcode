@@ -14,7 +14,9 @@ function walk(root, base = root, out = new Set()) {
   let names = [];
   try { names = readdirSync(root); } catch { return out; }
   for (const name of names) {
-    if (root === base && ignored.has(name)) continue;
+    // Nested dependency trees (desktop/node_modules, integrations/*/node_modules)
+    // are as irrelevant to a turn as the root one, and slow to snapshot.
+    if (ignored.has(name)) continue;
     const file = path.join(root, name); const rel = path.relative(base, file);
     let st; try { st = lstatSync(file); } catch { continue; }
     if (st.isDirectory()) walk(file, base, out); else out.add(rel);
@@ -66,7 +68,9 @@ export class TurnCheckpoint {
   }
   capture(rel) {
     if (this.before.has(rel)) return;
-    const source = resolveWorkspacePath(this.root, rel); const mark = fingerprint(source);
+    // Validate the containing directory, but fingerprint the entry itself as
+    // finalize() does: resolving it would compare a symlink's target with the link.
+    const source = path.join(resolveWorkspacePath(this.root, path.dirname(rel)), path.basename(rel)); const mark = fingerprint(source);
     this.before.set(rel, mark); if (mark != null) copyOne(source, path.join(this.dir, "before", rel));
   }
   finalize() {

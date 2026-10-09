@@ -795,6 +795,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
     if (!requiresPaymentApproval(tool) && mayAutoApprove({ tool, args: tc.args, permissions })) return true;
     if (["write_file", "edit_file", "patch"].includes(tool.name)) out(previewMutation(tc));
     out(approvalCard({ satId: session.satId, tool: tool.name, financial: requiresPaymentApproval(tool), lang: satLang() }, detectCaps()));
+    if (tool.readback) out("  " + t.bold(tool.readback(tc.args || {})));
     out(t.faint(JSON.stringify(tc.args || {}, null, 2)));
     const ans = await question("  " + t.accent("approve") + " " + t.bold(tool.name) + ` on ${network} (y/N) `, { signal });
     return /^y(es)?$/i.test(ans.trim());

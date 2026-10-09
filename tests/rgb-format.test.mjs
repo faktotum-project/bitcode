@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatUnits, createRgbFormatter, parseRgbInvoice, prepareRgbSend } from "../src/rgb/format.mjs";
+import { formatUnits, createRgbFormatter, describeRgbSend, parseRgbInvoice, prepareRgbSend } from "../src/rgb/format.mjs";
 
 const USDT = "rgb:lX~ToKsO-Iup7dJ5-UM794sA-9WD21ge-VHYzBGb-E9PA_h0";
 
@@ -55,4 +55,9 @@ test("prepareRgbSend takes the recipient from the invoice, not from the model's 
   assert.throws(() => prepareRgbSend({ asset_id: USDT, amount: 5, recipient_id: "rpcs://proxy" }, known), /full RGB invoice/);
   assert.throws(() => prepareRgbSend({ asset_id: "rgb:invented", amount: 5, recipient_id: BLINDED }, known), /not held by this node/);
   assert.throws(() => prepareRgbSend({ asset_id: USDT, amount: 5, recipient_id: "rgb:~/~/~/sbc:wvout:abc" }, known), /witness/);
+});
+
+test("describeRgbSend gives one deterministic approval line", () => {
+  const line = describeRgbSend(prepareRgbSend({ asset_id: USDT, amount: 2, recipient_id: BLINDED }, new Set([USDT])), { ticker: "USDT", precision: 6 });
+  assert.equal(line, "Send 2 USDT (rgb:lX~ToKsO-Iup…9PA_h0) to sbc:utxob:_pnvbO…-Cm5ty on signet via rpcs://proxy.iriswallet.com/0.2/json-rpc");
 });

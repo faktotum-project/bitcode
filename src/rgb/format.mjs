@@ -82,5 +82,15 @@ export function createRgbFormatter() {
     return JSON.stringify(annotate(data, args), null, 2);
   }
   format.knownAssetIds = () => new Set([...assets.keys()].filter(key => key.startsWith("rgb:")));
+  format.asset = id => assets.get(id) || null;
   return format;
+}
+
+// One deterministic line for the approval prompt, built from the arguments that
+// will actually reach the node, never from model-written prose.
+export function describeRgbSend(args, asset, network = "signet") {
+  const short = id => id.length > 24 ? `${id.slice(0, 16)}…${id.slice(-6)}` : id;
+  const unit = asset?.ticker || "units";
+  return `Send ${args.amount} ${unit} (${short(args.asset_id || "?")}) to ${short(args.recipient_id || "?")} on ${network}`
+    + (args.transport_endpoints?.length ? ` via ${args.transport_endpoints.join(", ")}` : "");
 }

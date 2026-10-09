@@ -53,3 +53,16 @@ test("non-git checkpoint restores file-tool changes and refuses external conflic
   checkpoint.begin({ name: "write_file", args: { path: "a.txt" } }); writeFileSync(file, "agent\n"); checkpoint.finalize(); writeFileSync(file, "user\n");
   assert.deepEqual(checkpoint.undo().conflicts, ["a.txt"]);
 });
+
+test("checkpoint ignores nested node_modules and does not report untouched symlinks as changed", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "bc-release-links-"));
+  mkdirSync(path.join(root, "pkg", "node_modules", ".bin"), { recursive: true });
+  writeFileSync(path.join(root, "pkg", "node_modules", "dep.js"), "x\n");
+  symlinkSync("../dep.js", path.join(root, "pkg", "node_modules", ".bin", "dep"));
+  writeFileSync(path.join(root, "target.txt"), "t\n");
+  symlinkSync("target.txt", path.join(root, "link.txt"));
+  const checkpoint = new TurnCheckpoint(root);
+  checkpoint.begin();
+  writeFileSync(path.join(root, "pkg", "node_modules", "dep.js"), "changed\n");
+  assert.deepEqual(checkpoint.finalize(), []);
+});
