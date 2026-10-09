@@ -18,7 +18,7 @@ import { coinjoinTools } from "./coinjoin/tools.mjs";
 import { runSubagent } from "./subagents.mjs";
 import { projectRoot, resolveWorkspacePath, relativeProjectPath } from "./project.mjs";
 import { isMutating } from "./runtime.mjs";
-import { createRgbFormatter } from "./rgb/format.mjs";
+import { createRgbFormatter, prepareRgbSend } from "./rgb/format.mjs";
 
 const MAX_RESULT_CHARS = 100_000;
 const DEFAULT_BASH_TIMEOUT = 120_000;
@@ -494,7 +494,10 @@ export function buildTools(config = {}, { modelRef, agents = [], system = "", li
     return registeredTools().filter(tool => tool.mcpServer === server).map(tool => ({
       ...tool,
       ...(isMutating(tool) ? { financial: true } : {}),
-      run: async (args, options) => format(await tool.run(args, options), args),
+      run: async (args, options) => {
+        if (/send_asset$/.test(tool.name)) args = prepareRgbSend(args, format.knownAssetIds());
+        return format(await tool.run(args, options), args);
+      },
     }));
   }
   const base = [

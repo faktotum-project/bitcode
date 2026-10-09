@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatUnits, createRgbFormatter } from "../src/rgb/format.mjs";
+import { formatUnits, createRgbFormatter, parseRgbInvoice, prepareRgbSend } from "../src/rgb/format.mjs";
 
 const USDT = "rgb:lX~ToKsO-Iup7dJ5-UM794sA-9WD21ge-VHYzBGb-E9PA_h0";
 
@@ -33,4 +33,26 @@ test("errors and non-JSON results pass through unchanged", () => {
   const format = createRgbFormatter();
   assert.equal(format("ERROR: Invalid asset ID"), "ERROR: Invalid asset ID");
   assert.equal(format("plain text"), "plain text");
+});
+
+const BLINDED = "rgb:~/~/~/sbc:utxob:_pnvbOef-ljmgfSr-i0bQvnR-qyC1g6i-IU1Lr9O-DKfmoTF-Cm5ty?expiry=1791664659&endpoints=rpcs://proxy.iriswallet.com/0.2/json-rpc";
+
+test("parseRgbInvoice extracts recipient and endpoints from an invoice", () => {
+  assert.deepEqual(parseRgbInvoice(BLINDED), {
+    recipient_id: "sbc:utxob:_pnvbOef-ljmgfSr-i0bQvnR-qyC1g6i-IU1Lr9O-DKfmoTF-Cm5ty",
+    transport_endpoints: ["rpcs://proxy.iriswallet.com/0.2/json-rpc"],
+  });
+  assert.equal(parseRgbInvoice("rpcs://proxy.iriswallet.com/0.2/json-rpc"), null);
+});
+
+test("prepareRgbSend takes the recipient from the invoice, not from the model's field choice", () => {
+  const known = new Set([USDT]);
+  // Observed failure: the model put the invoice endpoint in recipient_id.
+  const fixed = prepareRgbSend({ asset_id: USDT, amount: 5, recipient_id: "rpcs://proxy.iriswallet.com/0.2/json-rpc", invoice: BLINDED }, known);
+  assert.deepEqual(fixed, { asset_id: USDT, amount: 5, recipient_id: "sbc:utxob:_pnvbOef-ljmgfSr-i0bQvnR-qyC1g6i-IU1Lr9O-DKfmoTF-Cm5ty",
+    transport_endpoints: ["rpcs://proxy.iriswallet.com/0.2/json-rpc"] });
+  assert.equal(prepareRgbSend({ asset_id: USDT, amount: 5, recipient_id: BLINDED }, known).recipient_id, fixed.recipient_id);
+  assert.throws(() => prepareRgbSend({ asset_id: USDT, amount: 5, recipient_id: "rpcs://proxy" }, known), /full RGB invoice/);
+  assert.throws(() => prepareRgbSend({ asset_id: "rgb:invented", amount: 5, recipient_id: BLINDED }, known), /not held by this node/);
+  assert.throws(() => prepareRgbSend({ asset_id: USDT, amount: 5, recipient_id: "rgb:~/~/~/sbc:wvout:abc" }, known), /witness/);
 });

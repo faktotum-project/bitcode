@@ -68,7 +68,8 @@ function rgbSystemPrompt() {
     "- To receive an RGB asset, create an invoice with mcp_kaleido_rln_create_rgb_invoice and show it in full. For any asset and any amount, leave asset_id and amount out of the arguments entirely (never pass 0 or an empty string).",
     "- Do only what the user asked. Never issue an asset (mcp_kaleido_rln_issue_asset) unless the user explicitly asks to issue or create a new token.",
     "- If a tool call is denied or fails, stop and tell the user what happened. Do not try other tools to reach the same goal.",
-    "- Before sending, state asset ID, amount, recipient invoice and network. The user approves every spend in a separate confirmation; never claim funds moved until a tool result says so.",
+    "- To send, call mcp_kaleido_rln_list_assets first, then mcp_kaleido_rln_send_asset with the full asset ID, the amount in display units, and the receiver's complete invoice string (rgb:...) copied unchanged as recipient_id. The user approves every spend in a separate confirmation; never claim funds moved until a tool result says so.",
+    "- A successful send means the transfer was broadcast, not confirmed. Say it is pending; it is complete only when mcp_kaleido_rln_list_transfers shows it settled.",
     "- If receiving or issuing fails for lack of colorable UTXOs, say that mcp_kaleido_rln_create_utxos is needed; do not call it unasked.",
     "- Never ask for or reveal mnemonics, passwords or keys.",
   ].join("\n");

@@ -25,6 +25,30 @@ function display(balance, precision, ticker) {
   return out;
 }
 
+// rgb:~/~/~/<recipient>?expiry=...&endpoints=a,b — the recipient is a blinded
+// UTXO (utxob) or a witness output (wvout) on some network prefix.
+const INVOICE = /rgb:[^\s?]*?\/((?:[a-z]+):(?:utxob|wvout):[A-Za-z0-9_~-]+)(?:\?([^\s]*))?/;
+
+export function parseRgbInvoice(text) {
+  const match = typeof text === "string" && text.match(INVOICE);
+  if (!match) return null;
+  const endpoints = new URLSearchParams(match[2] || "").get("endpoints");
+  return { recipient_id: match[1], transport_endpoints: endpoints ? endpoints.split(",").filter(Boolean) : [] };
+}
+
+// Small models copy the wrong field out of an invoice (an endpoint ended up as
+// recipient_id). For sends, take recipient and endpoints from the invoice text
+// itself, wherever the model put it, and refuse assets the node never listed.
+export function prepareRgbSend(args, knownAssets) {
+  const invoice = Object.values(args || {}).map(parseRgbInvoice).find(Boolean)
+    || (/^[a-z]+:(utxob|wvout):/.test(args?.recipient_id || "") ? { recipient_id: args.recipient_id, transport_endpoints: args.transport_endpoints || [] } : null);
+  if (!invoice) throw new Error("pass the receiver's full RGB invoice (rgb:...) as recipient_id");
+  if (invoice.recipient_id.includes(":wvout:")) throw new Error("witness (wvout) invoices are not supported by this node tool; ask the receiver for a blinded (utxob) invoice");
+  if (knownAssets && !knownAssets.has(args.asset_id)) throw new Error(`asset ${args.asset_id} is not held by this node; list assets first and use its full asset ID`);
+  const { invoice: _, ...rest } = args;
+  return { ...rest, recipient_id: invoice.recipient_id, ...(invoice.transport_endpoints.length ? { transport_endpoints: invoice.transport_endpoints } : {}) };
+}
+
 // Remembers precision per asset so a later balance lookup by ID or ticker,
 // which the node returns without metadata, can still be converted.
 export function createRgbFormatter() {
@@ -50,11 +74,13 @@ export function createRgbFormatter() {
     if (lookup && BALANCE_KEYS.some(key => key in node)) copy.balance_display = display(node, lookup.precision, lookup.ticker);
     return copy;
   };
-  return function format(result, args) {
+  function format(result, args) {
     if (typeof result !== "string" || result.startsWith("ERROR:")) return result;
     let data;
     try { data = JSON.parse(result); } catch { return result; }
     learn(data);
     return JSON.stringify(annotate(data, args), null, 2);
-  };
+  }
+  format.knownAssetIds = () => new Set([...assets.keys()].filter(key => key.startsWith("rgb:")));
+  return format;
 }
