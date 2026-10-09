@@ -18,6 +18,7 @@ import { coinjoinTools } from "./coinjoin/tools.mjs";
 import { runSubagent } from "./subagents.mjs";
 import { projectRoot, resolveWorkspacePath, relativeProjectPath } from "./project.mjs";
 import { isMutating } from "./runtime.mjs";
+import { createRgbFormatter } from "./rgb/format.mjs";
 
 const MAX_RESULT_CHARS = 100_000;
 const DEFAULT_BASH_TIMEOUT = 120_000;
@@ -489,8 +490,12 @@ export function buildTools(config = {}, { modelRef, agents = [], system = "", li
   // one-shot automation cannot approve it implicitly.
   if (profile === "rgb") {
     const server = config.rgb?.mcpServer || "kaleido";
-    return registeredTools().filter(tool => tool.mcpServer === server)
-      .map(tool => isMutating(tool) ? { ...tool, financial: true } : tool);
+    const format = createRgbFormatter();
+    return registeredTools().filter(tool => tool.mcpServer === server).map(tool => ({
+      ...tool,
+      ...(isMutating(tool) ? { financial: true } : {}),
+      run: async (args, options) => format(await tool.run(args, options), args),
+    }));
   }
   const base = [
     ...genericTools(root, { workspaceRoot: root, sandbox }),

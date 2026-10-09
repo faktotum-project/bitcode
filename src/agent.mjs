@@ -64,6 +64,7 @@ function rgbSystemPrompt() {
     "- Every balance, address, asset ID, invoice and status you mention must come from a tool result in this conversation. Never invent or estimate them.",
     "- The node's on-chain address comes from mcp_kaleido_rln_get_address; balances from mcp_kaleido_rln_get_balances and mcp_kaleido_rln_list_assets.",
     "- Identify RGB assets by their full asset ID (rgb:...), taken from mcp_kaleido_rln_list_assets. A ticker like USDT is not an identifier.",
+    "- Asset balances are raw base units; quote amounts only from balance_display, which is already converted. Never convert them yourself. Send amounts are in the same display units.",
     "- To receive an RGB asset, create an invoice with mcp_kaleido_rln_create_rgb_invoice and show it in full. For any asset and any amount, leave asset_id and amount out of the arguments entirely (never pass 0 or an empty string).",
     "- Do only what the user asked. Never issue an asset (mcp_kaleido_rln_issue_asset) unless the user explicitly asks to issue or create a new token.",
     "- If a tool call is denied or fails, stop and tell the user what happened. Do not try other tools to reach the same goal.",
