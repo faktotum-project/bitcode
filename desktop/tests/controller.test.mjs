@@ -31,6 +31,47 @@ async function sessionIn(c, root, mode = 'assisted') {
 }
 const pendingOf = events => events.filter(([ch, a]) => ch === 'approval' && a.status === 'pending').map(([, a]) => a);
 
+test('model errors survive RPC and worker failure with copyable, redacted diagnostics', async () => {
+  const { c, root, workers } = setup({ callModelImpl: async () => {
+    throw Object.assign(new Error('endpoint rejected sk-cloud-secret'), { statusCode: 401 });
+  } });
+  try {
+    const { s } = await sessionIn(c, root);
+    await c.invoke('session.update', { sessionId: s.sessionId, model: 'cloud/big' });
+    const prompt = 'A'.repeat(170) + ' original request tail';
+    const { run } = await c.invoke('chat.submit', { sessionId: s.sessionId, text: prompt }, 'ui:1');
+    await until(() => workers.length);
+    await assert.rejects(c.invoke('run.diagnostics', { runId: run.runId }), { code: 'INVALID_PARAMS' });
+    const response = await workers[0].request('model.request', { agent: 'bitcode', messages: [], tools: [] });
+    assert.equal(response.errorCode, 'HTTP_401'); assert.equal(response.statusCode, 401);
+    assert.doesNotMatch(response.error, /sk-cloud-secret/);
+    // A legacy worker may send only text; use the host's structured model error.
+    workers[0].onMessage({ type: 'failure', message: 'model request failed' });
+    const listed = (await c.invoke('run.list')).find(r => r.runId === run.runId);
+    assert.equal(listed.state, 'error'); assert.equal(listed.errorCode, 'HTTP_401'); assert.equal(listed.errorStatus, 401);
+    const details = await c.invoke('run.diagnostics', { runId: run.runId });
+    assert.ok(details.fixPrompt.includes(prompt)); assert.ok(details.fixPrompt.includes(root));
+    assert.match(details.fixPrompt, /Verifica configurazione delle credenziali/);
+    assert.doesNotMatch(JSON.stringify(details), /sk-cloud-secret/);
+    assert.match(details.fixPrompt, /Modello: cloud\/big/);
+  } finally { c.shutdown(); }
+});
+
+test('worker exits and non-provider failures expose their diagnostic codes', async () => {
+  const { c, root, workers } = setup();
+  try {
+    const { s } = await sessionIn(c, root);
+    const first = (await c.invoke('chat.submit', { sessionId: s.sessionId, text: 'first' }, 'ui:1')).run;
+    await until(() => workers.length);
+    workers[0].onExit(Object.assign(new Error('sandbox exited'), { code: 'WORKER_EXIT' }));
+    assert.equal((await c.invoke('run.diagnostics', { runId: first.runId })).errorCode, 'WORKER_EXIT');
+    const second = (await c.invoke('chat.submit', { sessionId: s.sessionId, text: 'second' }, 'ui:1')).run;
+    await until(() => workers.length === 2);
+    workers[1].onMessage({ type: 'failure', message: 'permission denied', code: 'EACCES' });
+    assert.equal((await c.invoke('run.diagnostics', { runId: second.runId })).errorCode, 'EACCES');
+  } finally { c.shutdown(); }
+});
+
 test('Sat commands share registry, persist selection and expose project-scoped identity', async () => {
   const { c, root, workers } = setup();
   try {

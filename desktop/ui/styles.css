@@ -10,6 +10,8 @@
 .sat-info p, .sat-info pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .sat-info details { margin-top: 24px; }
 .sat-info summary { cursor: pointer; }
+.run-error-message { color: var(--down); }
+.fix-prompt { width: 100%; box-sizing: border-box; resize: vertical; padding: 12px; border: 1px solid var(--hairlineStrong); border-radius: 8px; background: var(--card); font-size: 12px; line-height: 1.6; margin-bottom: 16px; }
 @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2"); }
 :root, :root[data-theme="dark"] {
   --canvas: #0b0e11; --surface: #14171c; --card: #1e2329; --elevated: #2b3139; --hover: #252a31;

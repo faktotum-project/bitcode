@@ -892,6 +892,18 @@ function gitView() {
 }
 
 // ---------- pages ----------
+const openRunError = guard(async runId => {
+  const details = await api('run.diagnostics', { runId });
+  const dialog = h('dialog', { class: 'sat-info run-error', 'aria-label': t('runErrorDetails') });
+  const prompt = h('textarea', { class: 'fix-prompt num', readonly: true, rows: 16, 'aria-label': t('fixPrompt') }, details.fixPrompt);
+  fill(dialog,
+    h('div', { class: 'row' }, h('h2', {}, t('runErrorDetails')), h('button', { class: 'iconbtn', autofocus: true, onClick: () => dialog.close(), 'aria-label': t('close') }, '×')),
+    h('div', { class: 'row' }, h('code', {}, details.errorCode), details.errorStatus ? h('span', { class: 'num' }, `HTTP ${details.errorStatus}`) : null),
+    h('pre', { class: 'run-error-message' }, details.error),
+    h('h3', {}, t('fixPrompt')), h('p', {}, t('fixPromptHelp')), prompt,
+    h('div', { class: 'row' }, h('button', { class: 'btn primary', onClick: e => copyText(details.fixPrompt, e.currentTarget) }, t('copyFixPrompt'))));
+  dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal();
+});
 function activityPage() {
   const runs = [...S.runs.values()].sort((a, b) => b.startedAt - a.startedAt);
   const projectName = id => S.projects.find(p => p.projectId === id)?.name || id;
@@ -907,10 +919,13 @@ function activityPage() {
       S.pending.map(a => h('tr', {}, h('td', {}, h('span', { class: 'chip warn' }, a.kind)), h('td', {}, a.subject?.project), h('td', {}, a.subject?.agentId), h('td', { class: 'num' }, new Date(a.expiresAt).toLocaleTimeString()),
         h('td', {}, h('button', { class: 'btn sm', onClick: () => goto(a.sessionId) }, t('open')))))) : h('p', { class: 'status' }, t('none')),
     h('div', { class: 'section' }, t('runs')),
-    runs.length ? h('table', { class: 'list' }, h('tr', {}, h('th', {}, t('state')), h('th', {}, t('project')), h('th', {}, t('prompt')), h('th', {}, t('model')), h('th', {}, t('tokens')), h('th', {})),
+    runs.length ? h('table', { class: 'list' }, h('tr', {}, h('th', {}, t('state')), h('th', {}, t('project')), h('th', {}, t('prompt')), h('th', {}, t('model')), h('th', {}, t('tokens')), h('th', {}, t('errorCode')), h('th', {})),
       runs.map(r => h('tr', {}, h('td', {}, h('span', { class: `chip ${r.state === 'success' ? 'ok' : ['error', 'interrupted'].includes(r.state) ? 'err' : r.state === 'awaiting_approval' ? 'warn' : ''}` }, t(`run_${r.state}`))),
         h('td', {}, projectName(r.projectId)), h('td', { title: r.error || '' }, r.prompt), h('td', { class: 'num' }, r.model), h('td', { class: 'num' }, (r.usage.inputTokens + r.usage.outputTokens).toLocaleString()),
-        h('td', {}, h('div', { class: 'row' }, h('button', { class: 'btn sm', onClick: () => goto(r.sessionId) }, t('open')), !r.endedAt ? h('button', { class: 'btn sm danger', onClick: guard(() => api('run.cancel', { runId: r.runId })) }, t('cancel')) : null))))) : h('p', { class: 'status' }, t('none')),
+        h('td', { class: 'num', title: r.error || '' }, r.errorCode || '—'),
+        h('td', {}, h('div', { class: 'row' }, h('button', { class: 'btn sm', onClick: () => goto(r.sessionId) }, t('open')),
+          ['error', 'interrupted'].includes(r.state) ? h('button', { class: 'btn sm', onClick: () => openRunError(r.runId) }, t('runErrorDetails')) : null,
+          !r.endedAt ? h('button', { class: 'btn sm danger', onClick: guard(() => api('run.cancel', { runId: r.runId })) }, t('cancel')) : null))))) : h('p', { class: 'status' }, t('none')),
     h('div', { class: 'section' }, t('worktrees')),
     S.worktrees.length ? h('table', { class: 'list' }, S.worktrees.map(w => h('tr', {}, h('td', {}, projectName(w.projectId)), h('td', { class: 'num' }, w.dir), h('td', {}, h('div', { class: 'row' },
       h('button', { class: 'btn sm', onClick: guard(async () => { if (S.projectId !== w.projectId) await selectProject(w.projectId); S.view = 'chat'; openDiff(`worktree · ${w.runId.slice(0, 8)}`, await api('worktree.diff', { runId: w.runId }) || t('none')); }) }, t('diff')),

@@ -16,6 +16,7 @@ import { isReadOnlyCommand, normalizeCommand } from '../../src/permissions.mjs';
 import { saveSession, loadSession, sessionsDir, newSessionId } from '../../src/session.mjs';
 import { Approvals, Redactor, Semaphore, atomicJSON, fail, hash, loadJSON, workspacePath } from './primitives.mjs';
 import { unifiedDiff } from './diff.mjs';
+import { runError, buildFixPrompt } from './run-errors.mjs';
 import * as G from './git.mjs';
 import { createFinance } from './finance.mjs';
 import { loadSats, findSat } from '../../src/sats.mjs';
@@ -112,8 +113,17 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   const policy = projectId => { if (!policies.has(projectId)) policies.set(projectId, { ...DEFAULT_POLICY, ...loadJSON(policyFile(projectId), DEFAULT_POLICY) }); return policies.get(projectId); };
   const lockFor = root => { if (!projectLocks.has(root)) projectLocks.set(root, new Semaphore(1)); return projectLocks.get(root); };
   const publicRun = r => ({ runId: r.runId, sessionId: r.sessionId, projectId: r.projectId, state: r.state, mode: r.config.mode, model: r.config.model,
-    prompt: r.prompt.slice(0, 160), startedAt: r.startedAt, endedAt: r.endedAt || null, usage: r.usage, worktree: r.worktree?.dir || null, error: r.error || null, errorCode: r.errorCode || null });
-  const setState = (r, state, extra = {}) => { Object.assign(r, { state }, extra); if (['success', 'error', 'cancelled', 'interrupted'].includes(state)) { r.endedAt = now(); r.probe?.stop(); } emit('run', publicRun(r)); };
+    prompt: redactor.text(r.prompt.slice(0, 160)), startedAt: r.startedAt, endedAt: r.endedAt || null, usage: r.usage, worktree: r.worktree?.dir || null, error: r.error || null, errorCode: r.errorCode || null, errorStatus: r.errorStatus || null });
+  const setState = (r, state, extra = {}) => {
+    if (['error', 'interrupted'].includes(state)) {
+      const details = runError({ message: extra.error || 'Execution interrupted', code: extra.errorCode, statusCode: extra.errorStatus }, state === 'interrupted' ? 'WORKER_EXIT' : 'UNCLASSIFIED_ERROR');
+      extra = { ...extra, ...details, error: redactor.text(details.error) };
+    }
+    if (extra.error) extra = { ...extra, error: redactor.text(extra.error) };
+    Object.assign(r, { state }, extra);
+    if (['success', 'error', 'cancelled', 'interrupted'].includes(state)) { r.endedAt = now(); r.probe?.stop(); }
+    emit('run', publicRun(r));
+  };
   const sessionEvent = (sessionId, type, data) => emit('session', { sessionId, type, data });
 
   // ---- model routing (§8): workers never hold provider credentials ----
@@ -146,7 +156,16 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     }
     const call = () => callModelImpl({ provider: target.provider, model: target.model, apiKey: target.apiKey, system, messages, tools, signal: r.aborter.signal,
       onDelta: text => sessionEvent(r.sessionId, 'message.delta', { runId: r.runId, agentId: agent, text: redactor.text(text) }) });
-    const res = target.locality === 'local' ? await local.use(call, r.aborter.signal) : await call();
+    let res;
+    try {
+      res = target.locality === 'local' ? await local.use(call, r.aborter.signal) : await call();
+      r.lastModelError = null;
+    } catch (e) {
+      let endpoint;
+      try { const url = new URL(target.provider.baseURL); endpoint = url.origin + url.pathname; } catch {}
+      r.lastModelError = { ...runError(e), errorModel: target.spec, errorEndpoint: endpoint };
+      throw e;
+    }
     const u = res.usage || {};
     r.usage.inputTokens += Number(u.input_tokens) || 0; r.usage.outputTokens += Number(u.output_tokens) || 0;
     emit('run', publicRun(r));
@@ -248,12 +267,12 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
         await new Promise(resolve => {
           r.worker = spawnWorker({ appDir, root: r.root, runId: r.runId,
             onMessage: msg => onWorkerMessage(r, msg),
-            onExit: err => { if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'interrupted', { error: err?.message || null }); cleanup(r); resolve(); } });
+            onExit: err => { if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'interrupted', runError(err || new Error('Worker exited without a final result'), 'WORKER_EXIT')); cleanup(r); resolve(); } });
           setState(r, 'running');
           r.worker.send({ type: 'start', runId: r.runId, sessionId, model: config.model, agent, agents, sats, limits: config.limits, messages: s.messages, readOnly, systemExtra });
         });
       } catch (e) {
-        if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', { error: e.message, errorCode: e.code || null });
+        if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', runError(e));
       } finally { release?.(); cleanup(r); }
     })();
     return publicRun(r);
@@ -266,7 +285,10 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       const handlers = { 'model.request': p => modelRequest(r, p), 'mutation.acquire': p => acquire(r, p), 'mutation.release': p => releaseLease(r, p), 'network.fetch': p => networkFetch(r, p) };
       const h = handlers[msg.method];
       Promise.resolve().then(() => { if (!h) throw fail('FORBIDDEN', 'Unknown worker method'); return h(msg.params || {}); })
-        .then(result => r.worker?.send({ type: 'response', id: msg.id, result }), e => r.worker?.send({ type: 'response', id: msg.id, error: `${e.code ? e.code + ': ' : ''}${e.message}` }));
+        .then(result => r.worker?.send({ type: 'response', id: msg.id, result }), e => {
+          const details = runError(e);
+          r.worker?.send({ type: 'response', id: msg.id, error: redactor.text(`${e.code ? e.code + ': ' : ''}${e.message}`), errorCode: details.errorCode, statusCode: details.errorStatus });
+        });
     } else if (msg.type === 'event' && msg.event?.v === 1) {
       if (msg.event.type === 'run.started') r.executingSat = SATS.includes(msg.event.agentId) ? msg.event.agentId : r.agentId;
       if (msg.event.type === 'run.finished') r.executingSat = r.agentId;
@@ -289,7 +311,11 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       }
       setState(r, 'success'); r.worker?.stop();
     }
-    else if (msg.type === 'failure') { setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', { error: redactor.text(msg.message || 'failed') }); r.worker?.stop(); }
+    else if (msg.type === 'failure') {
+      if (r.endedAt) return;
+      const details = r.lastModelError || runError({ message: msg.message || 'failed', code: msg.code, statusCode: msg.statusCode });
+      setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', details); r.worker?.stop();
+    }
   }
   function cancelRun(runId) {
     const r = run(runId); if (r.endedAt) return publicRun(r);
@@ -439,6 +465,11 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       loadMessages(session(sessionId)); return { command: false, run: await startRun({ sessionId, prompt: text, agent }) };
     },
     'run.list': () => [...runs.values()].map(publicRun).sort((a, b) => b.startedAt - a.startedAt),
+    'run.diagnostics': ({ runId }) => {
+      const r = run(runId);
+      if (!['error', 'interrupted'].includes(r.state)) throw fail('INVALID_PARAMS', 'Run has no failure');
+      return { ...publicRun(r), fixPrompt: buildFixPrompt({ run: r, project: projects.get(r.projectId), redact: text => redactor.text(text) }) };
+    },
     'run.cancel': ({ runId }) => cancelRun(runId),
     'approval.list': ({ sessionId } = {}) => approvals.list().filter(a => !sessionId || a.sessionId === sessionId),
     'approval.resolve': ({ requestId, digest, sessionId, decision }, origin) => {

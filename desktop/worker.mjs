@@ -19,10 +19,10 @@ let started = false;
 createInterface({ input: process.stdin }).on('line', async line => {
   try {
     const msg = JSON.parse(line);
-    if (msg.type === 'response') { const p = pending.get(msg.id); if (!p) return; pending.delete(msg.id); msg.error ? p.reject(new Error(msg.error)) : p.resolve(msg.result); }
+    if (msg.type === 'response') { const p = pending.get(msg.id); if (!p) return; pending.delete(msg.id); msg.error ? p.reject(Object.assign(new Error(msg.error), { code: msg.errorCode, statusCode: msg.statusCode })) : p.resolve(msg.result); }
     if (msg.type === 'cancel') { aborter.abort(); for (const p of pending.values()) p.reject(new Error('Cancelled')); pending.clear(); }
     if (msg.type === 'start' && !started) { started = true; await run(msg); }
-  } catch (error) { send({ type: 'failure', message: error.message }); process.exitCode = 1; process.stdin.destroy(); }
+  } catch (error) { send({ type: 'failure', message: error.message, code: error.code, statusCode: error.statusCode }); process.exitCode = 1; process.stdin.destroy(); }
 });
 
 async function run(input) {
@@ -72,6 +72,6 @@ async function run(input) {
       : await runAgent(options);
     if (answer?.startsWith('[stopped:')) send({ type: 'failure', message: answer });
     else send({ type: 'done', answer });
-  } catch (e) { send({ type: 'failure', message: e.message }); }
+  } catch (e) { send({ type: 'failure', message: e.message, code: e.code, statusCode: e.statusCode }); }
   process.stdin.destroy();
 }
