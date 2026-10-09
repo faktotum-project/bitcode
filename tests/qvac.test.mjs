@@ -71,3 +71,28 @@ test("idleTimeoutMs retries a stream that never sends data, and gives up after b
   await assert.rejects(callModel({ ...target, messages }), /stalled: no data for 100ms in 3 attempts/);
   assert.equal(calls, 3);
 });
+
+test("stream:false sends a plain completion, retries QVAC's HTTP 500 and parses tool calls", async t => {
+  const bodies = [];
+  const server = http.createServer(async (req, res) => {
+    let raw = ""; for await (const part of req) raw += part;
+    bodies.push(JSON.parse(raw));
+    res.setHeader("content-type", "application/json");
+    // QVAC answers a constrained-grammar failure with 500 when not streaming.
+    if (bodies.length === 1) { res.statusCode = 500; return res.end(JSON.stringify({ error: { message: "Unexpected empty grammar stack after accepting piece: </think>" } })); }
+    res.end(JSON.stringify({ choices: [{ finish_reason: "tool_calls", message: { role: "assistant", content: null,
+      tool_calls: [{ id: "c1", type: "function", function: { name: "read_file", arguments: '{"path":"README.md"}' } }] } }],
+      usage: { prompt_tokens: 7, completion_tokens: 3 } }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const target = resolveModel({ cliModel: "qvac", config: {
+    providers: { qvac: { baseURL: `http://127.0.0.1:${server.address().port}/v1`, stream: false } },
+  } });
+  const tools = [{ name: "read_file", description: "Read a file", parameters: { type: "object", properties: { path: { type: "string" } } } }];
+  const result = await callModel({ ...target, messages: [{ role: "user", content: "leggi" }], tools });
+  assert.deepEqual(result.toolCalls, [{ id: "c1", name: "read_file", args: { path: "README.md" } }]);
+  assert.deepEqual(result.usage, { input_tokens: 7, output_tokens: 3 });
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].stream, false);
+});

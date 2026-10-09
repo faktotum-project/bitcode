@@ -47,7 +47,7 @@ function openStream(urlString, headers, body, signal) {
     }
     if (!["https:", "http:"].includes(u.protocol)) return reject(new Error("unsupported URL protocol"));
     const lib = u.protocol === "https:" ? https : http;
-    const payload = JSON.stringify({ ...body, stream: true });
+    const payload = JSON.stringify({ stream: true, ...body });
     const req = lib.request(
       {
         method: "POST",
@@ -254,6 +254,9 @@ async function callOpenAIOnce({ provider, model, apiKey, system, messages, tools
     }));
     body.tool_choice = "auto";
   }
+  // provider.stream === false: some local servers (QVAC) report generation
+  // errors as an HTTP status only when not streaming, and hang when streaming.
+  if (provider.stream === false) body.stream = false;
 
   let res;
   try {
@@ -265,6 +268,7 @@ async function callOpenAIOnce({ provider, model, apiKey, system, messages, tools
     throw err;
   }
 
+  if (body.stream === false) return completionResult(res, provider, onDelta, onChunk);
   let text = "";
   let complete = false, usage, incomplete;
   const calls = []; // accumulated by streamed tool_call index
@@ -301,6 +305,23 @@ async function callOpenAIOnce({ provider, model, apiKey, system, messages, tools
   const toolCalls = calls
     .filter((c) => c && c.name)
     .map((c) => ({ id: c.id || randomUUID(), name: c.name, args: parseArgs(c.args) }));
+  return { text, toolCalls, usage };
+}
+
+async function completionResult(res, provider, onDelta, onChunk) {
+  let raw = "";
+  for await (const part of res) { raw += part; onChunk?.(); }
+  const json = eventJSON(raw);
+  const choice = json.choices?.[0];
+  if (!choice?.message) throw new Error("provider returned no completion");
+  const usage = json.usage ? { input_tokens: json.usage.prompt_tokens || 0, output_tokens: json.usage.completion_tokens || 0 } : undefined;
+  const text = typeof choice.message.content === "string" ? choice.message.content : "";
+  if (choice.finish_reason === "content_filter") throw new Error("model response incomplete: content_filter");
+  if (choice.finish_reason === "length") return { text, toolCalls: [], usage, incomplete: "length",
+    completionHint: "Check provider maxOutputTokens and the model context window; use /compact or /reset to shorten history." };
+  if (text) onDelta?.(text);
+  const toolCalls = (choice.message.tool_calls || []).filter(c => c?.function?.name)
+    .map(c => ({ id: c.id || randomUUID(), name: c.function.name, args: parseArgs(c.function.arguments) }));
   return { text, toolCalls, usage };
 }
 

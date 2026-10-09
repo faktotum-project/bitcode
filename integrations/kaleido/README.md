@@ -68,10 +68,12 @@ Model notes, from testing on this node:
 - Qwen 3.5 2B (`bitcode-rgb`) keeps calling tools after it has an answer and,
   when refused, tries other tools for the same goal. 4B stops and explains.
 - Set `reasoning_budget` (QVAC model config, here 512); the default is unbounded.
-- The QVAC HTTP server occasionally accepts a streamed request and never answers.
-  Set `providers.qvac.idleTimeoutMs` (e.g. 30000) in `~/.bitcode/config.json`
-  so bitcode abandons and retries a silent stream. Warm a new model with a plain
-  request first: its download counts as silence.
+- QVAC 0.14 sometimes fails tool-call generation with `Unexpected empty grammar
+  stack after accepting piece: </think>` (about 1 in 6 requests here). Without
+  streaming it answers HTTP 500, which bitcode retries; with streaming the request
+  hangs. Set `providers.qvac.stream: false`, and keep `idleTimeoutMs` (120000) as a
+  safety net. Warm a new model with a plain request first: its download counts
+  as silence.
 - Keep `providers.qvac.maxOutputTokens` around 1536.
 
 `kaleido-mcp` 0.5.0 passes the invoice `amount` to the node unconverted although
