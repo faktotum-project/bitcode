@@ -5,7 +5,30 @@
         "model": "QWEN3_600M_INST_Q4",
         "default": true,
         "preload": false,
-        "config": { "ctx_size": 8192, "tools": true }
+        "config": {
+          "ctx_size": 8192,
+          "tools": true
+        }
+      },
+      "bitcode-rgb": {
+        "model": "QWEN3_5_2B_MULTIMODAL_Q4_K_M",
+        "default": false,
+        "preload": false,
+        "config": {
+          "ctx_size": 16384,
+          "tools": true,
+          "reasoning_budget": 512
+        }
+      },
+      "bitcode-rgb-4b": {
+        "model": "QWEN3_5_4B_MULTIMODAL_Q4_K_M",
+        "default": false,
+        "preload": false,
+        "config": {
+          "ctx_size": 16384,
+          "tools": true,
+          "reasoning_budget": 512
+        }
       }
     }
   }

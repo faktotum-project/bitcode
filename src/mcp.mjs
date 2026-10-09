@@ -96,10 +96,17 @@ export async function mcpTools(config = {}) {
       const list = info.capabilities?.tools ? await client.listTools() : [];
       const allowed = list.filter(def => !spec.allowedTools || spec.allowedTools.includes(def.name));
       for (const def of allowed) {
+        // Local config, unlike server annotations, may vouch for read-only tools
+        // and route payment tools through the financial approval gate.
+        const financial = !!spec.financialTools?.includes(def.name);
+        const readOnly = !financial && (spec.readOnlyTools?.includes(def.name)
+          || (spec.trustReadOnlyAnnotations === true && def.annotations?.readOnlyHint === true));
         tools.push({
           name: mcpName(name, def.name),
+          mcpServer: name,
           // Annotations from a remote server alone do not grant unattended access.
-          mutating: !(spec.trustReadOnlyAnnotations === true && def.annotations?.readOnlyHint === true),
+          mutating: !readOnly,
+          ...(financial ? { financial: true } : {}),
           retryable: false,
           description: def.description || `MCP tool ${def.name} from ${name}`,
           parameters: def.inputSchema || { type: "object", properties: {} },

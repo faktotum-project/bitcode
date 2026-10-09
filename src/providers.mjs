@@ -208,7 +208,36 @@ function toOpenAIMessages(system, messages) {
   return out;
 }
 
-async function callOpenAI({ provider, model, apiKey, system, messages, tools, onDelta, signal }) {
+// Some local servers occasionally accept a request and never stream a byte.
+// With provider.idleTimeoutMs set, a silent stream is abandoned and retried,
+// but only while nothing has been shown to the user, so output never repeats.
+const IDLE_RETRIES = 2;
+
+async function callOpenAI(args) {
+  const idle = args.provider.idleTimeoutMs;
+  if (idle === undefined) return callOpenAIOnce(args);
+  if (!Number.isSafeInteger(idle) || idle < 1) throw new Error("idleTimeoutMs must be a positive integer");
+  for (let attempt = 0; ; attempt++) {
+    throwIfAborted(args.signal);
+    const ctl = new AbortController();
+    const forward = () => ctl.abort(args.signal.reason);
+    args.signal?.addEventListener("abort", forward, { once: true });
+    let timer, stalled = false, shown = false;
+    const arm = () => { clearTimeout(timer); timer = setTimeout(() => { stalled = true; ctl.abort(new Error("idle")); }, idle); };
+    arm();
+    try {
+      return await callOpenAIOnce({ ...args, signal: ctl.signal, onChunk: arm, onDelta: d => { shown = true; args.onDelta?.(d); } });
+    } catch (err) {
+      if (!stalled || args.signal?.aborted) throw err;
+      if (shown || attempt >= IDLE_RETRIES) throw new Error(`model stream stalled: no data for ${idle}ms${shown ? " after partial output" : ` in ${attempt + 1} attempts`}`);
+    } finally {
+      clearTimeout(timer);
+      args.signal?.removeEventListener("abort", forward);
+    }
+  }
+}
+
+async function callOpenAIOnce({ provider, model, apiKey, system, messages, tools, onDelta, onChunk, signal }) {
   const headers = {};
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
 
@@ -240,6 +269,7 @@ async function callOpenAI({ provider, model, apiKey, system, messages, tools, on
   let complete = false, usage, incomplete;
   const calls = []; // accumulated by streamed tool_call index
   for await (const data of sseEvents(res)) {
+    onChunk?.();
     if (data === "[DONE]") { complete = true; break; }
     const json = eventJSON(data);
     if (json.usage) usage = { input_tokens: json.usage.prompt_tokens || 0, output_tokens: json.usage.completion_tokens || 0 };

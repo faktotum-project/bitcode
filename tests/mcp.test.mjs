@@ -41,6 +41,20 @@ test("modern MCP HTTP negotiates 2026, paginates tools, forwards headers and str
   assert.equal(request.headers["x-test"], "fixture");
 });
 
+test("local config marks MCP tools read-only or financial; financial wins over read-only", async t => {
+  const { url } = await endpoint(t, msg => {
+    if (msg.method === "server/discover") return { supportedVersions: ["2026-07-28"], capabilities: { tools: {} }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "test", version: "1" } } };
+    if (msg.method === "tools/list") return { tools: ["balance", "send", "other"].map(name => ({ name, inputSchema: empty })) };
+  });
+  const result = await mcpTools({ mcp: { rgb: { url, readOnlyTools: ["balance", "send"], financialTools: ["send"] } } });
+  const tool = name => result.tools.find(t => t.name === `mcp_rgb_${name}`);
+  assert.equal(tool("balance").mutating, false);
+  assert.equal(tool("balance").financial, undefined);
+  assert.equal(tool("send").mutating, true);
+  assert.equal(tool("send").financial, true);
+  assert.equal(tool("other").mutating, true);
+});
+
 test("legacy HTTP initializes and exposes resources and prompts", async t => {
   const { url, requests } = await endpoint(t, msg => {
     if (msg.method === "initialize") return { protocolVersion: "2025-11-25", capabilities: { resources: {}, prompts: {} }, serverInfo: { name: "legacy", version: "1" } };

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
-export const PROFILES = new Set(["code", "bitcoin"]);
+export const PROFILES = new Set(["code", "bitcoin", "rgb"]);
 
 export function projectRoot(cwd = process.cwd()) {
   return realpathSync(path.resolve(cwd));
@@ -29,7 +29,7 @@ export function detectsBitcoinProject(cwd = process.cwd()) {
 export function resolveProfile({ cliProfile, config = {}, cwd = process.cwd() } = {}) {
   const requested = cliProfile ?? config.profile;
   if (requested != null) {
-    if (!PROFILES.has(requested)) throw new Error(`invalid profile "${requested}"; use code or bitcoin`);
+    if (!PROFILES.has(requested)) throw new Error(`invalid profile "${requested}"; use code, bitcoin or rgb`);
     return requested;
   }
   return detectsBitcoinProject(cwd) ? "bitcoin" : "code";

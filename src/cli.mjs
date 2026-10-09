@@ -34,7 +34,7 @@ import { satWorkspace, satHistory } from "./sat-workspace.mjs";
 import { createEventBus, createRunContext } from "./runtime/events.mjs";
 import { startSatsServer } from "./sats/server.mjs";
 import { buildTools, registerTool } from "./tools.mjs";
-import { discoverProject, projectRoot, resolveProfile } from "./project.mjs";
+import { PROFILES, discoverProject, projectRoot, resolveProfile } from "./project.mjs";
 import { bubblewrapAvailable, mayAutoApprove, resolvePermissions } from "./permissions.mjs";
 import { TurnCheckpoint } from "./checkpoint.mjs";
 import { resolveNetwork } from "./bitcoin/network.mjs";
@@ -92,7 +92,7 @@ const SLASH_COMMANDS = [
   { name: "build", hint: "execute the most recently saved plan" },
   { name: "compact", hint: "summarize older context, keeping recent turns" },
   { name: "status", hint: "context size, token usage and task progress" },
-  { name: "profile", hint: "show or switch code/bitcoin profile", args: true },
+  { name: "profile", hint: "show or switch code/bitcoin/rgb profile", args: true },
   { name: "diff", hint: "show changes from the latest agent turn" },
   { name: "undo", hint: "restore the latest agent turn when safe" },
   { name: "skills", hint: "list local skills" },
@@ -167,7 +167,7 @@ Options:
       --resume [id]                  resume a saved session (latest if no id)
       --continue                     resume the most recent session
       --cwd <path>                   run in this working directory
-      --profile <code|bitcoin>       choose coding or Bitcoin tool profile
+      --profile <code|bitcoin|rgb>   choose coding, Bitcoin or RGB wallet profile
       --permission <mode>            suggest | auto-edit | full-auto
       --read-only                    expose only read-only tools
       --json                         one-shot JSON result (answer, usage, events)
@@ -186,7 +186,7 @@ Interactive slash commands:
   /build               execute the latest saved plan
   /compact             summarize older context
   /status              context and token usage
-  /profile [code|bitcoin]  show or switch tool profile
+  /profile [code|bitcoin|rgb]  show or switch tool profile
   /diff /undo           inspect or safely restore the latest agent turn
   /skills /mcp /commands  inspect extensions and commands
   /model [spec]        show or switch the active model
@@ -319,7 +319,7 @@ export async function main(argv) {
 
   const ctx = resolveNetwork(config);
   const skills = loadSkills();
-  const system = systemPrompt({ profile, network: ctx.name, lightning: !!config.lightning?.lndRestUrl, project }) + "\n\n" + contextPrompt(root, skills);
+  const system = systemPrompt({ profile, network: ctx.name, lightning: !!config.lightning?.lndRestUrl, project }) + (profile === "rgb" ? "" : "\n\n" + contextPrompt(root, skills));
   const agents = loadAgents();
   const modelRef = { current: target };
   const ext = await loadExtensions(config, profile); // plugins + MCP register their tools first
@@ -841,7 +841,7 @@ async function interactive({ target, system, tools, network, config, yolo, agent
             currentProfile = next;
             config.profile = next;
             currentProject = discoverProject(root);
-            currentSystem = systemPrompt({ profile: next, network, lightning: !!config.lightning?.lndRestUrl, project: currentProject }) + "\n\n" + contextPrompt(root, loadSkills(root));
+            currentSystem = systemPrompt({ profile: next, network, lightning: !!config.lightning?.lndRestUrl, project: currentProject }) + (next === "rgb" ? "" : "\n\n" + contextPrompt(root, loadSkills(root)));
             currentTools = buildTools(config, { modelRef, agents, system: currentSystem, skills: loadSkills(root), plan, profile: next, workspaceRoot: root, sandbox: permissions.sandbox });
           },
           setActive: (x) => {
@@ -906,7 +906,7 @@ export async function handleSlash(input, ctx) {
       return;
     case "profile": {
       if (!arg) { out(t.faint(`profile: ${ctx.profile || "code"}`)); return; }
-      if (!["code", "bitcoin"].includes(arg)) { out(t.danger("usage: /profile [code|bitcoin]")); return; }
+      if (!PROFILES.has(arg)) { out(t.danger("usage: /profile [code|bitcoin|rgb]")); return; }
       if (!ctx.setProfile) { out(t.danger("profile switching is unavailable in this command")); return; }
       try {
         ctx.setProfile(arg);
@@ -1243,7 +1243,7 @@ export async function handleSlash(input, ctx) {
     }
     case "help":
       out(t.faint("/model [spec]  /models  /login [provider]  /setting  /config <sub>  /provider <sub>  /doctor  /session <sub>"));
-      out(t.faint("/plan <task>  /build  /compact  /status  /profile [code|bitcoin]  /diff  /undo  /skills  /mcp  /commands"));
+      out(t.faint("/plan <task>  /build  /compact  /status  /profile [code|bitcoin|rgb]  /diff  /undo  /skills  /mcp  /commands"));
       out(t.faint("/sats  /sat <name>  /sat info <name>  /sat workspace <name>  /tools [filter]  /reset  /exit"));
       if (ctx.commands?.length) out(t.faint(`custom: ${ctx.commands.map((c) => "/" + c.name).join("  ")}`));
       return;

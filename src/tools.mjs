@@ -17,6 +17,7 @@ import { cashuTools } from "./cashu/tools.mjs";
 import { coinjoinTools } from "./coinjoin/tools.mjs";
 import { runSubagent } from "./subagents.mjs";
 import { projectRoot, resolveWorkspacePath, relativeProjectPath } from "./project.mjs";
+import { isMutating } from "./runtime.mjs";
 
 const MAX_RESULT_CHARS = 100_000;
 const DEFAULT_BASH_TIMEOUT = 120_000;
@@ -481,6 +482,16 @@ function subagentTool({ modelRef, agents, system, realTools }) {
 // land in `registeredTools()` before this function runs.
 export function buildTools(config = {}, { modelRef, agents = [], system = "", lightning = resolveLightning(config), skills, plan, profile = "bitcoin", workspaceRoot = process.cwd(), sandbox = false } = {}) {
   const root = projectRoot(workspaceRoot);
+  // The RGB profile is a wallet assistant, not a coding agent: it sees only the
+  // configured RGB node's MCP tools, so a small local model cannot pick the
+  // built-in wallet, the shell or the file system by mistake. Every state change
+  // on the node (issuing, invoicing, spending) takes the payment gate, so
+  // one-shot automation cannot approve it implicitly.
+  if (profile === "rgb") {
+    const server = config.rgb?.mcpServer || "kaleido";
+    return registeredTools().filter(tool => tool.mcpServer === server)
+      .map(tool => isMutating(tool) ? { ...tool, financial: true } : tool);
+  }
   const base = [
     ...genericTools(root, { workspaceRoot: root, sandbox }),
     ...processToolsFor({ workspaceRoot: root, sandbox }),
