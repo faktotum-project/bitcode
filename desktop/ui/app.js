@@ -640,6 +640,12 @@ function showResult(res) {
   if (r?.satId) { S.agent = r.satId; S.session.satId = S.agent; renderComposer(); return toast(`${satName(S.agent)} · ${r.role}`); }
   if (r?.workspace) return showSatInfo(r);
   if (r?.mode) { S.session.mode = r.mode; loadSessions(); renderComposer(); return; }
+  if (r?.profile) {
+    if (r.session) { S.session.profile = r.session.profile; S.session.rgbNetwork = r.session.rgbNetwork; S.agent = r.session.satId || ''; renderComposer(); }
+    return note(t('profileTitle'), r.profile === 'rgb'
+      ? [t('rgbProfileOn'), `${t('network')}: ${r.network || '—'}`, `${t('nodeL')}: ${r.node || '—'}`, r.height ? `${t('height')}: ${r.height}` : null].filter(Boolean)
+      : [r.session ? t('codeProfileOn') : `${t('profileTitle')}: ${r.profile}`]);
+  }
   if (r?.run) { S.notes = []; api('session.open', { sessionId: S.session.sessionId }).then(x => { S.session = x; renderThread(); renderSidebar(); }); }
 }
 
@@ -703,12 +709,13 @@ function renderComposer() {
   fill(el, h('div', { class: 'composer' }, menuEl, attachmentChips(), input,
     h('div', { class: 'bar' },
       h('button', { type: 'button', class: 'attachbtn', title: `${t('attachL')} (${modKey}+U)`, 'aria-label': t('attachL'), disabled: !!run, onClick: e => attachMenu(e.currentTarget) }, icon('paperclip', { size: 16 })),
-      h('select', { 'aria-label': t('agentL'), disabled: !!run, onChange: guard(async e => {
+      s?.profile === 'rgb' ? null : h('select', { 'aria-label': t('agentL'), disabled: !!run, onChange: guard(async e => {
         const id = e.target.value;
         if (s) await api('session.update', { sessionId: s.sessionId, satId: id });
         S.agent = id;
       }) }, h('option', { value: '', selected: !S.agent }, 'Bitcode'), SATS.map(a => h('option', { value: a, selected: S.agent === a }, satName(a)))),
       modeSelect,
+      s?.profile === 'rgb' ? h('span', { class: 'chip rgb', title: t('rgbProfileHint') }, `RGB · ${s.rgbNetwork || t('testNet')}`) : null,
       h('div', { class: 'modelpick' },
         h('button', { class: 'modelbtn num', title: t('chooseModel'), 'aria-haspopup': 'listbox', 'aria-expanded': S.picker.open ? 'true' : 'false', disabled: !!run, onClick: () => S.picker.open ? closeModelPicker() : openModelPicker() },
           h('span', { class: `loc ${modelLocality(currentModel)}` }), currentModel, h('span', { class: 'caret' }, '▾')),
@@ -815,14 +822,20 @@ function openModelDialog({ title, current, inherit = null, onPick }) {
   if (!S.picker.data) loadModels().then(draw);
 }
 
+const shortId = id => id.length > 24 ? `${id.slice(0, 16)}…${id.slice(-6)}` : id;
+const rgbSendLine = ({ send, network }) => t('rgbSendLine').replace('{amount}', send.amount).replace('{unit}', send.unit || t('units'))
+  .replace('{asset}', shortId(send.assetId)).replace('{recipient}', shortId(send.recipientId)).replace('{network}', network)
+  + (send.endpoints.length ? ` ${t('via')} ${send.endpoints.join(', ')}` : '');
 function approvalCard(a) {
   const sub = a.subject || {};
   const resolve = decision => guard(async () => { await api('approval.resolve', { requestId: a.id, digest: a.digest, sessionId: a.sessionId, decision }); });
   const body = a.kind === 'command' ? h('pre', { class: 'cmd mono' }, sub.shell)
     : a.kind === 'patch' ? h('pre', { class: 'cmd mono' }, (sub.unifiedDiff || '').split('\n').map(l => h('span', { class: lineClass(l) }, l || ' ')))
-    : a.kind === 'network' ? h('pre', { class: 'cmd mono' }, sub.url) : h('pre', { class: 'cmd mono' }, sub.model || JSON.stringify(sub));
+    : a.kind === 'network' ? h('pre', { class: 'cmd mono' }, sub.url)
+    : a.kind === 'payment' ? h('div', {}, h('p', { class: 'readback mono' }, sub.send ? rgbSendLine(sub) : sub.readback), h('details', {}, h('summary', {}, t('rawArgs')), h('pre', { class: 'cmd mono' }, JSON.stringify(sub.args, null, 2))))
+    : h('pre', { class: 'cmd mono' }, sub.model || JSON.stringify(sub));
   const kv = [[t('agentL'), `${sub.agentId || ''} · ${sub.model || ''}`], [t('mode'), t(sub.mode)],
-    a.kind === 'command' ? [t('sandbox'), t('sandboxNoNet')] : null, [t('reason'), sub.reason], [t('id'), `${a.id.slice(0, 12)} · ${t('expires')} ${new Date(a.expiresAt).toLocaleTimeString()}`]].filter(x => x && x[1]);
+    a.kind === 'command' ? [t('sandbox'), t('sandboxNoNet')] : null, a.kind === 'payment' ? [t('network'), `${sub.network} · ${sub.node}`] : null, [t('reason'), a.kind === 'payment' ? t('rgbReason') : sub.reason], [t('id'), `${a.id.slice(0, 12)} · ${t('expires')} ${new Date(a.expiresAt).toLocaleTimeString()}`]].filter(x => x && x[1]);
   return h('div', { class: 'approval', role: 'group', 'aria-label': t(`kind_${a.kind}`) },
     h('h4', {}, SATS.includes(sub.agentId) ? sat(sub.agentId, { size: 24, state: 'waiting' }) : logo({ size: 18 }), `${sub.agentId === 'bitcode' || !sub.agentId ? 'Bitcode' : satName(sub.agentId)} ${t(`kind_${a.kind}`)}`), body,
     h('dl', { class: 'kv' }, kv.map(([k, v]) => [h('dt', {}, k), h('dd', { class: 'mono' }, v)])),

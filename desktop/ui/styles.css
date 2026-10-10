@@ -11,6 +11,8 @@
 .sat-info details { margin-top: 24px; }
 .sat-info summary { cursor: pointer; }
 .run-error-message { color: var(--down); }
+.approval .readback { font-size: 14px; font-weight: 600; margin: 8px 0; overflow-wrap: anywhere; }
+.chip.rgb { align-self: center; }
 .fix-prompt { width: 100%; box-sizing: border-box; resize: vertical; padding: 12px; border: 1px solid var(--hairlineStrong); border-radius: 8px; background: var(--card); font-size: 12px; line-height: 1.6; margin-bottom: 16px; }
 @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2"); }
 :root, :root[data-theme="dark"] {

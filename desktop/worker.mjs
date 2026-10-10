@@ -55,12 +55,20 @@ async function run(input) {
     })) },
     { name: 'network_fetch', mutating: true, description: 'GET an HTTP(S) URL through the project destination allowlist. No credentials or arbitrary headers.', parameters: schema({ url: string }), run: args => rpc('network.fetch', args) }
   ];
+  // RGB wallet sessions: only the node tools the controller offered, each call
+  // mediated (and, for state changes, approved) by the controller.
+  if (input.profile === 'rgb') {
+    tools.length = 0;
+    for (const t of input.rgbTools || []) tools.push({ ...t, run: args => rpc('rgb.call', { name: t.name, args }) });
+  }
   const context = { bus, runId: input.runId, sessionId: input.sessionId, agentId: input.agent || 'bitcode', cwd: root };
   const target = { spec: input.model, provider: { desktopAgent: input.agent || 'bitcode' }, model: input.model };
   const hooks = { onCheckpoint: messages => send({ type: 'checkpoint', messages }), onUsage: usage => send({ type: 'usage', usage }) };
   const model = request => rpc('model.request', { agent: request.provider.desktopAgent, system: request.system, messages: request.messages, tools: request.tools });
-  const system = systemPrompt({ project: { root }, profile: 'code' }) + '\nDesktop mode: remain inside the project. All changes and commands are policy-controlled. Never attempt to approve actions yourself.' + '\n\n' + DESKTOP_CAPABILITIES + (input.systemExtra ? `\n${input.systemExtra}` : '');
-  tools.push({ name: 'subagent', serial: true, description: 'Delegate one task to node (research), script (coding), hash (security) or merkle (review).', parameters: schema({ agent: { enum: ['node', 'script', 'hash', 'merkle'] }, prompt: string }), run: args => runSubagent({ ...args, agents: input.agents,
+  const system = input.profile === 'rgb'
+    ? systemPrompt({ profile: 'rgb' }) + '\nDesktop mode: never attempt to approve actions yourself.' + (input.systemExtra ? `\n${input.systemExtra}` : '')
+    : systemPrompt({ project: { root }, profile: 'code' }) + '\nDesktop mode: remain inside the project. All changes and commands are policy-controlled. Never attempt to approve actions yourself.' + '\n\n' + DESKTOP_CAPABILITIES + (input.systemExtra ? `\n${input.systemExtra}` : '');
+  if (input.profile !== 'rgb') tools.push({ name: 'subagent', serial: true, description: 'Delegate one task to node (research), script (coding), hash (security) or merkle (review).', parameters: schema({ agent: { enum: ['node', 'script', 'hash', 'merkle'] }, prompt: string }), run: args => runSubagent({ ...args, agents: input.agents,
     target: { spec: input.model, model: input.model, provider: { desktopAgent: args.agent } },
     system, tools, parentContext: context, hooks: { onUsage: hooks.onUsage }, callModelImpl: model, signal, limits: input.limits,
     state: sharedState }) });

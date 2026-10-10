@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatUnits, createRgbFormatter, describeRgbSend, parseRgbInvoice, prepareRgbSend } from "../src/rgb/format.mjs";
+import { rgbTools } from "../src/rgb/tools.mjs";
 
 const USDT = "rgb:lX~ToKsO-Iup7dJ5-UM794sA-9WD21ge-VHYzBGb-E9PA_h0";
 
@@ -60,4 +61,13 @@ test("prepareRgbSend takes the recipient from the invoice, not from the model's 
 test("describeRgbSend gives one deterministic approval line", () => {
   const line = describeRgbSend(prepareRgbSend({ asset_id: USDT, amount: 2, recipient_id: BLINDED }, new Set([USDT])), { ticker: "USDT", precision: 6 });
   assert.equal(line, "Send 2 USDT (rgb:lX~ToKsO-Iup…9PA_h0) to sbc:utxob:_pnvbO…-Cm5ty on signet via rpcs://proxy.iriswallet.com/0.2/json-rpc");
+});
+
+test("rgb tools refresh transfers before reporting holdings, not before other calls", async () => {
+  const calls = [];
+  const tool = (name, mutating = false) => ({ name: `mcp_kaleido_${name}`, mcpServer: "kaleido", mutating, run: async () => { calls.push(name); return "[]"; } });
+  const tools = rgbTools([tool("rln_refresh_transfers"), tool("rln_list_assets"), tool("rln_get_address"), tool("rln_create_rgb_invoice", true)]);
+  const run = name => tools.find(t => t.name === `mcp_kaleido_${name}`).run({});
+  await run("rln_list_assets"); await run("rln_get_address"); await run("rln_create_rgb_invoice");
+  assert.deepEqual(calls, ["rln_refresh_transfers", "rln_list_assets", "rln_get_address", "rln_create_rgb_invoice"]);
 });

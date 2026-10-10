@@ -17,8 +17,7 @@ import { cashuTools } from "./cashu/tools.mjs";
 import { coinjoinTools } from "./coinjoin/tools.mjs";
 import { runSubagent } from "./subagents.mjs";
 import { projectRoot, resolveWorkspacePath, relativeProjectPath } from "./project.mjs";
-import { isMutating } from "./runtime.mjs";
-import { createRgbFormatter, describeRgbSend, prepareRgbSend } from "./rgb/format.mjs";
+import { rgbTools } from "./rgb/tools.mjs";
 
 const MAX_RESULT_CHARS = 100_000;
 const DEFAULT_BASH_TIMEOUT = 120_000;
@@ -488,22 +487,7 @@ export function buildTools(config = {}, { modelRef, agents = [], system = "", li
   // built-in wallet, the shell or the file system by mistake. Every state change
   // on the node (issuing, invoicing, spending) takes the payment gate, so
   // one-shot automation cannot approve it implicitly.
-  if (profile === "rgb") {
-    const server = config.rgb?.mcpServer || "kaleido";
-    const format = createRgbFormatter();
-    return registeredTools().filter(tool => tool.mcpServer === server).map(tool => ({
-      ...tool,
-      ...(isMutating(tool) ? { financial: true } : {}),
-      ...(/send_asset$/.test(tool.name) ? { readback: args => {
-        try { const prepared = prepareRgbSend(args, format.knownAssetIds()); return describeRgbSend(prepared, format.asset(prepared.asset_id)); }
-        catch (err) { return `Will be refused: ${err.message}`; }
-      } } : {}),
-      run: async (args, options) => {
-        if (/send_asset$/.test(tool.name)) args = prepareRgbSend(args, format.knownAssetIds());
-        return format(await tool.run(args, options), args);
-      },
-    }));
-  }
+  if (profile === "rgb") return rgbTools(registeredTools(), config);
   const base = [
     ...genericTools(root, { workspaceRoot: root, sandbox }),
     ...processToolsFor({ workspaceRoot: root, sandbox }),

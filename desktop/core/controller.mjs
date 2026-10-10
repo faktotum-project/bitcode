@@ -19,6 +19,8 @@ import { unifiedDiff } from './diff.mjs';
 import { runError, buildFixPrompt } from './run-errors.mjs';
 import * as G from './git.mjs';
 import { createFinance } from './finance.mjs';
+import { createRgb } from './rgb.mjs';
+import { closeMcpConnections } from '../../src/mcp.mjs';
 import { loadSats, findSat } from '../../src/sats.mjs';
 import { satWorkspace, satHistory, recordSatRun } from '../../src/sat-workspace.mjs';
 import { satEvents } from '../../src/sat-events.mjs';
@@ -28,7 +30,8 @@ const SATS = ['node', 'script', 'hash', 'merkle'];
 const RETENTION_MS = 30 * 24 * 3600_000;
 const DEFAULT_SETTINGS = { v: 1, lang: 'it', theme: 'dark', maxActive: 3, maxLocal: 1, model: null, satModels: {}, localOnly: false };
 const DEFAULT_POLICY = { version: 1, commands: [], network: { destinations: [] } };
-const TTL = { patch: 900_000, command: 900_000, tool: 900_000, network: 300_000, egress: 300_000, policy: 300_000, integrate: 900_000 };
+const TTL = { patch: 900_000, command: 900_000, tool: 900_000, network: 300_000, egress: 300_000, policy: 300_000, integrate: 900_000, payment: 300_000 };
+export const PROFILES = ['code', 'rgb'];
 const HUMAN = /^(ui:\d+|tray)$/;
 // Slash commands available in the desktop chat. `run` = handled here, `ui` =
 // handled by the renderer (panels, pickers), `cli` = CLI-only for now and
@@ -61,7 +64,7 @@ export const BUILTIN_COMMANDS = [
   { name: 'doctor', hint: 'diagnostics', scope: 'ui' },
   { name: 'compact', hint: 'summarize older context', scope: 'cli' },
   { name: 'undo', hint: 'restore the latest agent turn', scope: 'cli' },
-  { name: 'profile', hint: 'switch code/bitcoin profile', scope: 'cli' },
+  { name: 'profile', hint: 'code · rgb (RGB wallet on a test node)', args: true, scope: 'run' },
   { name: 'skills', hint: 'list local skills', scope: 'cli' },
   { name: 'mcp', hint: 'show MCP connections', scope: 'cli' },
   { name: 'subagent', hint: 'run a custom subagent persona', scope: 'cli' },
@@ -84,7 +87,7 @@ const matchesPolicy = (policy, argv) => !!argv && policy.commands.some(r =>
   r.argv ? r.argv.length === argv.length && r.argv.every((a, i) => a === argv[i]) : r.argvPrefix?.every((a, i) => a === argv[i]));
 
 export function createController({ home, appDir, agents = [], emit = () => {}, sandbox = { available: false }, spawnWorker,
-  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, secrets = { get: () => undefined }, now = Date.now } = {}) {
+  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, rgbFetch, rgbMcpTools, secrets = { get: () => undefined }, now = Date.now } = {}) {
   const dir = path.join(home, 'desktop');
   const sats = loadSats(appDir && existsSync(path.join(appDir, 'sats')) ? { directory: path.join(appDir, 'sats') } : {});
   const files = { settings: path.join(dir, 'settings.json'), projects: path.join(dir, 'projects.json'), sessions: path.join(dir, 'sessions.json'), worktrees: path.join(dir, 'worktrees.json'), log: path.join(dir, 'approvals.jsonl') };
@@ -234,6 +237,27 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     return `HTTP ${res.status}\n${body}`;
   }
 
+  // Every RGB state change (invoice, issue, UTXOs, send) is a payment-kind
+  // approval in every mode, re-checked against the node's network first.
+  async function rgbCall(r, { name, args = {} }) {
+    if (r.config.profile !== 'rgb') throw fail('FORBIDDEN', 'RGB tools are only available in the rgb profile');
+    const tool = await rgb.tool(name);
+    if (r.kind === 'plan' && tool.mutating !== false) throw fail('POLICY_DENIED', 'Plans are read-only');
+    if (tool.prepare) { try { args = tool.prepare(args); } catch (e) { throw fail('INVALID_PARAMS', e.message); } }
+    if (tool.financial) {
+      const env = await rgb.verify();
+      if (env.environment !== 'test') throw fail('POLICY_DENIED', `RGB node now reports ${env.reported}; refusing state changes`);
+      const readback = tool.readback ? tool.readback(args) : `${name} ${JSON.stringify(args)}`;
+      setState(r, 'awaiting_approval');
+      const ok = await ask(r, 'payment', { tool: name, readback, ...(tool.preview ? { send: tool.preview(args) } : {}), args, network: env.network, node: env.nodeUrl, agentId: r.agentId, model: r.config.model,
+        reason: 'changes the RGB node state on a test network' });
+      setState(r, 'running');
+      if (!ok) throw fail('POLICY_DENIED', 'Denied by the user');
+    }
+    sessionEvent(r.sessionId, 'tool.detail', { runId: r.runId, tool: name, summary: redactor.text(tool.readback ? tool.readback(args) : name), auto: !tool.financial });
+    return tool.run(args, { signal: r.aborter.signal });
+  }
+
   // ---- runs (§8, §9) ----
   async function startRun({ sessionId, prompt, agent, kind = 'chat', readOnly = false, systemExtra = '' }) {
     const s = session(sessionId), p = project(s.projectId);
@@ -246,9 +270,12 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     const satModels = Object.fromEntries(SATS.map(a => [a, s.satModels?.[a] || settings.satModels?.[a] || null]));
     if (settings.localOnly && (model.locality !== 'local' || SATS.some(a => satModels[a] && describeModel(satModels[a]).locality !== 'local'))) throw fail('LOCAL_ONLY', 'Local-only mode rejects cloud models');
     const pol = policy(p.projectId);
-    const config = Object.freeze({ mode: s.mode, model: model.spec, locality: model.locality, satModels: Object.freeze(satModels), localOnly: settings.localOnly, policyVersion: pol.version,
+    const profile = s.profile === 'rgb' ? 'rgb' : 'code';
+    if (profile === 'rgb' && agent) throw fail('INVALID_PARAMS', 'Sats are not available in the RGB wallet profile');
+    const rgbSession = profile === 'rgb' ? await rgb.prepare() : null;
+    const config = Object.freeze({ mode: s.mode, profile, model: model.spec, locality: model.locality, satModels: Object.freeze(satModels), localOnly: settings.localOnly, policyVersion: pol.version,
       limits: Object.freeze({ maxSteps: 60, maxTotalToolCalls: 200 }) });
-    const r = { runId: randomUUID(), sessionId, projectId: p.projectId, root: p.root, agentId: agent || 'bitcode', prompt, config, state: 'queued', startedAt: now(),
+    const r = { runId: randomUUID(), sessionId, projectId: p.projectId, root: p.root, agentId: agent || 'bitcode', prompt, config, rgbEnv: rgbSession?.env, state: 'queued', startedAt: now(),
       usage: { inputTokens: 0, outputTokens: 0, costMicros: null }, aborter: new AbortController(), egress: new Set(), kind };
     runs.set(r.runId, r);
     s.messages = [...(s.messages || []), { role: 'user', content: prompt }]; s.updatedAt = now(); persistSession(s);
@@ -269,7 +296,8 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
             onMessage: msg => onWorkerMessage(r, msg),
             onExit: err => { if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'interrupted', runError(err || new Error('Worker exited without a final result'), 'WORKER_EXIT')); cleanup(r); resolve(); } });
           setState(r, 'running');
-          r.worker.send({ type: 'start', runId: r.runId, sessionId, model: config.model, agent, agents, sats, limits: config.limits, messages: s.messages, readOnly, systemExtra });
+          r.worker.send({ type: 'start', runId: r.runId, sessionId, model: config.model, agent, agents, sats, limits: config.limits, messages: s.messages, readOnly, systemExtra,
+            profile, ...(rgbSession ? { rgbTools: rgbSession.schemas } : {}) });
         });
       } catch (e) {
         if (!r.endedAt) setState(r, r.aborter.signal.aborted ? 'cancelled' : 'error', runError(e));
@@ -282,7 +310,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
   function onWorkerMessage(r, msg) {
     if (msg.type === 'request') {
-      const handlers = { 'model.request': p => modelRequest(r, p), 'mutation.acquire': p => acquire(r, p), 'mutation.release': p => releaseLease(r, p), 'network.fetch': p => networkFetch(r, p) };
+      const handlers = { 'model.request': p => modelRequest(r, p), 'mutation.acquire': p => acquire(r, p), 'mutation.release': p => releaseLease(r, p), 'network.fetch': p => networkFetch(r, p), 'rgb.call': p => rgbCall(r, p) };
       const h = handlers[msg.method];
       Promise.resolve().then(() => { if (!h) throw fail('FORBIDDEN', 'Unknown worker method'); return h(msg.params || {}); })
         .then(result => r.worker?.send({ type: 'response', id: msg.id, result }), e => {
@@ -332,7 +360,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     sessions.set(s.sessionId, s); saveMeta();
   }
   const transcript = messages => messages.map(m => ({ role: m.role, content: redactor.text(String(m.content ?? '')).slice(0, m.role === 'tool' ? 2000 : 200_000), name: m.name, tools: m.toolCalls?.map(t => t.name) }));
-  const sessionMeta = s => ({ sessionId: s.sessionId, projectId: s.projectId, name: s.name, mode: s.mode, model: s.model, satModels: s.satModels, satId: s.satId || '', keep: !!s.keep, updatedAt: s.updatedAt,
+  const sessionMeta = s => ({ sessionId: s.sessionId, projectId: s.projectId, name: s.name, mode: s.mode, model: s.model, profile: s.profile || 'code', rgbNetwork: s.rgbNetwork || null, satModels: s.satModels, satId: s.satId || '', keep: !!s.keep, updatedAt: s.updatedAt,
     expiresAt: s.keep ? null : s.updatedAt + RETENTION_MS, active: [...runs.values()].some(r => r.sessionId === s.sessionId && !r.endedAt) });
   function loadMessages(s) {
     if (!s.messages) { try { s.messages = loadSession(project(s.projectId).root, s.sessionId).messages; } catch { s.messages = []; } }
@@ -374,7 +402,15 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     if (cmd === '/pending') return pending;
     const s = session(sessionId), root = project(s.projectId).root, rest = text.trim().slice(cmd.length).trim();
     if (cmd === '/help' || cmd === '/commands') return { commands: listCommands(root) };
-    if (cmd === '/tools') return { tools: DESKTOP_TOOLS };
+    if (cmd === '/tools') return { tools: s.profile === 'rgb' ? (await rgb.prepare()).schemas.map(t => t.name) : DESKTOP_TOOLS };
+    if (cmd === '/profile') {
+      if (!rest) return { profile: s.profile || 'code' };
+      if (!PROFILES.includes(rest)) throw fail('INVALID_PARAMS', 'Use /profile code or /profile rgb');
+      if (sessionMeta(s).active) throw fail('BUSY', 'Wait for the active run');
+      const env = rest === 'rgb' ? (await rgb.prepare()).env : null;
+      loadMessages(s); s.profile = rest; s.rgbNetwork = env?.network || null; if (rest === 'rgb') s.satId = ''; persistSession(s);
+      return { profile: rest, ...(env ? { network: env.network, node: env.nodeUrl, height: env.height } : {}), session: sessionMeta(s) };
+    }
     if (cmd === '/model') {
       if (!rest) return { model: describeModel(s.model || defaultSpec()) };
       const m = describeModel(rest); if (m.error) throw fail('PROVIDER_UNAVAILABLE', m.error);
@@ -413,6 +449,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
 
   // ---- public API (§3) ----
+  const rgb = createRgb({ config, fetchImpl: rgbFetch, mcpToolsImpl: rgbMcpTools });
   const finance = createFinance({ home, emit, configImpl: configOverride ? () => configOverride : undefined, saveConfigImpl: configOverride ? () => {} : undefined, fetchImpl: financeFetch });
   const human = [...finance.human, 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'run.start'];
   const methods = {
@@ -575,6 +612,6 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     invoke, redactor,
     activeRuns: () => [...runs.values()].filter(r => !r.endedAt).map(publicRun),
     pending: () => approvals.list(),
-    shutdown() { clearInterval(timer); approvals.close(); for (const r of runs.values()) if (!r.endedAt) { r.aborter.abort(); r.worker?.stop(); setState(r, 'interrupted', { error: 'app_exit' }); } }
+    shutdown() { clearInterval(timer); approvals.close(); closeMcpConnections().catch(() => {}); for (const r of runs.values()) if (!r.endedAt) { r.aborter.abort(); r.worker?.stop(); setState(r, 'interrupted', { error: 'app_exit' }); } }
   };
 }
