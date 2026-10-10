@@ -22,7 +22,7 @@ rmSync(dist, { recursive: true, force: true });
 mkdirSync(path.join(dist, 'ui'), { recursive: true });
 const node = { bundle: true, platform: 'node', format: 'esm', target: 'node22', logLevel: 'warning', plugins: [inlineVersion], banner };
 await Promise.all([
-  build({ ...node, entryPoints: [path.join(here, 'main.mjs')], outfile: path.join(dist, 'main.mjs'), external: ['electron', 'node-pty'] }),
+  build({ ...node, entryPoints: [path.join(here, 'main.mjs')], outfile: path.join(dist, 'main.mjs'), external: ['electron', 'node-pty', '@tetherto/wdk', '@tetherto/wdk-wallet', '@kaleidorg/wdk-wallet-rln'] }),
   build({ ...node, entryPoints: [path.join(here, 'worker.mjs')], outfile: path.join(dist, 'worker.mjs') }),
   build({ bundle: true, platform: 'node', format: 'cjs', target: 'node22', entryPoints: [path.join(here, 'preload.cjs')], outfile: path.join(dist, 'preload.cjs'), external: ['electron'], logLevel: 'warning' }),
   build({ bundle: true, platform: 'browser', format: 'esm', target: 'chrome140', entryPoints: [path.join(here, 'ui/app.js')], outfile: path.join(dist, 'ui/app.js'), loader: { '.css': 'css' }, logLevel: 'warning' })

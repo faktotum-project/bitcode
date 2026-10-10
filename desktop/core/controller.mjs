@@ -87,7 +87,7 @@ const matchesPolicy = (policy, argv) => !!argv && policy.commands.some(r =>
   r.argv ? r.argv.length === argv.length && r.argv.every((a, i) => a === argv[i]) : r.argvPrefix?.every((a, i) => a === argv[i]));
 
 export function createController({ home, appDir, agents = [], emit = () => {}, sandbox = { available: false }, spawnWorker,
-  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, rgbFetch, rgbMcpTools, secrets = { get: () => undefined }, now = Date.now } = {}) {
+  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, rgbFetch, rgbMcpTools, rgbWdkAccount, secrets = { get: () => undefined }, now = Date.now } = {}) {
   const dir = path.join(home, 'desktop');
   const sats = loadSats(appDir && existsSync(path.join(appDir, 'sats')) ? { directory: path.join(appDir, 'sats') } : {});
   const files = { settings: path.join(dir, 'settings.json'), projects: path.join(dir, 'projects.json'), sessions: path.join(dir, 'sessions.json'), worktrees: path.join(dir, 'worktrees.json'), log: path.join(dir, 'approvals.jsonl') };
@@ -449,11 +449,12 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
 
   // ---- public API (§3) ----
-  const rgb = createRgb({ config, fetchImpl: rgbFetch, mcpToolsImpl: rgbMcpTools });
+  const rgb = createRgb({ config, fetchImpl: rgbFetch, mcpToolsImpl: rgbMcpTools, wdkAccountImpl: rgbWdkAccount });
   const finance = createFinance({ home, emit, configImpl: configOverride ? () => configOverride : undefined, saveConfigImpl: configOverride ? () => {} : undefined, fetchImpl: financeFetch });
   const human = [...finance.human, 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'run.start'];
   const methods = {
     ...finance.methods,
+    'rgb.overview': () => rgb.overview(),
     'app.status': () => ({ sandbox, settings, defaultModel: describeModel(defaultSpec()), runs: [...runs.values()].map(publicRun), pending: approvals.list(), projects: [...projects.values()] }),
     'project.open': ({ path: p }) => {
       const root = realpathSync(p); if (!statSync(root).isDirectory()) throw fail('INVALID_PARAMS', 'Not a directory');

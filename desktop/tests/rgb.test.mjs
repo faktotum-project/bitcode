@@ -84,3 +84,34 @@ test('rgb tools are refused outside the rgb profile', async () => {
     assert.match((await workers[0].request('rgb.call', { name: 'mcp_kaleido_rln_list_assets', args: {} })).error, /FORBIDDEN/);
   } finally { c.shutdown(); }
 });
+
+test('rgb.overview reads the node through a WDK account and converts balances exactly', async () => {
+  const node = fakeNode('SignetCustom');
+  let disposed = false, filters = [];
+  const account = {
+    constructor: { name: 'RlnAccount' },
+    refreshTransfers: async () => {},
+    getNodeInfo: async () => ({ pubkey: '03b6', num_channels: 0, num_usable_channels: 0, num_peers: 0 }),
+    getBtcBalance: async () => ({ vanilla: { settled: 21064, future: 21064, spendable: 21064 }, colored: { settled: 14000, future: 14000, spendable: 14000 } }),
+    listAssets: async () => ({ nia: [{ asset_id: USDT, ticker: 'USDT', name: 'Tether USD', precision: 6, balance: { settled: 91000000, future: 92500000, spendable: 91000000 } }] }),
+    _rln: { listTransfers: async body => { filters.push(body); return { transfers: [
+      { kind: 'Send', status: 'Settled', txid: 'a1', updated_at: 20, requested_assignment: { type: 'Fungible', value: 1000000 } },
+      { kind: 'ReceiveBlind', status: 'WaitingConfirmations', txid: null, created_at: 30, assignments: [{ type: 'Fungible', value: 1500000 }] }] }; } },
+  };
+  const { c } = setup({ config: rgbConfig, ...node, rgbWdkAccount: async url => { assert.equal(url, 'http://127.0.0.1:3001'); return { account, dispose: () => { disposed = true; } }; } });
+  try {
+    const o = await c.invoke('rgb.overview', {});
+    assert.equal(o.env.environment, 'test'); assert.equal(o.env.network, 'signet');
+    assert.deepEqual(o.via, { core: '@tetherto/wdk', wallet: '@kaleidorg/wdk-wallet-rln', account: 'RlnAccount' });
+    assert.deepEqual(o.btc, { vanillaSats: 21064, coloredSats: 14000, pendingSats: 0 });
+    assert.deepEqual(o.assets.map(a => [a.ticker, a.spendable, a.settled, a.future]), [['USDT', '91', '91', '92.5']]);
+    assert.deepEqual(o.transfers.map(x => [x.kind, x.amount, x.status]), [['ReceiveBlind', '1.5', 'WaitingConfirmations'], ['Send', '1', 'Settled']]);
+    assert.deepEqual(filters, [{ asset_filter: { type: 'Id', value: USDT } }]);
+    assert.equal(disposed, true);
+  } finally { c.shutdown(); }
+});
+
+test('rgb.overview reports a missing node configuration instead of failing', async () => {
+  const { c } = setup({ config: { ...config, mcp: {} } });
+  try { assert.equal((await c.invoke('rgb.overview', {})).env.status, 'not_configured'); } finally { c.shutdown(); }
+});

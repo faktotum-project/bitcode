@@ -5,13 +5,28 @@
 // before any tool is offered, and only test networks are served (D0 §13).
 import { mcpTools } from '../../src/mcp.mjs';
 import { rgbTools, rgbServer } from '../../src/rgb/tools.mjs';
+import { formatUnits } from '../../src/rgb/format.mjs';
 import { fail } from './primitives.mjs';
+
+// The read-only node panel goes through Tether's WDK: the RGB Lightning Node is
+// registered as a WDK wallet (@kaleidorg/wdk-wallet-rln). The node owns its
+// keys; the throwaway seed WDK requires is never used for derivation.
+async function wdkAccount(nodeUrl) {
+  const [{ default: WDK }, { default: RlnWalletManager }] = await Promise.all([import('@tetherto/wdk'), import('@kaleidorg/wdk-wallet-rln')]);
+  const wdk = new WDK(WDK.getRandomSeedPhrase()).registerWallet('rgb', RlnWalletManager, { nodeUrl });
+  const account = await wdk.getAccount('rgb', 0);
+  return { account, dispose: () => wdk.dispose() };
+}
+// @kaleidorg/wdk-wallet-rln 1.0.0-beta.5 still sends { asset_id } to
+// /listtransfers; rgb-lightning-node 0.10 expects an asset filter.
+const listTransfers = (account, assetId) => account._rln.listTransfers({ asset_filter: { type: 'Id', value: assetId } });
+const num = v => typeof v === 'bigint' ? Number(v) : v;
 
 // rgb-lightning-node /networkinfo names. Mutinynet is reported as SignetCustom.
 const NETWORKS = { Bitcoin: 'mainnet', Testnet: 'testnet', Testnet4: 'testnet4', Signet: 'signet', SignetCustom: 'signet', Regtest: 'regtest' };
 const TEST = new Set(['testnet', 'testnet4', 'signet', 'regtest']);
 
-export function createRgb({ config, fetchImpl = fetch, mcpToolsImpl = mcpTools } = {}) {
+export function createRgb({ config, fetchImpl = fetch, mcpToolsImpl = mcpTools, wdkAccountImpl = wdkAccount } = {}) {
   let connection = null; // { tools, close } shared by all runs, opened on first use
 
   const spec = () => {
@@ -60,5 +75,32 @@ export function createRgb({ config, fetchImpl = fetch, mcpToolsImpl = mcpTools }
     return found;
   }
 
-  return { verify, prepare, tool };
+  // Read-only panel data. Production nodes are shown (read-only, like the other
+  // protocols); refreshing first settles transfers the node has already received.
+  async function overview() {
+    let env;
+    try { env = await verify(); }
+    catch (e) { return { env: { status: e.code === 'RGB_UNAVAILABLE' && /No MCP server|RLN_NODE_URL/.test(e.message) ? 'not_configured' : 'error', error: e.message } }; }
+    const { account, dispose } = await wdkAccountImpl(env.nodeUrl);
+    try {
+      await account.refreshTransfers({ skipSync: false }).catch(() => {});
+      const [node, btc, listed] = await Promise.all([account.getNodeInfo(), account.getBtcBalance({ skipSync: true }), account.listAssets()]);
+      const assets = [...(listed.nia || []), ...(listed.cfa || []), ...(listed.uda || [])].map(a => ({
+        assetId: a.asset_id, ticker: a.ticker || null, name: a.name, schema: a.schema, precision: a.precision,
+        settled: formatUnits(a.balance?.settled ?? 0, a.precision), spendable: formatUnits(a.balance?.spendable ?? 0, a.precision), future: formatUnits(a.balance?.future ?? 0, a.precision) }));
+      const transfers = (await Promise.all(assets.map(async a => ((await listTransfers(account, a.assetId)).transfers || []).map(x => ({
+        ticker: a.ticker || a.name, kind: x.kind, status: x.status, txid: x.txid || null, updatedAt: (x.updated_at || x.created_at) * 1000,
+        amount: formatUnits((x.requested_assignment?.value ?? x.assignments?.reduce((n, y) => n + (y.value || 0), 0)) || 0, a.precision) })))))
+        .flat().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 20);
+      return {
+        env: { status: 'connected', environment: env.environment, network: env.network, at: Date.now(),
+          evidence: [{ source: 'node', value: env.nodeUrl }, { source: '/networkinfo', value: `${env.reported} → ${env.network}` }, { source: 'tip', value: String(env.height) }] },
+        via: { core: '@tetherto/wdk', wallet: '@kaleidorg/wdk-wallet-rln', account: account.constructor?.name || 'account' },
+        node: { pubkey: node.pubkey, channels: node.num_channels, usableChannels: node.num_usable_channels, peers: node.num_peers },
+        btc: { vanillaSats: num(btc.vanilla?.spendable ?? 0), coloredSats: num(btc.colored?.spendable ?? 0), pendingSats: num((btc.vanilla?.future ?? 0) - (btc.vanilla?.settled ?? 0)) },
+        assets, transfers };
+    } finally { dispose(); }
+  }
+
+  return { verify, prepare, tool, overview };
 }

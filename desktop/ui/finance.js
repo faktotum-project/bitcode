@@ -3,7 +3,7 @@
 // reflection — the finance service enforces test-only, human-confirmed spends.
 import { testSendNote } from '../../src/sat-states.mjs';
 export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerender }) {
-  const PROTOS = [['bitcoin', 'Bitcoin'], ['lightning', 'Lightning'], ['cashu', 'Cashu'], ['liquid', 'Liquid'], ['taproot', 'Taproot Assets']];
+  const PROTOS = [['bitcoin', 'Bitcoin'], ['rgb', 'RGB'], ['lightning', 'Lightning'], ['cashu', 'Cashu'], ['liquid', 'Liquid'], ['taproot', 'Taproot Assets']];
   const V = { tab: 'bitcoin', data: {}, conns: null, loading: {}, panel: null, proposal: null, showEvidence: false, sendForm: { to: '', amountSats: '', feeRate: '' }, editPolicy: false };
   const sats = n => (n == null ? '—' : Number(n).toLocaleString(document.documentElement.lang === 'en' ? 'en-US' : 'it-IT'));
   const btc = n => (n == null ? '—' : (Number(n) / 1e8).toFixed(8));
@@ -18,7 +18,7 @@ export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerende
 
   async function load(protocol = V.tab, { quiet = false } = {}) {
     V.loading[protocol] = true; if (!quiet) rerender();
-    try { V.data[protocol] = await api('finance.overview', { protocol }); V.data[protocol].error = null; }
+    try { V.data[protocol] = await api(protocol === 'rgb' ? 'rgb.overview' : 'finance.overview', protocol === 'rgb' ? {} : { protocol }); V.data[protocol].error = null; }
     catch (e) { V.data[protocol] = { ...(V.data[protocol] || {}), error: e.message }; }
     finally { V.loading[protocol] = false; }
     try { V.conns = await api('finance.connections'); } catch {}
@@ -120,6 +120,34 @@ export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerende
       }) }, t('fin_prepare')), h('span', { class: 'status' }, t('fin_prepareNote')), h('span', { class: 'status' }, `· ${testSendNote(document.documentElement.lang)}`)));
   }
 
+  // ---------- RGB (read-only panel, data through Tether WDK) ----------
+  function rgbTab(d) {
+    if (d.env?.status !== 'connected') return [statusCard(d, 'rgb')];
+    const top = h('div', { class: 'fgrid' },
+      h('div', { class: 'card balance' },
+        h('div', { class: 'brow' }, h('span', { class: 'blabel' }, `${t('fin_rgbNode')} · ${d.env.network}`), envChip(d.env)),
+        h('div', { class: 'bbig num' }, sats(d.btc.vanillaSats), h('span', { class: 'unit' }, 'sat')),
+        h('div', { class: 'bsub num' }, `${t('fin_rgbColored')} ${sats(d.btc.coloredSats)} sat`, d.btc.pendingSats ? h('span', { class: 'up' }, ` · +${sats(d.btc.pendingSats)} ${t('fin_inMempool')}`) : null),
+        h('div', { class: 'row', style: 'margin-top:16px' }, h('button', { class: 'btn ghost', onClick: () => load('rgb') }, V.loading.rgb ? '…' : `↻ ${t('refresh')}`)),
+        evidence(d.env)),
+      h('div', { class: 'card' }, h('h3', {}, t('fin_node')),
+        h('dl', { class: 'kv' }, [['pubkey', short(d.node.pubkey)], [t('fin_channels'), `${d.node.usableChannels} / ${d.node.channels}`], ['peers', d.node.peers],
+          ['WDK', `${d.via.core} · ${d.via.wallet}`]].map(([k, v]) => [h('dt', {}, k), h('dd', { class: 'mono' }, v)]))));
+    const assets = h('div', { class: 'card flush' }, h('h3', { class: 'pad' }, t('fin_assets')),
+      d.assets.length ? h('table', { class: 'list' }, h('tr', {}, h('th', {}, t('fin_asset')), h('th', {}, 'id'), h('th', {}, t('fin_rgbSpendable')), h('th', {}, t('fin_rgbSettled')), h('th', {}, t('fin_rgbIncoming'))),
+        d.assets.map(a => h('tr', {}, h('td', {}, a.ticker ? `${a.ticker} · ${a.name}` : a.name), h('td', { class: 'num', title: a.assetId, style: 'cursor:copy', onClick: () => copy(a.assetId, t('fin_idCopied')) }, short(a.assetId)),
+          h('td', { class: 'num' }, a.spendable), h('td', { class: 'num' }, a.settled), h('td', { class: 'num' }, a.future !== a.settled ? a.future : '—'))))
+        : h('p', { class: 'pad status' }, t('fin_noAssets')));
+    const transfers = h('div', { class: 'card flush' }, h('h3', { class: 'pad' }, t('fin_rgbTransfers')),
+      d.transfers.length ? h('table', { class: 'list' }, h('tr', {}, h('th', {}, t('fin_asset')), h('th', {}, t('fin_rgbKind')), h('th', {}, t('fin_amount')), h('th', {}, t('state')), h('th', {}, 'txid'), h('th', {}, t('fin_date'))),
+        d.transfers.map(x => h('tr', {}, h('td', {}, x.ticker), h('td', {}, x.kind), h('td', { class: `num ${/^Receive/.test(x.kind) ? 'up' : x.kind === 'Send' ? 'down' : ''}` }, x.amount),
+          h('td', {}, h('span', { class: `chip ${x.status === 'Settled' ? 'ok' : x.status === 'Failed' ? 'err' : 'warn'}` }, x.status)),
+          h('td', { class: 'num', title: x.txid || '', style: x.txid ? 'cursor:copy' : '', onClick: () => x.txid && copy(x.txid) }, x.txid ? short(x.txid) : '—'),
+          h('td', { class: 'num' }, new Date(x.updatedAt).toLocaleString()))))
+        : h('p', { class: 'pad status' }, t('fin_noTxs')));
+    return [top, assets, transfers, h('p', { class: 'status' }, t('fin_rgbHowTo'))];
+  }
+
   // ---------- other protocols ----------
   function lightningTab(d) {
     const out = [];
@@ -181,10 +209,10 @@ export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerende
       onClick: () => { V.tab = id; V.panel = null; V.proposal = null; V.showEvidence = false; if (!V.data[id]) load(id); rerender(); } }, envDot(V.data[id]?.env), label)));
     const verifiedCount = PROTOS.filter(([id]) => V.data[id]?.env?.status === 'connected').length;
     const body = !d ? h('div', { class: 'card' }, h('span', { class: 'typing' }, h('i'), h('i'), h('i')), ' ', t('fin_loading'))
-      : V.tab === 'bitcoin' ? (d.env ? bitcoinTab(d) : statusCard(d, 'bitcoin')) : V.tab === 'lightning' ? lightningTab(d) : V.tab === 'taproot' ? taprootTab(d) : V.tab === 'liquid' ? liquidTab(d) : cashuTab(d);
+      : V.tab === 'bitcoin' ? (d.env ? bitcoinTab(d) : statusCard(d, 'bitcoin')) : V.tab === 'rgb' ? rgbTab(d) : V.tab === 'lightning' ? lightningTab(d) : V.tab === 'taproot' ? taprootTab(d) : V.tab === 'liquid' ? liquidTab(d) : cashuTab(d);
     return h('div', { class: 'page fin' },
       h('div', { class: 'fhead' }, h('div', {}, h('h1', {}, t('bitcoin')), h('p', { class: 'lead' }, t('bitcoinLead'))),
-        h('div', { class: 'fsum' }, h('div', {}, h('div', { class: 'n num' }, `${verifiedCount} / 5`), h('div', { class: 'l' }, t('connected'))),
+        h('div', { class: 'fsum' }, h('div', {}, h('div', { class: 'n num' }, `${verifiedCount} / ${PROTOS.length}`), h('div', { class: 'l' }, t('connected'))),
           h('button', { class: 'btn', onClick: loadAll }, `↻ ${t('fin_verifyAll')}`))),
       tabs, h('div', { class: 'fbody' }, body));
   }

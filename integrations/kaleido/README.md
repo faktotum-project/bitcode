@@ -81,3 +81,17 @@ it documents display units: decimals fail to deserialize and integers are read
 as base units. Prefer any-amount invoices until this is fixed upstream.
 
 `config.rgb.mcpServer` selects another MCP server name (default `kaleido`).
+
+## Desktop app
+
+In a chat, `/profile rgb` turns the session into the RGB wallet assistant after
+the node proves a test network (`/networkinfo`). The controller owns the MCP
+connection; the sandboxed worker only calls `rgb.call`, and every state change
+is a payment-kind approval card.
+
+The Bitcoin area has an **RGB** tab: a read-only panel (network proof, BTC and
+colored sats, assets, transfers) read through Tether WDK, with the node
+registered as a WDK wallet via `@kaleidorg/wdk-wallet-rln` (pinned in
+`desktop/package.json`). The node keeps its keys; WDK's required seed is a
+throwaway. That adapter's `listTransfers` still sends `{ asset_id }`, which
+rgb-lightning-node 0.10 rejects, so the panel passes an asset filter itself.
