@@ -17,8 +17,9 @@ try {
   for (const lang of ['en', 'it']) {
     await page.setContent(shareHtml({ w: 1200, h: 630, lang, tokens, logo, font, sat }));
     await page.evaluate(() => document.fonts.ready);
-    const out = fileURLToPath(new URL(`../public/assets/og-image${lang === 'it' ? '-it' : ''}.png`, import.meta.url));
-    await page.screenshot({ path: out });
+    // JPEG keeps the card well under the ~300 KB that WhatsApp accepts for a link thumbnail.
+    const out = fileURLToPath(new URL(`../public/assets/og-image${lang === 'it' ? '-it' : ''}.jpg`, import.meta.url));
+    await page.screenshot({ path: out, type: 'jpeg', quality: 86 });
     console.log(out);
   }
 } finally { await browser.close(); }
