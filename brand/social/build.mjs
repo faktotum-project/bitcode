@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cardHtml, avatarHtml, shareHtml } from './design.mjs';
+import { avatarHtml, shareHtml, posterHtml } from './design.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const brand = join(here, '..');
@@ -12,23 +12,34 @@ const site = join(brand, '..', 'site/public');  // Vercel serves only this folde
 const tokens = JSON.parse(readFileSync(join(brand, 'tokens/tokens.json'), 'utf8'));
 const { chromium } = createRequire(import.meta.url)(process.env.SITE_PLAYWRIGHT_MODULE || 'playwright');
 const logo = n => readFileSync(join(brand, 'logo', n), 'utf8');
-// Link previews show Script, the orange Sat, cheering beside the tagline (same image as the site OG).
-const sat = `data:image/png;base64,${readFileSync(join(brand, '..', 'assets/sats/script/masters/happy-1024.png')).toString('base64')}`;
+const satImage = (id, pose) => `data:image/png;base64,${readFileSync(join(brand, '..', `assets/sats/${id}/masters/${pose}-1024.png`)).toString('base64')}`;
+// Link previews and banners show Script, the orange Sat, cheering (same image as the site OG).
+const sat = satImage('script', 'happy');
 const font = n => `data:font/woff2;base64,${readFileSync(join(brand, '..', 'site/public/assets/site', n)).toString('base64')}`;
 
 // avatar = mark only (circle-safe); share = a Sat and the tagline, for link previews and post cards;
-// split = copy beside a mark specimen; stack = centered for tall formats.
-// `safe` keeps the composition inside the platform's crop/overlay area; `x` moves it clear of a
-// profile photo that the platform lays over the banner's lower left (LinkedIn, X).
+// poster = the same scene placed by hand: banners keep the copy clear of the profile photo laid over
+// the lower left (LinkedIn, X) or inside the area every device shows (YouTube), and every Instagram
+// format shows other Sats in other poses so the grid introduces all four.
 const SPECS = {
   // web icons go straight to site/public; the site's OG image is site/scripts/render-og.mjs
   icons: [['apple-touch-icon', 180, 180, 'avatar'], ['icon-192', 192, 192, 'avatar'], ['icon-512', 512, 512, 'avatar']],
   avatars: [['avatar-400', 400, 400, 'avatar'], ['avatar-800', 800, 800, 'avatar']],
-  linkedin: [['banner', 1584, 396, 'split', { x: 520, width: 1000, height: 320 }], ['post', 1200, 627, 'share']],
-  x: [['header', 1500, 500, 'split', { x: 300, width: 1100, height: 360 }], ['card', 1200, 675, 'share']],
-  instagram: [['post-square', 1080, 1080, 'stack'], ['post-portrait', 1080, 1350, 'stack'], ['story', 1080, 1920, 'stack']],
+  linkedin: [
+    ['banner', 1584, 396, 'poster', { brand: { x: 560, y: 52, height: 34 }, title: { x: 560, y: 120, size: 76 }, sats: [['script', 'happy', 400, 1170, 10]] }],
+    ['post', 1200, 627, 'share']],
+  x: [
+    ['header', 1500, 500, 'poster', { brand: { x: 320, y: 70, height: 38 }, title: { x: 320, y: 165, size: 86 }, sats: [['script', 'happy', 470, 1010, 50]] }],
+    ['card', 1200, 675, 'share']],
+  instagram: [
+    ['post-square', 1080, 1080, 'poster', { brand: { x: 80, y: 80, height: 46 }, title: { x: 80, y: 200, size: 104 }, sats: [['node', 'focus', 640, 400, 430]] }],
+    ['post-portrait', 1080, 1350, 'poster', { brand: { x: 80, y: 80, height: 46 }, title: { x: 80, y: 200, size: 104 },
+      sats: [['node', 'idle', 330, -10, 880], ['merkle', 'ask', 330, 235, 820], ['script', 'working', 330, 500, 880], ['hash', 'concerned', 330, 760, 820]] }],
+    ['story', 1080, 1920, 'poster', { brand: { y: 200, height: 54, center: true }, title: { y: 420, size: 112, center: true }, sats: [['merkle', 'happy', 860, 110, 820]] }]],
   github: [['social-preview', 1280, 640, 'share']],
-  youtube: [['banner', 2560, 1440, 'split', { width: 1546, height: 423 }], ['thumbnail', 1280, 720, 'share']]
+  youtube: [
+    ['banner', 2560, 1440, 'poster', { brand: { x: 560, y: 560, height: 40 }, title: { x: 560, y: 640, size: 98 }, sats: [['script', 'happy', 470, 1530, 470]] }],
+    ['thumbnail', 1280, 720, 'share']]
 };
 
 const only = process.argv[2];
@@ -36,13 +47,13 @@ const browser = await chromium.launch({ headless: true, executablePath: process.
 try {
   for (const [platform, items] of Object.entries(SPECS)) {
     if (only && only !== platform) continue;
-    for (const [name, w, h, layout, safe] of items) {
+    for (const [name, w, h, layout, scene] of items) {
       const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
       for (const lang of layout === 'avatar' ? ['en'] : ['en', 'it']) {
         await page.setContent(layout === 'avatar'
           ? avatarHtml({ size: w, tokens, logo })
           : layout === 'share' ? shareHtml({ w, h, lang, tokens, logo, font, sat })
-          : cardHtml({ w, h, lang, layout, tokens, logo, font, safe }));
+          : posterHtml({ w, h, lang, tokens, logo, font, ...scene, sats: scene.sats.map(([id, pose, size, left, top]) => ({ src: satImage(id, pose), size, left, top })) }));
         await page.evaluate(() => document.fonts.ready);
         const dir = platform === 'icons' ? site : join(here, 'export', platform);
         mkdirSync(dir, { recursive: true });
