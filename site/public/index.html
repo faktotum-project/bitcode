@@ -102,6 +102,16 @@
     </section>
 
 <nav class="bitcoin-stack container" aria-label="Bitcoin stack"><a href="#cap-bitcoin"><svg class="icon" aria-hidden="true"><use href="#i-bitcoin"/></svg>Bitcoin</a><a href="#cap-lightning"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg>Lightning</a><a href="#cap-liquid"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>Liquid</a><a href="#cap-lightning"><svg class="icon" aria-hidden="true"><use href="#i-coins"/></svg>Taproot Assets</a><a href="#cap-rgb"><svg class="icon" aria-hidden="true"><use href="#i-coins"/></svg>RGB</a><a href="#cap-cashu"><svg class="icon" aria-hidden="true"><use href="#i-cash"/></svg>Cashu</a></nav>
+    <section class="project-ecosystem container" aria-labelledby="ecosystem-title">
+      <h2 id="ecosystem-title">Models, protocols &amp; tools</h2>
+      <div class="project-ecosystem-grid">
+        <a href="https://qvac.tether.io/" class="ecosystem-project"><span class="ecosystem-mark ecosystem-mark--qvac"><img src="/assets/projects/qvac.svg" alt="" width="116" height="44" loading="lazy"></span><span><strong>QVAC</strong><small>Local model runtime</small></span></a>
+        <a href="https://rgb.tech/" class="ecosystem-project"><span class="ecosystem-mark"><img src="/assets/projects/rgb.svg" alt="" width="48" height="48" loading="lazy"></span><span><strong>RGB Protocol</strong><small>Bitcoin asset protocol</small></span></a>
+        <a href="https://lightning.network/" class="ecosystem-project"><span class="ecosystem-mark ecosystem-mark--lightning"><img src="/assets/projects/lightning.svg" alt="" width="40" height="40" loading="lazy"></span><span><strong>Lightning Network</strong><small>Bitcoin payment network</small></span></a>
+        <a href="https://kaleidoswap.com/" class="ecosystem-project"><span class="ecosystem-mark ecosystem-mark--kaleido"><img src="/assets/projects/kaleidoswap.png" alt="" width="48" height="48" loading="lazy"></span><span><strong>KaleidoSwap</strong><small>RGB node tools via MCP</small></span></a>
+      </div>
+    </section>
+
     <div class="container">
       <div class="facts" aria-label="Included in bitcode version 0.2">
         <div class="fact"><span class="fact-value">65</span><span class="fact-label">built-in tools</span></div>
@@ -227,7 +237,7 @@ Fees are rock bottom: fastest 2 sat/vB, 30min/1h/economy/min all 1 sat/vB.</div>
         </article>
         <article class="cap story-card" id="cap-local" data-story="local">
           <div class="cap-top"><span class="cap-icon" style="background:var(--mempool)"><svg class="icon" aria-hidden="true"><use href="#i-chip"/></svg></span><span class="cap-index">06 / LOCAL</span></div>
-          <h3>A model that stays on your machine.</h3><p>Run inference locally with QVAC, Ollama or LM Studio. No API key, and your prompts never reach a cloud provider.</p><code>-m qvac/bitcode-local &nbsp; /models</code>
+          <h3>A model that stays on your machine.</h3><p>Run inference locally with QVAC, Ollama or LM Studio. Local model examples: qwen3.8:27b · gemma4:26b · gpt-oss:20b · qwen3.6:35b-a3b. Choose a runtime compatible with your model and hardware.</p><code>-m qvac/bitcode-local &nbsp; /models</code>
 
           <figure class="session-panel inline-session" ><div class="terminal"><div class="terminal-bar"><span class="terminal-title">bitcode · local</span><span class="demo-label">Recorded</span></div><div class="hero-cli-body"  data-session="local" data-player="inline" lang="en" aria-hidden="true"><div class="hero-cli-line ">$ node bitcode.mjs -m ollama/gpt-oss:20b --read-only --no-session --max-steps 1 -p &quot;Return only the result of 2 + 2. Do not use tools.&quot;</div><div class="hero-cli-line ">⚡ bitcode  agent · ollama/gpt-oss:20b  · signet  ● ready</div><div class="hero-cli-line ">&nbsp;</div><div class="hero-cli-line ">4</div></div><div class="sr-only" lang="en">$ node bitcode.mjs -m ollama/gpt-oss:20b --read-only --no-session --max-steps 1 -p &quot;Return only the result of 2 + 2. Do not use tools.&quot;
 ⚡ bitcode  agent · ollama/gpt-oss:20b  · signet  ● ready

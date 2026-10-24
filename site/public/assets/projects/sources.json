@@ -1,0 +1,54 @@
+[
+  {
+    "id": "qvac",
+    "name": "QVAC",
+    "file": "qvac.svg",
+    "url": "https://docs.qvac.tether.io/qvac-logo.svg",
+    "reference": "https://docs.qvac.tether.io/",
+    "note": "Official QVAC documentation wordmark.",
+    "status": "downloaded",
+    "retrievedAt": "2026-10-24T18:08:39.516741+00:00",
+    "sha256": "4baf1ed0f76f2d7036aab75e7216a23be13a9373483e01de7ee922ab4d49048b",
+    "bytes": 3932,
+    "plate": "#14171c"
+  },
+  {
+    "id": "kaleidoswap",
+    "name": "KaleidoSwap",
+    "file": "kaleidoswap.png",
+    "url": "https://avatars.githubusercontent.com/u/165327119?s=512&v=4",
+    "reference": "https://github.com/kaleidoswap",
+    "note": "Official KaleidoSwap organization avatar, linked from its publisher profile.",
+    "status": "downloaded",
+    "retrievedAt": "2026-10-24T18:08:40.610456+00:00",
+    "sha256": "a79cfe6973dc5e4275f1fabaf363fca80413ecf55bb3b1665a10a84ca16bf41a",
+    "bytes": 194267,
+    "plate": "#182922"
+  },
+  {
+    "id": "rgb",
+    "name": "RGB",
+    "file": "rgb.svg",
+    "url": "https://raw.githubusercontent.com/RGB-WG/rgb.tech/master/static/logo/rgb-symbol-color.svg",
+    "reference": "https://github.com/RGB-WG/rgb.tech",
+    "note": "Original RGB symbol from the official website repository.",
+    "status": "downloaded",
+    "retrievedAt": "2026-10-24T18:08:40.978826+00:00",
+    "sha256": "5772eaff682d61492910a0c89f299b00a587a993418a3581f18774e781dea6ba",
+    "bytes": 6805,
+    "plate": "#14171c"
+  },
+  {
+    "id": "lightning",
+    "name": "Lightning Network",
+    "file": "lightning.svg",
+    "url": "https://raw.githubusercontent.com/BitcoinDesign/Bitcoin-Icons/master/svg/filled/lightning.svg",
+    "reference": "https://github.com/BitcoinDesign/Bitcoin-Icons",
+    "note": "Community network symbol from Bitcoin Design; not a company logo or a centrally official network trademark.",
+    "status": "downloaded",
+    "retrievedAt": "2026-10-24T18:08:41.353469+00:00",
+    "sha256": "52be481df6f1b741f57a8a7dbf33527341691a0d6c15812e3874716cd8535ea2",
+    "bytes": 513,
+    "plate": "#ffffff"
+  }
+]

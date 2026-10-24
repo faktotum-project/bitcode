@@ -78,7 +78,7 @@
   "text.078": "/cashu:pending",
   "text.079": "06 / LOCAL",
   "text.080": "A model that stays on your machine.",
-  "text.081": "Run inference locally with QVAC, Ollama or LM Studio. No API key, and your prompts never reach a cloud provider.",
+  "text.081": "Run inference locally with QVAC, Ollama or LM Studio. Local model examples: qwen3.8:27b · gemma4:26b · gpt-oss:20b · qwen3.6:35b-a3b. Choose a runtime compatible with your model and hardware.",
   "text.082": "-m qvac/bitcode-local",
   "text.083": "/models",
   "text.084": "07 / CODE",
@@ -391,5 +391,10 @@
   "terminal.code.output": "$ node bitcode.mjs commands --json\n{\"name\":\"repo:review\",\"description\":\"Review working tree changes\"}",
   "terminal.rgb.output": "$ node bitcode.mjs --profile rgb tools --json\n[]",
   "terminal.extensions.output": "$ node bitcode.mjs mcp\n[]",
-  "terminal.local.output": "$ node bitcode.mjs -m ollama/gpt-oss:20b --read-only --no-session --max-steps 1 -p \"Return only the result of 2 + 2. Do not use tools.\"\n⚡ bitcode  agent · ollama/gpt-oss:20b  · signet  ● ready\n\n4"
+  "terminal.local.output": "$ node bitcode.mjs -m ollama/gpt-oss:20b --read-only --no-session --max-steps 1 -p \"Return only the result of 2 + 2. Do not use tools.\"\n⚡ bitcode  agent · ollama/gpt-oss:20b  · signet  ● ready\n\n4",
+  "ecosystem.label": "Models, protocols & tools",
+  "ecosystem.qvac": "Local model runtime",
+  "ecosystem.rgb": "Bitcoin asset protocol",
+  "ecosystem.lightning": "Bitcoin payment network",
+  "ecosystem.kaleido": "RGB node tools via MCP"
 }
