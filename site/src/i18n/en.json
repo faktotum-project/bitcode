@@ -383,7 +383,7 @@
   "ui.genesisHint": "Enter /genesis",
   "ui.genesisSubmit": "Run",
   "ui.openNav": "Open navigation",
-  "meta.ogAlt": "The bitcode wordmark, the tagline “Not your code, not your Sats.” and the pixel B mark on the dark bitcode canvas.",
+  "meta.ogAlt": "Script, the orange bitcode Sat, cheering beside the tagline “Not your code, not your Sats.” and the bitcode logo on a dark canvas.",
   "terminal.bitcoin.output": "⚡ bitcode  agent · ollama/qwen3.8:27b  · mainnet  ● ready\ntype a request, or /help for commands. Ctrl+D to quit.\n› /btc:fees Reply in at most 50 words. No tables.\nR E A S O N I N G\n   READING   {}\n    ✓ network mainnet\n      fastest 2 · 30min 1 · 1h 1 · economy 1 · min 1 (sat/vB)\nFees are rock bottom: fastest 2 sat/vB, 30min/1h/economy/min all 1 sat/vB.",
   "terminal.lightning.output": "$ node bitcode.mjs commands --json\n{\"name\":\"ln:decode\",\"description\":\"Decode a Lightning invoice\"}",
   "terminal.liquid.output": "$ node bitcode.mjs commands --json\n{\"name\":\"liquid:asset\",\"description\":\"Inspect Liquid asset metadata\"}",
