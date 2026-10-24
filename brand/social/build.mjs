@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cardHtml, avatarHtml } from './design.mjs';
+import { cardHtml, avatarHtml, shareHtml } from './design.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const brand = join(here, '..');
@@ -12,20 +12,23 @@ const site = join(brand, '..', 'site/public');  // Vercel serves only this folde
 const tokens = JSON.parse(readFileSync(join(brand, 'tokens/tokens.json'), 'utf8'));
 const { chromium } = createRequire(import.meta.url)(process.env.SITE_PLAYWRIGHT_MODULE || 'playwright');
 const logo = n => readFileSync(join(brand, 'logo', n), 'utf8');
+// Link previews show Script, the orange Sat, cheering beside the tagline (same image as the site OG).
+const sat = `data:image/png;base64,${readFileSync(join(brand, '..', 'assets/sats/script/masters/happy-1024.png')).toString('base64')}`;
 const font = n => `data:font/woff2;base64,${readFileSync(join(brand, '..', 'site/public/assets/site', n)).toString('base64')}`;
 
-// avatar = mark only (circle-safe); split = copy beside a mark specimen; stack = centered for tall formats.
+// avatar = mark only (circle-safe); share = a Sat and the tagline, for link previews and post cards;
+// split = copy beside a mark specimen; stack = centered for tall formats.
 // `safe` keeps the composition inside the platform's crop/overlay area; `x` moves it clear of a
 // profile photo that the platform lays over the banner's lower left (LinkedIn, X).
 const SPECS = {
   // web icons go straight to site/public; the site's OG image is site/scripts/render-og.mjs
   icons: [['apple-touch-icon', 180, 180, 'avatar'], ['icon-192', 192, 192, 'avatar'], ['icon-512', 512, 512, 'avatar']],
   avatars: [['avatar-400', 400, 400, 'avatar'], ['avatar-800', 800, 800, 'avatar']],
-  linkedin: [['banner', 1584, 396, 'split', { x: 520, width: 1000, height: 320 }], ['post', 1200, 627, 'split']],
-  x: [['header', 1500, 500, 'split', { x: 300, width: 1100, height: 360 }], ['card', 1200, 675, 'split']],
+  linkedin: [['banner', 1584, 396, 'split', { x: 520, width: 1000, height: 320 }], ['post', 1200, 627, 'share']],
+  x: [['header', 1500, 500, 'split', { x: 300, width: 1100, height: 360 }], ['card', 1200, 675, 'share']],
   instagram: [['post-square', 1080, 1080, 'stack'], ['post-portrait', 1080, 1350, 'stack'], ['story', 1080, 1920, 'stack']],
-  github: [['social-preview', 1280, 640, 'split']],
-  youtube: [['banner', 2560, 1440, 'split', { width: 1546, height: 423 }], ['thumbnail', 1280, 720, 'split']]
+  github: [['social-preview', 1280, 640, 'share']],
+  youtube: [['banner', 2560, 1440, 'split', { width: 1546, height: 423 }], ['thumbnail', 1280, 720, 'share']]
 };
 
 const only = process.argv[2];
@@ -38,6 +41,7 @@ try {
       for (const lang of layout === 'avatar' ? ['en'] : ['en', 'it']) {
         await page.setContent(layout === 'avatar'
           ? avatarHtml({ size: w, tokens, logo })
+          : layout === 'share' ? shareHtml({ w, h, lang, tokens, logo, font, sat })
           : cardHtml({ w, h, lang, layout, tokens, logo, font, safe }));
         await page.evaluate(() => document.fonts.ready);
         const dir = platform === 'icons' ? site : join(here, 'export', platform);
