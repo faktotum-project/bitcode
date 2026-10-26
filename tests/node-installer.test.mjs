@@ -177,3 +177,7 @@ test('explorer services use a runtime that survives Node version managers', t =>
   assert.equal(runtime, path.join(dir, 'runtime', 'node')); assert.equal(fs.readFileSync(runtime, 'utf8'), 'runtime');
   if (fs.statSync('/bin/sh').uid === 0) assert.equal(serviceRuntime(dir, '/bin/sh'), '/bin/sh');
 });
+test('a stopped node reports NODE_NOT_RUNNING instead of a file error', async t => {
+  const home = temp(t); const i = options({ network: 'signet', datadir: home + '/data' }, home);
+  await assert.rejects(rpc(i, 'getblockchaininfo'), e => e.code === 'NODE_NOT_RUNNING' && !e.message.includes(home));
+});

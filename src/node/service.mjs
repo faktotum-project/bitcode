@@ -16,7 +16,10 @@ export const HELPER = '/usr/local/lib/bitcode/node-helper.py';
 const q = s => `'${String(s).replaceAll("'", "'\\''")}'`;
 export async function rpc(instance, method, params = [], fetchImpl = fetch) {
   if (!['getblockchaininfo', 'getindexinfo', 'getnetworkinfo', 'getblockhash'].includes(method)) throw nodeError('RPC_METHOD_DENIED');
-  const cookie = fs.readFileSync(cookiePath(instance), 'utf8').trim();
+  let cookie;
+  // Core deletes its cookie on shutdown, so a missing file means a stopped node.
+  try { cookie = fs.readFileSync(cookiePath(instance), 'utf8').trim(); }
+  catch (e) { if (e.code === 'ENOENT') throw nodeError('NODE_NOT_RUNNING', 'Core is not running: its RPC cookie is absent.'); throw e; }
   const response = await fetchImpl(`http://127.0.0.1:${instance.rpcPort}/`, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000), headers: { Authorization: `Basic ${Buffer.from(cookie).toString('base64')}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'bitcode-node', method, params }) });
   if (!response.ok) throw nodeError('NODE_RPC_UNAVAILABLE', `RPC HTTP ${response.status}`);
   const result = await response.json(); if (result.error) throw nodeError('NODE_RPC_ERROR', `RPC ${method}: ${result.error.code}`);
