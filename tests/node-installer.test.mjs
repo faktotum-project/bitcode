@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createStore, options, coreConfig, NETWORKS, nodeError } from '../src/node/model.mjs';
+import { createStore, options, coreConfig, NETWORKS, RELEASE, nodeError } from '../src/node/model.mjs';
 import { installExplorer } from '../src/node/explorer.mjs';
 import { failure } from '../src/node/process.mjs';
 import { signatures, archiveEntries } from '../src/node/verify.mjs';
@@ -164,4 +164,10 @@ test('explorer build stops with an actionable error when native tooling is missi
 test('failed commands surface their last diagnostic line', () => {
   assert.equal(failure('cargo', 101, 'Compiling x\nerror: Unable to find libclang\n'), 'cargo exited 101: error: Unable to find libclang');
   assert.equal(failure('tar', 2, ''), 'tar exited 2');
+});
+test('electrs builds include <cstdint> for the bundled RocksDB', async t => {
+  const calls = [];
+  const run = async (file, args, opts = {}) => { calls.push({ file, args, opts }); if (file === 'rustc') return { stdout: 'rustc 1.90.0' }; if (file === 'cargo') throw nodeError('STOP'); return { stdout: args.includes('rev-parse') ? RELEASE.electrs : 'https://github.com/romanz/electrs.git' }; };
+  await assert.rejects(installExplorer(options({ network: 'signet', explorer: true }, temp(t)), { dir: temp(t), run }), /STOP/);
+  assert.match(calls.find(c => c.file === 'cargo').opts.env.CXXFLAGS, /-include cstdint/);
 });

@@ -5,9 +5,9 @@ export function failure(file, code, stderr) {
   const last = stderr.split('\n').map(line => line.trim()).filter(Boolean).at(-1);
   return `${file} exited ${code}` + (last ? `: ${last.slice(0, 300)}` : '');
 }
-export function execute(file, args = [], { cwd, input, signal, timeout = 120_000, onLine } = {}) {
+export function execute(file, args = [], { cwd, input, signal, timeout = 120_000, onLine, env = {} } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(file, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, signal });
+    const child = spawn(file, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...env }, signal });
     let stdout = '', stderr = '';
     const timer = setTimeout(() => child.kill('SIGTERM'), timeout); timer.unref();
     child.stdout.on('data', b => { stdout = (stdout + b).slice(-8_000_000); onLine?.(b.toString()); });

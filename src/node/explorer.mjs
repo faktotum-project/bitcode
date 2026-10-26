@@ -17,6 +17,8 @@ export async function checkout(url, commit, dir, run) {
   await run('git', ['-C', dir, 'checkout', '--detach', commit]);
   if ((await run('git', ['-C', dir, 'rev-parse', 'HEAD'])).stdout.trim() !== commit) throw nodeError('SOURCE_COMMIT_MISMATCH');
 }
+// Bundled RocksDB predates GCC 13, which no longer pulls <cstdint> in transitively.
+const rocksdbBuild = () => ({ CXXFLAGS: [process.env.CXXFLAGS, '-include cstdint'].filter(Boolean).join(' ') });
 export async function installExplorer(i, { dir, run, fetchImpl = fetch }) {
   if (i.profile !== 'full') throw nodeError('UNSUPPORTED_EXPLORER_PROFILE');
   const rust = (await run('rustc', ['--version'])).stdout.match(/rustc (\d+)\.(\d+)/);
@@ -30,7 +32,7 @@ export async function installExplorer(i, { dir, run, fetchImpl = fetch }) {
   if (i.network === 'mutinynet') {
     const tree = await pinnedSource(MUTINYNET.indexer, { directory: dir, run, fetchImpl });
     try {
-      await run('cargo', ['build', '--locked', '--release', '--bin', 'electrs', '--jobs', '2'], { cwd: tree.source, timeout: 7_200_000 });
+      await run('cargo', ['build', '--locked', '--release', '--bin', 'electrs', '--jobs', '2'], { cwd: tree.source, timeout: 7_200_000, env: rocksdbBuild() });
       const built = path.join(tree.source, 'target/release/electrs');
       const output = path.join(dir, `mempool-electrs-${MUTINYNET.indexer.commit}`); fs.mkdirSync(output, { recursive: true, mode: 0o700 });
       electrsBinary = path.join(output, 'electrs');
@@ -39,7 +41,7 @@ export async function installExplorer(i, { dir, run, fetchImpl = fetch }) {
     } finally { tree.cleanup(); }
   } else {
     await checkout('https://github.com/romanz/electrs.git', RELEASE.electrs, electrs, run);
-    await run('cargo', ['build', '--locked', '--release'], { cwd: electrs, timeout: 7_200_000 });
+    await run('cargo', ['build', '--locked', '--release'], { cwd: electrs, timeout: 7_200_000, env: rocksdbBuild() });
     electrsBinary = path.join(electrs, 'target/release/electrs');
   }
   await checkout('https://github.com/mempool/mempool.git', RELEASE.mempool, mempool, run);
