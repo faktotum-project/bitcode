@@ -82,7 +82,10 @@ def unit(user, argv, after=None, environment=None, cwd=None):
     text += '[Service]\nType=simple\nUser=' + user + '\nGroup=' + grp.getgrgid(pwd.getpwnam(user).pw_gid).gr_name + '\n'
     text += 'ExecStart=' + ' '.join(quote(x.replace('$', '$$')) for x in argv) + '\n'
     if cwd:
-        text += 'WorkingDirectory=' + quote(cwd) + '\n'
+        # systemd takes WorkingDirectory= verbatim; quotes would make it relative.
+        if not os.path.isabs(cwd) or any(c in cwd for c in '\n\r\x00%'):
+            raise ValueError('Invalid working directory')
+        text += 'WorkingDirectory=' + cwd + '\n'
     for name, value in (environment or {}).items():
         text += 'Environment=' + quote(name + '=' + value) + '\n'
     return text + 'Restart=on-failure\nRestartSec=15\nTimeoutStopSec=900\nLimitNOFILE=65536\nNoNewPrivileges=true\nPrivateTmp=true\n[Install]\nWantedBy=multi-user.target\n'

@@ -20,6 +20,7 @@ name=__import__('pwd').getpwuid(os.getuid()).pw_name
 text=module.unit(name, ['/tmp/$literal/bin', '-datadir=/tmp/$literal'], environment={'VALUE':'$literal'})
 assert '$$literal' in text
 assert 'Environment="VALUE=$literal"' in text
+assert 'WorkingDirectory=/tmp/backend dir\n' in module.unit(name, ['/bin/true'], cwd='/tmp/backend dir')
 assert 'mariadb-server' not in module.dependency_packages('core')
 assert 'cargo' not in module.dependency_packages('core')
 assert 'mariadb-server' in module.dependency_packages('explorer')
