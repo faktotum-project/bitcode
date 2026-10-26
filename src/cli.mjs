@@ -26,7 +26,7 @@ import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { runSubagent } from "./subagents.mjs";
 import { runSat } from "./sat-runtime.mjs";
 import { loadSats, findSat } from "./sats.mjs";
-import { satLang } from "./sat-states.mjs";
+import { satLang, setPreferredLang } from "./sat-states.mjs";
 import { detectCaps } from "./term-caps.mjs";
 import { randomUUID } from "node:crypto";
 import { headerLine, legacyHeader, satCards, approvalCard, WORDMARK, diffLine, reviewCard, financeBox, welcomeSats } from "./cli-brand.mjs";
@@ -46,7 +46,8 @@ import { recoverFinanceLock } from "./finance/store.mjs";
 import { loadCommands, expandCommand } from "./commands.mjs";
 import { loadAgents, findAgent, agentsDir } from "./agents.mjs";
 import { expandMentions } from "./mentions.mjs";
-import { readLine, question, closeInput } from "./tui.mjs";
+import { readLine, question, closeInput, setInputDriver } from "./tui.mjs";
+import { createPresenter, fullscreenSupported } from "./tui/presenter.mjs";
 import {
   saveSession,
   loadSession,
@@ -56,8 +57,16 @@ import {
   exportSession,
 } from "./session.mjs";
 import * as t from "./theme.mjs";
+import { listText, mcpText, satInfoText, statusText } from "./cli-format.mjs";
+import { applyModel, pickLanguage, pickModel, pickPermission, pickProfile, pickProvider, pickSat, settingsMenu } from "./cli-pickers.mjs";
+
+// The full-screen UI while it owns the terminal; null in the line REPL and one-shot mode.
+let screenUi = null;
+// Abort controller of the run in progress, so the full-screen UI can interrupt it.
+let activeAbort = null;
 
 function out(s = "") {
+  if (screenUi) return screenUi.note(s);
   process.stdout.write(s + "\n");
 }
 
@@ -87,32 +96,34 @@ function appendHistory(line) {
 
 // ---- slash-command dropdown (feeds tui.readLine's `menu`) ----
 
-const SLASH_COMMANDS = [
-  { name: "help", hint: "show commands" },
-  { name: "plan", hint: "investigate a task with read-only tools and save a plan", args: true },
-  { name: "build", hint: "execute the most recently saved plan" },
-  { name: "compact", hint: "summarize older context, keeping recent turns" },
-  { name: "status", hint: "context size, token usage and task progress" },
-  { name: "profile", hint: "show or switch code/bitcoin/rgb profile", args: true },
-  { name: "diff", hint: "show changes from the latest agent turn" },
-  { name: "undo", hint: "restore the latest agent turn when safe" },
-  { name: "skills", hint: "list local skills" },
-  { name: "mcp", hint: "show MCP connections" },
-  { name: "commands", hint: "list bundled and custom commands" },
-  { name: "model", hint: "show or switch the active model", args: true },
-  { name: "models", hint: "pick a provider or an installed local model" },
-  { name: "setting", hint: "provider status & active model" },
-  { name: "config", hint: "get · set config values", args: true },
-  { name: "provider", hint: "add an API key · list providers", args: true },
-  { name: "login", hint: "configure a provider with a masked API key", args: true },
-  { name: "doctor", hint: "config, provider, tools & plugin diagnostics" },
-  { name: "session", hint: "save · load · list · export", args: true },
-  { name: "sats", hint: "list persistent Sats" },
-  { name: "sat", hint: "select · info · workspace", args: true },
-  { name: "tools", hint: "list available tools" },
-  { name: "reset", hint: "clear conversation history" },
-  { name: "exit", hint: "leave" },
+export const SLASH_COMMANDS = [
+  { name: "help", hint: "show commands", group: "Session" },
+  { name: "plan", hint: "investigate a task with read-only tools and save a plan", args: true, group: "Work" },
+  { name: "build", hint: "execute the most recently saved plan", group: "Work" },
+  { name: "diff", hint: "show changes from the latest agent turn", group: "Work" },
+  { name: "undo", hint: "restore the latest agent turn when safe", group: "Work" },
+  { name: "subagent", hint: "delegate a prompt to a persona", args: true, group: "Work" },
+  { name: "compact", hint: "summarize older context, keeping recent turns", group: "Session" },
+  { name: "status", hint: "context size, token usage and task progress", group: "Session" },
+  { name: "session", hint: "save · load · list · export", args: true, optional: true, group: "Session" },
+  { name: "reset", hint: "clear conversation history", group: "Session" },
+  { name: "model", hint: "show or switch the active model", args: true, optional: true, group: "Model" },
+  { name: "models", hint: "pick a provider or an installed local model", group: "Model" },
+  { name: "login", hint: "configure a provider with a masked API key", args: true, optional: true, group: "Model" },
+  { name: "provider", hint: "add an API key · list providers", args: true, optional: true, group: "Model" },
+  { name: "setting", hint: "provider status & active model", group: "Model" },
+  { name: "config", hint: "get · set config values", args: true, optional: true, group: "Model" },
+  { name: "sats", hint: "list persistent Sats", group: "Sats" },
+  { name: "sat", hint: "select · info · workspace", args: true, optional: true, group: "Sats" },
+  { name: "profile", hint: "show or switch code/bitcoin/rgb profile", args: true, optional: true, group: "Tools" },
+  { name: "tools", hint: "list available tools", group: "Tools" },
+  { name: "skills", hint: "list local skills", group: "Tools" },
+  { name: "mcp", hint: "show MCP connections", group: "Tools" },
+  { name: "commands", hint: "list bundled and custom commands", group: "Tools" },
+  { name: "doctor", hint: "config, provider, tools & plugin diagnostics", group: "Tools" },
+  { name: "exit", hint: "leave", group: "Session" },
 ];
+const COMMAND_GROUPS = ["Work", "Session", "Model", "Sats", "Tools"];
 
 // menu(buf) → rows while typing a bare "/command" (hidden once an argument
 // starts). No-arg commands submit on Enter; the rest complete with a trailing
@@ -257,6 +268,7 @@ export async function main(argv) {
   if (opts.version) return out(`${t.accent(t.BOLT)}${t.BOLT ? " " : ""}bitcode ${VERSION}`);
 
   const config = loadConfig();
+  setPreferredLang(config.lang);
   const root = projectRoot(process.cwd());
   const project = discoverProject(root);
   const profile = resolveProfile({ cliProfile: opts.profile, config, cwd: root });
@@ -341,7 +353,7 @@ export async function main(argv) {
     if (opts.prompt) return await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits, fallbacks, opts, permissions, root, profile, project });
     if (opts.sats) {
       satsServer = await startSatsServer({ bus, network: ctx.name });
-      out(`Sats · apri ${satsServer.url}`);
+      out(`Sats · open ${satsServer.url}`);
     }
     const commands = loadCommands();
     await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext, readOnly: opts.readOnly, plan, maxStepsOverride: opts.maxSteps, permissions, root, profile, project, bus, noSession: opts.noSession });
@@ -606,8 +618,45 @@ function previewArgs(tc) {
   return clip(JSON.stringify(a), 80);
 }
 
+// The change a mutating tool call asks for, as plain diff lines (no colour).
+function toolDiff(tc) {
+  const a = tc.args || {};
+  if (tc.name === "patch") return String(a.diff || "").split("\n").filter(l => /^[+-@]/.test(l) && !/^(\+\+\+|---) /.test(l)).join("\n");
+  if (tc.name === "edit_file") {
+    const edits = a.edits || [{ old_string: a.old_string, new_string: a.new_string }];
+    return edits.map(e => [...String(e.old_string ?? "").split("\n").map(l => "-" + l), ...String(e.new_string ?? "").split("\n").map(l => "+" + l)].join("\n")).join("\n@@\n");
+  }
+  if (tc.name === "write_file") return String(a.content ?? "").split("\n").map(l => "+" + l).join("\n");
+  return "";
+}
+function diffStat(diff) {
+  const lines = diff.split("\n");
+  const added = lines.filter(l => l.startsWith("+")).length, removed = lines.filter(l => l.startsWith("-")).length;
+  return [{ kind: "add", text: `+${added}` }, { kind: "del", text: ` -${removed}` }];
+}
+const OUTPUT_TOOLS = new Set(["bash", "exec_command", "write_stdin"]);
+
+// Tool activity for the full-screen UI: one line per call, coloured by the Sat that owns the role.
+function screenHooks({ approve, askUser, onCheckpoint, onMutation }) {
+  return {
+    onDelta: piece => screenUi.assistantDelta(piece),
+    onAssistantEnd: text => { screenUi.assistantEnd(); emit("modelResponse", { text }); },
+    onToolStart: tc => { screenUi.toolStart(tc.id, { name: tc.name, preview: previewArgs(tc) }); emit("toolStart", { tc }); },
+    onToolEnd: async (tc, result, metadata) => {
+      const denied = metadata?.outcome === "denied", failed = String(result).startsWith("ERROR");
+      const status = denied ? "denied" : failed ? "error" : "ok";
+      const diff = status === "ok" && isMutating({ name: tc.name }) ? toolDiff(tc) : "";
+      screenUi.toolEnd(tc.id, { status, result: String(result), output: OUTPUT_TOOLS.has(tc.name) ? String(result) : "", diff, stat: diff ? diffStat(diff) : null });
+      emit("toolEnd", { tc, result });
+    },
+    approve, askUser, onCheckpoint, onMutation,
+    onFallback: (from, to, err) => screenUi.toast(`fallback: ${from.spec || from.model} → ${to.spec || to.model} (${err.message})`, "error", 6000),
+  };
+}
+
 // Fresh per user turn so the "Reasoning" header prints once per turn.
 function buildHooks({ approve, askUser, onCheckpoint, checkpoint, onMutation } = {}) {
+  if (screenUi) return screenHooks({ approve, askUser, onCheckpoint, onMutation });
   let reasoningOpen = false;
   return {
     onDelta: (piece) => process.stdout.write(piece),
@@ -626,7 +675,7 @@ function buildHooks({ approve, askUser, onCheckpoint, checkpoint, onMutation } =
     },
     onToolEnd: async (tc, result, metadata) => {
       const isErr = result.startsWith("ERROR");
-      const mark = metadata?.outcome === "denied" ? t.danger("⊘ Rifiutato") : isErr ? t.danger("✗") : t.ok("✓");
+      const mark = metadata?.outcome === "denied" ? t.danger("⊘ Denied") : isErr ? t.danger("✗") : t.ok("✓");
       const lines = result.split("\n");
       out("    " + mark + " " + t.body(clip(lines[0] ?? "", 100)));
       for (const l of lines.slice(1, 5)) out("      " + t.faint(clip(l, 100)));
@@ -658,6 +707,7 @@ function rawPreview(tc) {
 }
 
 function printTurnSummary(files = []) {
+  if (screenUi) return screenUi.turnFiles(files);
   if (!files.length) return;
   out(t.label("Turn summary"));
   for (const file of files) out(`  ${file.path}  ${t.ok("+" + file.added)} ${t.danger("-" + file.removed)}`);
@@ -671,13 +721,16 @@ function printData(value, opts = {}) { out(JSON.stringify(value, null, opts.json
 async function withInterrupt(work) {
   const controller = new AbortController();
   const abort = () => controller.abort(new Error("cancelled by user"));
+  const outer = activeAbort;
+  activeAbort = abort;
   process.on("SIGINT", abort);
   try { return await work(controller.signal); }
-  finally { process.removeListener("SIGINT", abort); }
+  finally { process.removeListener("SIGINT", abort); activeAbort = outer; }
 }
 export function runWithInterrupt(options) {
   return withInterrupt(async signal => {
     if (options.onSatEvent) return options.context?.satId ? runSat({ ...options, signal, satId: options.context.satId, persistence: options.context.satPersistence !== false }) : runAgent({ ...options, signal });
+    if (screenUi) return runOnScreen(options, signal);
     const satId = options.context?.satId || null, bus = options.context?.bus || createEventBus(), runId = options.context?.runId || randomUUID();
     const provider = options.target?.provider || {};
     const live = createLiveLine({ caps: detectCaps(), registry: loadSats(), lang: satLang(), subject: { satId, runId, providerName: options.target?.providerName, baseURL: provider.baseURL, model: options.target?.model } });
@@ -691,6 +744,25 @@ export function runWithInterrupt(options) {
       return result;
     } catch (error) { outcome = signal.aborted ? "cancelled" : "error"; throw error; } finally { unsubscribe(); live.stop(outcome); }
   });
+}
+
+// Full-screen counterpart of the live line: the UI shows progress from bus events.
+async function runOnScreen(options, signal) {
+  const satId = options.context?.satId || null, bus = options.context?.bus || createEventBus(), runId = options.context?.runId || randomUUID();
+  const unsubscribe = bus.subscribe(event => { if (event.runId === runId || event.parentRunId === runId) screenUi.busEvent(event); });
+  const context = { ...options.context, bus, runId };
+  let outcome = "error";
+  screenUi.runStart({ sat: satId });
+  try {
+    const result = await (satId ? runSat({ ...options, context, signal, satId, persistence: options.context.satPersistence !== false }) : runAgent({ ...options, context, signal }));
+    outcome = signal.aborted ? "cancelled" : "ok";
+    return result;
+  } catch (error) {
+    // The turn line already says "interrupted"; a provider's abort error would only repeat it in red.
+    if (signal.aborted) { outcome = "cancelled"; return undefined; }
+    throw error;
+  }
+  finally { unsubscribe(); screenUi.runEnd({ outcome, model: options.target?.spec, sat: satId }); }
 }
 
 // Banner: one line. On a capable terminal the wordmark types itself in (the "b" in orange), otherwise it is simply printed.
@@ -786,20 +858,48 @@ async function interactive({ target, system, tools, network, config, yolo, agent
     }
   }
 
-  out("");
-  await banner(active.spec, network, { animate: true });
-  out("  " + t.faint(cwd));
-  { const caps = detectCaps(); out("  " + (caps.level === "text" ? t.stageLegend() : welcomeSats(loadSats()))); }
-  out("");
-  out(t.faint("type a request, or /help for commands. Ctrl+D to quit."));
-  out("");
-
   const menu = buildMenu(commands);
   const history = loadHistory();
+  const caps = detectCaps();
+  const fullscreen = fullscreenSupported(caps);
+  if (fullscreen) {
+    bus ??= createEventBus();
+    screenUi = createPresenter({
+      caps, lang: satLang(), cwd, history,
+      commands: [...SLASH_COMMANDS, ...commands.map(c => ({ name: c.name, hint: c.description || "custom command", args: true, group: "Custom" }))],
+      listSessions: () => listSessions(cwd),
+      status: () => ({
+        model: active.spec, profile: currentProfile, network, permission: permissions.mode, satId: session.satId,
+        sessionName: session.name || firstUserLine(messages), plan: plan?.steps || [], mcp: ext.mcpServers || [],
+        estimatedTokens: contextStats(messages).estimated_tokens, version: VERSION,
+      }),
+    });
+    screenUi.onInterrupt(() => activeAbort?.());
+    setInputDriver(screenUi);
+    screenUi.start();
+  } else {
+    out("");
+    await banner(active.spec, network, { animate: true });
+    out("  " + t.faint(cwd));
+    out("  " + (caps.level === "text" ? t.stageLegend() : welcomeSats(loadSats())));
+    out("");
+    out(t.faint("type a request, or /help for commands. Ctrl+D to quit."));
+    out("");
+  }
 
   const checkpoint = new TurnCheckpoint(root);
+  // "Always" answers last for this session only and never cover payments.
+  const sessionAllowed = new Set();
   const approve = async (tc, tool, { signal } = {}) => {
     if (!requiresPaymentApproval(tool) && mayAutoApprove({ tool, args: tc.args, permissions })) return true;
+    if (screenUi) {
+      const financial = requiresPaymentApproval(tool);
+      if (!financial && sessionAllowed.has(tool.name)) return true;
+      const diff = ["write_file", "edit_file", "patch"].includes(tool.name) ? toolDiff(tc) : "";
+      const choice = await screenUi.approve({ tool: tool.name, sat: session.satId, financial, readback: tool.readback?.(tc.args || {}), diff, args: diff ? {} : redact(tc.args || {}) });
+      if (choice === "always" && !financial) sessionAllowed.add(tool.name);
+      return choice !== "deny";
+    }
     if (["write_file", "edit_file", "patch"].includes(tool.name)) out(previewMutation(tc));
     out(approvalCard({ satId: session.satId, tool: tool.name, financial: requiresPaymentApproval(tool), lang: satLang() }, detectCaps()));
     if (tool.readback) out("  " + t.bold(tool.readback(tc.args || {})));
@@ -818,12 +918,19 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   };
 
   while (true) {
-    const line = await readLine({ prompt: t.accent("› "), menu, history });
+    let line;
+    if (screenUi) {
+      const entry = await screenUi.readInput();
+      line = entry.line;
+      if (line != null) { appendHistory(entry.typed); screenUi.user(entry.typed); }
+    } else line = await readLine({ prompt: t.accent("› "), menu, history });
     if (line == null) break; // Ctrl+D, or Ctrl+C on an empty line
     let input = line.trim();
     if (!input) continue;
-    history.push(input);
-    appendHistory(input);
+    if (!screenUi) {
+      history.push(input);
+      appendHistory(input);
+    }
 
     if (input.startsWith("/")) {
       const [cmd, ...rest] = input.slice(1).split(/\s+/);
@@ -874,12 +981,89 @@ async function interactive({ target, system, tools, network, config, yolo, agent
   }
 
   persist();
+  if (screenUi) {
+    screenUi.stop();
+    screenUi = null;
+    setInputDriver(null);
+    if (!noSession && messages.length) out(`${t.accent("●")} ${t.faint(`session ${session.id} saved · resume with bitcode --continue`)}`);
+    return;
+  }
   out(t.faint(`${t.BOLT ? `\n${t.accent(t.BOLT)} ` : "\n"}bye`));
 }
 
+function firstUserLine(messages) {
+  const first = messages.find(m => m.role === "user" && typeof m.content === "string");
+  return first ? first.content.split("\n")[0].slice(0, 60) : "";
+}
+
+
+// Full-screen versions of the settings commands: arrow-key pickers instead of typed numbers.
+function screenSettings(ctx) {
+  const lang = satLang();
+  const model = async () => {
+    const spec = await pickModel({ ui: screenUi, config: ctx.config, activeSpec: ctx.getActive().spec, lang });
+    if (!spec) return;
+    try {
+      const next = applyModel({ spec, config: ctx.config, setActive: ctx.setActive });
+      screenUi.toast(`${next.spec} · ${lang === "it" ? "salvato come predefinito" : "saved as default"}`, "success");
+    } catch (err) { screenUi.toast(err.message, "error", 6000); }
+  };
+  const profile = async () => {
+    const next = await pickProfile({ ui: screenUi, current: ctx.profile || "code", lang });
+    if (next && next !== ctx.profile) { await handleSlash(`/profile ${next}`, ctx); ctx.profile = next; }
+  };
+  const permission = async () => {
+    const next = await pickPermission({ ui: screenUi, current: ctx.permissions?.mode, lang });
+    if (!next || !ctx.permissions || next === ctx.permissions.mode) return;
+    ctx.config.permissions = { ...ctx.config.permissions, mode: next };
+    saveConfig(ctx.config);
+    // The sandbox is chosen when tools are built, so full-auto takes effect on the next start.
+    if (next === "full-auto") return screenUi.toast(lang === "it" ? "full-auto salvato: riavvia bitcode per la sandbox" : "full-auto saved: restart bitcode for the sandbox", "info", 6000);
+    ctx.permissions.mode = next;
+    screenUi.toast(`${lang === "it" ? "permessi" : "permissions"}: ${next}`, "success");
+  };
+  const sat = async () => {
+    const next = await pickSat({ ui: screenUi, current: ctx.session.satId, lang });
+    if (next === null) return;
+    if (next) await handleSlash(`/sat ${next}`, ctx);
+    else { delete ctx.session.satId; ctx.persist?.(); screenUi.toast("bitcode", "success"); }
+  };
+  const keys = async () => {
+    const name = await pickProvider({ ui: screenUi, config: ctx.config, lang });
+    if (!name) return;
+    const result = await providerAdd(ctx.config, name);
+    screenUi.toast(result.msg, result.ok ? "success" : "error", 5000);
+    if (result.ok) try { ctx.setActive(resolveModel({ cliModel: ctx.getActive().spec, config: ctx.config })); } catch { /* the key belongs to another provider */ }
+  };
+  const language = async () => {
+    const next = await pickLanguage({ ui: screenUi, current: satLang() });
+    if (!next || next === satLang()) return;
+    ctx.config.lang = next;
+    saveConfig(ctx.config);
+    screenUi.toast(next === "it" ? "Italiano: vale dal prossimo avvio" : "English: applies on the next start", "success", 5000);
+  };
+  return { model, profile, permission, sat, keys, language,
+    menu: () => settingsMenu({ ui: screenUi, lang, actions: { model, profile, permission, sat, keys, language },
+      read: () => ({ model: ctx.getActive().spec, profile: ctx.profile || "code", permission: ctx.permissions?.mode, sat: ctx.session.satId, language: ctx.config.lang === "it" ? "Italiano" : "English" }) }) };
+}
+
 export async function handleSlash(input, ctx) {
-  const [cmd, ...rest] = input.slice(1).split(/\s+/);
+  const [cmd, ...rest] = input.slice(1).split(/\s+/).filter(Boolean);
   const arg = rest.join(" ");
+  if (screenUi && ctx.setActive) {
+    const pick = screenSettings(ctx);
+    if (cmd === "models" || (cmd === "model" && !arg)) return pick.model();
+    if (cmd === "profile" && !arg) return pick.profile();
+    if (cmd === "sat" && !arg) return pick.sat();
+    if (cmd === "setting" || cmd === "settings" || (cmd === "config" && !arg)) return pick.menu();
+    if (cmd === "login" && !arg) return pick.keys();
+    if (cmd === "session" && rest[0] === "load" && !rest[1]) {
+      const list = listSessions(ctx.cwd);
+      const choice = list.length ? await screenUi.select({ title: "Session", items: list.map(x => ({ label: x.name || x.id, value: x.id, hint: `${x.messageCount} msg${x.model ? " · " + x.model : ""}`, current: x.id === ctx.session.id })) }) : null;
+      if (!choice) return;
+      return handleSlash(`/session load ${choice.value}`, ctx);
+    }
+  }
   switch (cmd) {
     case "sats":
       { const caps = detectCaps();
@@ -890,7 +1074,7 @@ export async function handleSlash(input, ctx) {
         const [action, name, extra] = rest;
         if (extra || !action || (name && !['info', 'workspace'].includes(action))) throw new Error('usage: /sat <name> | /sat info <name> | /sat workspace <name>');
         const sat = findSat(['info', 'workspace'].includes(action) ? name : action);
-        if (action === 'info') return printData({ ...sat, ...satWorkspace(sat.id), history: satHistory(sat.id, { cwd: ctx.cwd }) });
+        if (action === 'info') return out(satInfoText({ ...sat, ...satWorkspace(sat.id), history: satHistory(sat.id, { cwd: ctx.cwd }) }));
         if (action === 'workspace') return out(satWorkspace(sat.id).workspace);
         ctx.session.satId = sat.id;
         ctx.persist?.();
@@ -907,6 +1091,7 @@ export async function handleSlash(input, ctx) {
       ctx.session.id = newSessionId();
       ctx.session.name = null;
       if (ctx.plan) ctx.plan.steps = [];
+      if (screenUi) { screenUi.clear(); screenUi.toast("history cleared", "success"); return; }
       out(t.faint("history cleared"));
       return;
     case "tools":
@@ -1023,10 +1208,10 @@ export async function handleSlash(input, ctx) {
       out(t.faint("— done —"));
       return;
     }
-    case "skills": return printData(loadSkills());
-    case "commands": return printData((ctx.commands || loadCommands()).map(({ name, description }) => ({ name, description })));
-    case "mcp": return printData(ctx.ext?.mcpServers || []);
-    case "status": return printData({ model: ctx.getActive().spec, profile: ctx.profile || "code", root: ctx.project?.root || ctx.cwd, commands: ctx.project?.commands || [], permissions: ctx.permissions ? { mode: ctx.permissions.mode, readOnly: ctx.permissions.readOnly, allow: [...ctx.permissions.allow] } : undefined, readOnly: !!ctx.readOnly, ...contextStats(ctx.messages), usage: ctx.messages.reduce((u, m) => ({ input_tokens: u.input_tokens + (m.usage?.input_tokens || 0), output_tokens: u.output_tokens + (m.usage?.output_tokens || 0) }), { input_tokens: 0, output_tokens: 0 }), plan: ctx.plan });
+    case "skills": return out(listText("Skills", loadSkills()));
+    case "commands": return out(listText("Commands", ctx.commands || loadCommands(), { name: c => "/" + c.name }));
+    case "mcp": return out(mcpText(ctx.ext?.mcpServers || []));
+    case "status": return out(statusText({ model: ctx.getActive().spec, profile: ctx.profile || "code", root: ctx.project?.root || ctx.cwd, commands: ctx.project?.commands || [], permissions: ctx.permissions ? { mode: ctx.permissions.mode, readOnly: ctx.permissions.readOnly, allow: [...ctx.permissions.allow] } : undefined, readOnly: !!ctx.readOnly, ...contextStats(ctx.messages), usage: ctx.messages.reduce((u, m) => ({ input_tokens: u.input_tokens + (m.usage?.input_tokens || 0), output_tokens: u.output_tokens + (m.usage?.output_tokens || 0) }), { input_tokens: 0, output_tokens: 0 }), plan: ctx.plan }));
     case "compact": {
       try {
         ctx.persist?.();
@@ -1250,14 +1435,23 @@ export async function handleSlash(input, ctx) {
       return;
     }
     case "help":
-      out(t.faint("/model [spec]  /models  /login [provider]  /setting  /config <sub>  /provider <sub>  /doctor  /session <sub>"));
-      out(t.faint("/plan <task>  /build  /compact  /status  /profile [code|bitcoin|rgb]  /diff  /undo  /skills  /mcp  /commands"));
-      out(t.faint("/sats  /sat <name>  /sat info <name>  /sat workspace <name>  /tools [filter]  /reset  /exit"));
-      if (ctx.commands?.length) out(t.faint(`custom: ${ctx.commands.map((c) => "/" + c.name).join("  ")}`));
+      out(helpText(ctx.commands || []));
       return;
     default:
       out(t.danger(`unknown command: /${cmd}`));
   }
+}
+
+export function helpText(custom = []) {
+  const width = Math.max(...SLASH_COMMANDS.map(c => c.name.length)) + 3;
+  const lines = [];
+  for (const group of COMMAND_GROUPS) {
+    lines.push(t.label(group));
+    for (const c of SLASH_COMMANDS.filter(x => x.group === group)) lines.push(`  ${t.accent(("/" + c.name).padEnd(width))}${t.muted(c.hint)}`);
+  }
+  if (custom.length) lines.push(t.label("Custom"), "  " + custom.map(c => t.accent("/" + c.name)).join("  "));
+  if (screenUi) lines.push("", t.faint("Keys: tab build ⇄ plan · ctrl+p commands · ctrl+l sessions · ctrl+b sidebar · ctrl+o expand · esc esc interrupt · @ attach a file"));
+  return lines.join("\n");
 }
 
 function redact(value, key = "") {

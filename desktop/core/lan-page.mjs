@@ -4,7 +4,7 @@ import { BRAND, THEME } from '../../src/design-tokens.mjs';
 const D = THEME.dark;
 
 export const LAN_PAGE = `<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>bitcode</title>
 <style>
 :root { color-scheme: dark; --bg:${D.canvas}; --card:${D.card}; --ink:${D.ink}; --muted:${D.body}; --line:${D.hairline}; --accent:${BRAND.accent}; }
@@ -36,22 +36,22 @@ async function call(path, body) {
 function login(message) {
   clearInterval(timer); current = null; back.hidden = true; logoutBtn.hidden = true; title.textContent = 'bitcode';
   const pass = el('input', { type: 'password', placeholder: 'Password', autocomplete: 'current-password' });
-  const form = el('form', {}, pass, el('p'), el('button', { className: 'primary', type: 'submit', textContent: 'Entra' }), message ? el('p', { className: 'err', textContent: message }) : '');
+  const form = el('form', {}, pass, el('p'), el('button', { className: 'primary', type: 'submit', textContent: 'Sign in' }), message ? el('p', { className: 'err', textContent: message }) : '');
   form.onsubmit = async e => { e.preventDefault(); try { await call('/api/login', { password: pass.value }); list(); } catch (err) { login(err.message); } };
-  main.replaceChildren(el('p', { className: 'muted', textContent: 'Accesso dalla rete locale. Le approvazioni restano sul desktop.' }), form); pass.focus();
+  main.replaceChildren(el('p', { className: 'muted', textContent: 'Local network access. Approvals stay on the desktop.' }), form); pass.focus();
 }
 async function list() {
   clearInterval(timer); current = null; back.hidden = true; logoutBtn.hidden = false; title.textContent = 'Chat';
   const sessions = await call('/api/sessions');
-  main.replaceChildren(...(sessions.length ? sessions.map(s => { const b = el('button', { className: 'row' }, el('div', { textContent: s.name }), el('div', { className: 'muted', textContent: s.active ? 'in esecuzione' : new Date(s.updatedAt).toLocaleString() })); b.onclick = () => open(s.sessionId); return b; }) : [el('p', { className: 'muted', textContent: 'Nessuna chat. Creale dal desktop.' })]));
+  main.replaceChildren(...(sessions.length ? sessions.map(s => { const b = el('button', { className: 'row' }, el('div', { textContent: s.name }), el('div', { className: 'muted', textContent: s.active ? 'in esecuzione' : new Date(s.updatedAt).toLocaleString() })); b.onclick = () => open(s.sessionId); return b; }) : [el('p', { className: 'muted', textContent: 'No chats yet. Create them on the desktop.' })]));
 }
 async function render() {
   const s = await call('/api/session?id=' + encodeURIComponent(current));
   title.textContent = s.name;
   const items = s.messages.filter(m => m.content).map(m => el('div', { className: 'msg ' + m.role, textContent: m.content }));
   if (s.pending) items.push(el('div', { className: 'note', textContent: s.pending + ' richiesta/e in attesa: approva o rifiuta sul desktop.' }));
-  if (s.active) items.push(el('div', { className: 'muted', textContent: 'bitcode sta lavorando…' }));
-  const text = el('textarea', { rows: 2, placeholder: 'Scrivi a bitcode…' }), form = el('form', { className: 'send' }, text, el('button', { className: 'primary', type: 'submit', textContent: '↑' }));
+  if (s.active) items.push(el('div', { className: 'muted', textContent: 'bitcode is working…' }));
+  const text = el('textarea', { rows: 2, placeholder: 'Message bitcode…' }), form = el('form', { className: 'send' }, text, el('button', { className: 'primary', type: 'submit', textContent: '↑' }));
   form.onsubmit = async e => { e.preventDefault(); if (!text.value.trim()) return; try { await call('/api/send', { sessionId: current, text: text.value }); text.value = ''; render(); } catch (err) { alert(err.message); } };
   main.replaceChildren(...items, form); window.scrollTo(0, document.body.scrollHeight);
 }

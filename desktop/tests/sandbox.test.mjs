@@ -2,7 +2,7 @@
 // model and for a write lease, and cannot see the host home or the network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,5 +78,37 @@ test('sandboxed worker writes through the controller and is isolated', { skip: !
   assert.match(out, /NO_NET/);
   assert.match(out, /No such file|cannot access/, 'host home is not mounted');
   assert.ok(events.some(([ch, e]) => ch === 'feed' && e.type === 'run.started'));
+  c.shutdown();
+});
+
+test('sandboxed worker uses the CLI file tools: edits[], grep and glob, never listing denied paths', { skip: !sandbox.available || !existsSync(path.join(dist, 'worker.mjs')) ? 'needs bwrap and npm run build' : false, timeout: 30000 }, async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'bitcode-home-')), root = mkdtempSync(path.join(tmpdir(), 'bitcode-proj-'));
+  mkdirSync(path.join(root, '.ssh')); writeFileSync(path.join(root, '.ssh', 'id'), 'needle secret\n');
+  writeFileSync(path.join(root, 'a.js'), 'const needle = 1;\nconst other = 2;\n');
+  let step = 0, schema = null; const toolOutputs = [];
+  const callModelImpl = async ({ messages, tools }) => {
+    for (const m of messages) if (m.role === 'tool') toolOutputs.push(m.content);
+    schema ??= tools.find(t => t.name === 'edit_file')?.parameters;
+    if (++step === 1) return { text: '', toolCalls: [
+      { id: 'g1', name: 'grep', args: { pattern: 'needle' } },
+      { id: 'g2', name: 'glob', args: { pattern: '**/*' } },
+      { id: 'e1', name: 'edit_file', args: { path: 'a.js', edits: [{ old_string: 'needle = 1', new_string: 'needle = 10' }, { old_string: 'other = 2', new_string: 'other = 20' }] } }] };
+    return { text: 'done', toolCalls: [] };
+  };
+  const events = [];
+  const c = createController({ home, appDir: dist, sandbox, config, callModelImpl, emit: (ch, p) => events.push([ch, p]),
+    spawnWorker: opts => spawnWorker({ ...opts, runtime: process.execPath }) });
+  const p = await c.invoke('project.open', { path: root });
+  const s = await c.invoke('session.create', { projectId: p.projectId, mode: 'assisted' }, 'ui:1');
+  const { run } = await c.invoke('chat.submit', { sessionId: s.sessionId, text: 'edit' }, 'ui:1');
+  const end = Date.now() + 20000;
+  while (!events.some(([ch, r]) => ch === 'run' && r.runId === run.runId && r.endedAt)) { if (Date.now() > end) throw new Error('timeout'); await new Promise(r => setTimeout(r, 20)); }
+  const final = events.filter(([ch, r]) => ch === 'run' && r.runId === run.runId).at(-1)[1];
+  assert.equal(final.state, 'success', final.error);
+  assert.ok(schema?.properties?.edits, 'edit_file exposes the CLI edits[] schema');
+  assert.equal(readFileSync(path.join(root, 'a.js'), 'utf8'), 'const needle = 10;\nconst other = 20;\n');
+  const out = toolOutputs.join('\n');
+  assert.match(out, /a\.js:1:const needle = 1;/);
+  assert.doesNotMatch(out, /\.ssh/);
   c.shutdown();
 });

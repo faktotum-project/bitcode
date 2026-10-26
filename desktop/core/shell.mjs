@@ -38,8 +38,23 @@ const clip = (text, max) => { const s = String(text || '').replace(/\s+/g, ' ').
 
 // Tray content. Approvals only navigate: the decision always happens in the
 // window, where the full subject and digest are shown.
-export function trayModel({ runs = [], pending = [] }) {
-  const parts = [`${runs.length} attività`, `${pending.length} richieste`];
+// Words of the main process (tray, dialogs, notifications): English unless the app language is Italian.
+const MAIN_WORDS = {
+  en: { runs: n => `${n} ${n === 1 ? 'run' : 'runs'}`, requests: n => `${n} ${n === 1 ? 'request' : 'requests'}`, hide: 'Hide bitcode', open: 'Open bitcode', mini: 'New mini chat',
+    pending: 'Pending requests', more: n => `${n} more…`, running: n => `${n} running`, idle: 'Nothing running', cancel: label => `Cancel: ${label}`, quit: 'Quit',
+    reload: 'Reload', crashTitle: 'The bitcode window keeps closing', crashDetail: reason => `Reason: ${reason}. Running work continues in the main process.`,
+    cancelBtn: 'Cancel', quitRuns: 'Stop running work and quit', quitDetail: 'Quitting stops running work; it does not resume automatically.',
+    approval: 'bitcode · approval requested', runDone: ok => `bitcode · run ${ok ? 'finished' : 'failed'}` },
+  it: { runs: n => `${n} attività`, requests: n => `${n} richieste`, hide: 'Nascondi bitcode', open: 'Apri bitcode', mini: 'Nuova mini chat',
+    pending: 'Richieste in attesa', more: n => `Altre ${n}…`, running: n => `${n} attività in corso`, idle: 'Nessuna attività in corso', cancel: label => `Annulla: ${label}`, quit: 'Esci',
+    reload: 'Ricarica', crashTitle: 'La finestra di bitcode continua a chiudersi', crashDetail: reason => `Motivo: ${reason}. Le attività in corso proseguono nel processo principale.`,
+    cancelBtn: 'Annulla', quitRuns: 'Termina attività ed esci', quitDetail: 'Uscendo le attività vengono interrotte e non riprendono automaticamente.',
+    approval: 'bitcode · approvazione richiesta', runDone: ok => `bitcode · attività ${ok ? 'completata' : 'terminata con errore'}` },
+};
+export const mainWords = lang => MAIN_WORDS[lang === 'it' ? 'it' : 'en'];
+
+export function trayModel({ runs = [], pending = [], lang = 'en' }) {
+  const w = mainWords(lang), parts = [w.runs(runs.length), w.requests(pending.length)];
   return {
     tooltip: `bitcode · ${parts.join(' · ')}`,
     state: pending.length ? 'attention' : runs.length ? 'busy' : 'idle',

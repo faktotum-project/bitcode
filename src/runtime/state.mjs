@@ -18,6 +18,8 @@ export function reduceEvent(state, event) {
       warnings: 0,
       tools: {},
       model: data.model,
+      inputTokens: 0,
+      outputTokens: 0,
     };
     const parent = state.runs[event.parentRunId];
     if (parent) {
@@ -29,6 +31,11 @@ export function reduceEvent(state, event) {
   if (run && type !== "run.started") {
     run.updatedAt = event.at;
     if (type === "model.started") run.state = "thinking";
+    if (type === "model.usage") {
+      // Providers report the whole prompt each call: input is the latest context size, output accumulates.
+      run.inputTokens = data.inputTokens ?? run.inputTokens;
+      run.outputTokens += data.outputTokens || 0;
+    }
     const toolId = event.toolCallId;
     if (type === "tool.requested") {
       run.tools[toolId] = { name: data.tool, stage: data.stage, summary: data.summary, status: "requested" };

@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const { _electron } = await import(process.env.BITCODE_PLAYWRIGHT_MODULE || 'playwright');
+const playwright = await import(process.env.BITCODE_PLAYWRIGHT_MODULE || 'playwright');
+const { _electron } = playwright._electron ? playwright : playwright.default;
 const desktop = fileURLToPath(new URL('../', import.meta.url));
 const temporary = mkdtempSync(path.join(tmpdir(), 'bitcode-run-error-ui-'));
 const root = path.join(temporary, 'project'), home = path.join(temporary, 'state');
@@ -23,10 +24,10 @@ const env = { ...process.env, BITCODE_HOME: home }; delete env.ELECTRON_RUN_AS_N
 let app;
 try {
   app = await _electron.launch({ executablePath: path.join(desktop, 'node_modules/electron/dist/electron'),
-    args: [desktop, `--user-data-dir=${path.join(temporary, 'electron')}`], env });
+    args: [desktop, '--no-sandbox', '--ozone-platform=x11', `--user-data-dir=${path.join(temporary, 'electron')}`], env });
   const page = await app.firstWindow(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.getByRole('button', { name: 'Attività', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Activity', exact: true }).waitFor();
   const original = 'Diagnostica questo problema ' + 'nel progetto '.repeat(18) + 'richiesta completa finale';
   await page.evaluate(async ({ root, original }) => {
     const invoke = async (method, params) => { const r = await window.bitcode.invoke(method, params); if (!r.ok) throw Error(r.error.message); return r.result; };
@@ -34,16 +35,16 @@ try {
     const session = await invoke('session.create', { projectId: project.projectId, model: 'broken/test' });
     await invoke('chat.submit', { sessionId: session.sessionId, text: original });
   }, { root, original });
-  await page.getByRole('button', { name: 'Attività', exact: true }).click();
-  await page.getByRole('button', { name: 'Dettagli errore', exact: true }).waitFor({ timeout: 20000 });
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await page.getByRole('button', { name: 'Error details', exact: true }).waitFor({ timeout: 20000 });
   assert.match(await page.locator('table.list').innerText(), /HTTP_401/);
-  await page.getByRole('button', { name: 'Dettagli errore', exact: true }).click();
+  await page.getByRole('button', { name: 'Error details', exact: true }).click();
   const dialog = page.locator('dialog.run-error'); await dialog.waitFor();
   const prompt = await dialog.locator('textarea').inputValue();
   assert.ok(prompt.includes(original)); assert.ok(prompt.includes(root));
   assert.match(prompt, /HTTP_401/); assert.doesNotMatch(await dialog.innerText(), /sk-ui-test-secret/);
   assert.doesNotMatch(prompt, /sk-ui-test-secret/);
-  await dialog.getByRole('button', { name: 'Copia prompt fix', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Copy fix prompt', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('dialog.run-error button.primary')?.classList.contains('done'));
   assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), prompt);
   await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });

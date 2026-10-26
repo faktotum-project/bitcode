@@ -7,6 +7,7 @@ const TYPES = new Set([
   "run.started",
   "model.started",
   "model.finished",
+  "model.usage",
   "tool.requested",
   "approval.requested",
   "approval.resolved",
@@ -112,6 +113,9 @@ export function createEventBus({ bufferSize = 500 } = {}) {
       if (typeof input.model === "string" && type === "run.started")
         data.model = safeText(input.model, 100);
       if (OUTCOMES.has(input.outcome)) data.outcome = input.outcome;
+      for (const key of ["inputTokens", "outputTokens"])
+        if (type === "model.usage" && Number.isFinite(input[key]))
+          data[key] = Math.max(0, Math.round(input[key]));
       if (Number.isFinite(input.durationMs))
         data.durationMs = Math.max(0, Math.round(input.durationMs));
       const event = {

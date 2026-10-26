@@ -3,9 +3,13 @@ import { phrasesFor, word } from './work-meter.mjs';
 // Tone: calm, one verb, the breath as metaphor; never hype.
 // Pure data and functions: no I/O, safe to bundle into the renderer.
 
-// Visual states are the ones the avatars animate; event states come from sat-events.mjs.
+// Visual states are the ones the avatars animate. Inputs may be sat-events.mjs states
+// or run states from runtime/state.mjs; both vocabularies resolve here.
 export const VISUAL_STATES = Object.freeze(['idle', 'thinking', 'reading', 'running', 'drafting', 'waiting', 'happy', 'concerned']);
-const EVENT_TO_VISUAL = { writing: 'drafting', waiting_approval: 'waiting', success: 'happy', error: 'concerned', planning: 'thinking', delegating: 'running' };
+const EVENT_TO_VISUAL = {
+  writing: 'drafting', waiting_approval: 'waiting', success: 'happy', error: 'concerned', planning: 'thinking', delegating: 'running',
+  awaiting_approval: 'waiting', responding: 'thinking', cancelled: 'idle'
+};
 export const visualState = state => EVENT_TO_VISUAL[state] || (VISUAL_STATES.includes(state) ? state : 'thinking');
 
 // Only four states carry words; the avatars still animate all eight. A resting Sat has no label at all.
@@ -19,27 +23,30 @@ const ETHICS = {
   en: { wallet: 'the wallet stays closed', network: 'working sheltered, offline', testSend: 'no rush: you sign' }
 };
 
+// English is the primary language; Italian is chosen with BITCODE_LANG=it or the saved "lang" setting.
+let preferred = 'en';
+export const setPreferredLang = lang => { preferred = lang === 'it' ? 'it' : 'en'; };
 export const satLang = (env = process.env) => {
-  const raw = String(env.BITCODE_LANG || env.LC_ALL || env.LANG || '').toLowerCase();
-  return raw.startsWith('it') ? 'it' : 'en';
+  const raw = String(env.BITCODE_LANG || '').toLowerCase();
+  return raw ? (raw.startsWith('it') ? 'it' : 'en') : preferred;
 };
 const pick = lang => (lang === 'it' ? 'it' : 'en');
 
 // -> { state, label }  e.g. { state: 'waiting', label: 'aspetta il tuo sì' }; idle -> label ''.
 // A working Sat shows the first of its own phrases here (the live line rotates through all of them).
-export function satStateLabel(satId, state, lang = 'it') {
+export function satStateLabel(satId, state, lang = 'en') {
   const e = essentialState(state), l = pick(lang);
   const label = e === 'idle' ? '' : e === 'working' ? phrasesFor(satId, l)[0] : word(e === 'problem' ? 'problem' : e, l);
   return { state: visualState(state), label: label.toLowerCase(), text: label.toLowerCase() };
 }
 // The Sat's own voice: the phrases it rotates through while working.
-export const satStateTable = (satId, lang = 'it') => phrasesFor(satId, pick(lang)).map(label => ({ state: 'working', label: label.toLowerCase(), text: label.toLowerCase() }));
+export const satStateTable = (satId, lang = 'en') => phrasesFor(satId, pick(lang)).map(label => ({ state: 'working', label: label.toLowerCase(), text: label.toLowerCase() }));
 
 // Lines for a Sat's permissions: only what its manifest actually enforces.
-export function satEthics(permissions = {}, lang = 'it') {
+export function satEthics(permissions = {}, lang = 'en') {
   const l = pick(lang), lines = [];
   if (permissions.wallet === 'deny') lines.push(ETHICS[l].wallet);
   if (permissions.network === 'deny') lines.push(ETHICS[l].network);
   return lines;
 }
-export const testSendNote = (lang = 'it') => ETHICS[pick(lang)].testSend;
+export const testSendNote = (lang = 'en') => ETHICS[pick(lang)].testSend;

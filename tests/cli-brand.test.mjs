@@ -95,7 +95,7 @@ test('reduced and text levels never animate or touch the streams; they only clos
     assert.equal(stdout.write, before); assert.equal(log.length, 0);
     live.stop('error');
     assert.equal(log.length, expectLine ? 1 : 0);
-    if (expectLine) assert.match(strip(log[0][1]), /Node · Si ferma e respira · 0s/);
+    if (expectLine) assert.match(strip(log[0][1]), /Node · Pausing to breathe · 0s/);
   }
 });
 
@@ -116,4 +116,12 @@ test('diff gutter, boxes and cards keep their facts and fall back to plain text'
   assert.match(strip(financeBox({ policy: { maxPaymentSats: 50000, dailyLimitSats: 200000, maxFeeSats: 2000, minReserveSats: 100000 }, proposals: [] }, full, 'it')), /Massimo per pagamento\s+50\.000 sat/);
   assert.match(strip(financeBox({ policy: null, proposals: [] }, full, 'en')), /No policy yet/);
   assert.match(strip(welcomeSats(loadSats())), /Node.*Script.*Hash.*Merkle/);
+});
+
+test('terminal scheme defaults to dark and honours BITCODE_THEME and COLORFGBG', async () => {
+  const { terminalScheme } = await import('../src/theme.mjs');
+  assert.equal(terminalScheme({}), 'dark');
+  assert.equal(terminalScheme({ BITCODE_THEME: 'light' }), 'light');
+  assert.equal(terminalScheme({ COLORFGBG: '0;15' }), 'light');
+  assert.equal(terminalScheme({ COLORFGBG: '15;0' }), 'dark');
 });

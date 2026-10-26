@@ -48,7 +48,7 @@ test("Sats CLI: no flag adds no URL; auto delegation is silent and policies matc
   await f.ready(); f.send("delegate");
   await until(() => f.stdout().includes("approve subagent")); f.send("y");
   await until(() => f.requests.length === 4 && f.stdout().includes("PRIVATE_FINAL_RESULT"));
-  assert.doesNotMatch(f.stdout(), /#token=|Sats · apri/);
+  assert.doesNotMatch(f.stdout(), /#token=|Sats · open/);
   assert.deepEqual(f.requests[1].messages.filter(m => m.role === "user"), [{ role: "user", content: "read" }]);
   assert.deepEqual(f.requests[1].tools.map(t => t.function.name).sort(), ["list_dir", "read_file"]);
   // The parent shows the returned tool result and streams its final answer.

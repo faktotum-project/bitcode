@@ -24,7 +24,8 @@ test('tray summary lists approvals for navigation and caps long lists', () => {
   const m = trayModel({ runs: [{ runId: 'r1', prompt: 'fix\nthe   build' }], pending });
   assert.equal(m.state, 'attention'); assert.equal(m.approvals.length, 8); assert.equal(m.moreApprovals, 2);
   assert.equal(m.approvals[0].label, 'progetto-0 · write_file'); assert.equal(m.runs[0].label, 'fix the build');
-  assert.match(m.tooltip, /1 attività · 10 richieste/);
+  assert.match(m.tooltip, /1 run · 10 requests/);
+  assert.match(trayModel({ runs: [{ runId: 'r1', prompt: 'x' }], pending, lang: 'it' }).tooltip, /1 attività · 10 richieste/);
   assert.equal(trayModel({}).state, 'idle');
 });
 

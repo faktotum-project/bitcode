@@ -11,6 +11,7 @@ import { MCP_CATALOG } from './catalog.mjs';
 import { localInventory, KNOWN_RUNTIMES, bestLocalModel, runtimeProvider } from '../../src/local-inventory.mjs';
 import { createMemoryProbe } from '../../src/local-memory.mjs';
 import { isLocalProvider, discoverLocalModels, describeLocalModel, localSetupHint } from '../../src/local-models.mjs';
+import { providerModels } from '../../src/model-catalog.mjs';
 import { loadCommands, expandCommand } from '../../src/commands.mjs';
 import { savePlan, latestPlan, plansDir } from '../../src/plans.mjs';
 import { isReadOnlyCommand, normalizeCommand } from '../../src/permissions.mjs';
@@ -31,7 +32,7 @@ export const MODES = ['manual', 'assisted', 'unattended'];
 const SATS = ['node', 'script', 'hash', 'merkle'];
 const RETENTION_MS = 30 * 24 * 3600_000;
 export const BURN_WORD = 'burnall';
-const DEFAULT_SETTINGS = { v: 1, lang: 'it', theme: 'dark', maxActive: 3, maxLocal: 1, model: null, satModels: {}, localOnly: false, notifyRuns: true, notifyApprovals: true, snippets: [], transcriptionModel: null, remoteMode: 'off' };
+const DEFAULT_SETTINGS = { v: 1, lang: 'en', theme: 'dark', maxActive: 3, maxLocal: 1, model: null, satModels: {}, localOnly: false, notifyRuns: true, notifyApprovals: true, snippets: [], transcriptionModel: null, remoteMode: 'off' };
 const DEFAULT_POLICY = { version: 1, commands: [], network: { destinations: [] } };
 const TTL = { patch: 900_000, command: 900_000, tool: 900_000, network: 300_000, egress: 300_000, policy: 300_000, integrate: 900_000, payment: 300_000 };
 export const PROFILES = ['code', 'rgb'];
@@ -92,7 +93,7 @@ const matchesPolicy = (policy, argv) => !!argv && policy.commands.some(r =>
   r.argv ? r.argv.length === argv.length && r.argv.every((a, i) => a === argv[i]) : r.argvPrefix?.every((a, i) => a === argv[i]));
 
 export function createController({ home, appDir, agents = [], emit = () => {}, sandbox = { available: false }, spawnWorker,
-  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, githubFetch = fetch, transcribeFetch = fetch, rgbFetch, rgbMcpTools, rgbWdkAccount, secrets = { get: () => undefined }, now = Date.now } = {}) {
+  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, githubFetch = fetch, transcribeFetch = fetch, modelsFetch = fetch, rgbFetch, rgbMcpTools, rgbWdkAccount, secrets = { get: () => undefined }, now = Date.now } = {}) {
   const dir = path.join(home, 'desktop');
   const sats = loadSats(appDir && existsSync(path.join(appDir, 'sats')) ? { directory: path.join(appDir, 'sats') } : {});
   const files = { settings: path.join(dir, 'settings.json'), projects: path.join(dir, 'projects.json'), sessions: path.join(dir, 'sessions.json'), worktrees: path.join(dir, 'worktrees.json'), log: path.join(dir, 'approvals.jsonl'), usage: path.join(dir, 'usage.jsonl'), schedules: path.join(dir, 'schedules.json') };
@@ -189,6 +190,14 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   const defaultSpec = () => settings.model || config().model || process.env.BITCODE_MODEL || autoLocal || undefined;
   function pickAutoLocal(inv) { autoLocal = bestLocalModel(inv, config()); }
   const refreshAutoLocal = () => localInventory(config(), { timeoutMs: 1500, home: inventoryHome }).then(pickAutoLocal).catch(() => {});
+  const CLOUD_TTL = 10 * 60_000, cloudCache = new Map();
+  async function cloudModels(name, provider, apiKey, hasKey, refresh) {
+    const cacheKey = `${name}|${hasKey}`, hit = cloudCache.get(cacheKey);
+    if (hit && !refresh && now() - hit.at < CLOUD_TTL) return hit.listing;
+    const listing = await providerModels(name, provider, { apiKey: apiKey || undefined, timeoutMs: 5000, fetchImpl: modelsFetch });
+    if (listing.live) cloudCache.set(cacheKey, { at: now(), listing });
+    return listing;
+  }
   const describeModel = spec => { try { const t = resolveTarget(spec); return { spec: t.spec, locality: t.locality }; } catch (e) { return { spec: spec || null, locality: 'unknown', error: e.message }; } };
 
   async function modelRequest(r, { agent, system, messages, tools }) {
@@ -555,7 +564,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     return { sessionId: s.sessionId, runId: run?.runId };
   }
   const tickSchedules = () => { for (const t of schedules.values()) if (t.enabled && t.nextRunAt && t.nextRunAt <= now() && projects.has(t.projectId)) runSchedule(t).catch(e => log({ kind: 'schedule', id: t.id, status: 'error', error: redactor.text(e.message) })); };
-  const human = [...finance.human, 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'session.deleteMany', 'run.start', 'notes.set', 'session.fork', 'session.move', 'session.rename.ai', 'session.compact',
+  const human = [...finance.human, 'project.close', 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'session.deleteMany', 'run.start', 'notes.set', 'session.fork', 'session.move', 'session.rename.ai', 'session.compact',
     'git.checkout', 'git.stash', 'git.remote', 'review.walkthrough', 'schedule.save', 'schedule.delete', 'schedule.runNow', 'mcp.add', 'mcp.remove', 'run.revert', 'audio.transcribe', 'remote.advice'];
   const methods = {
     ...finance.methods,
@@ -567,12 +576,16 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       projects.set(projectId, entry); saveMeta(); return entry;
     },
     'project.list': () => [...projects.values()].sort((a, b) => b.openedAt - a.openedAt),
-    'project.close': ({ projectId }) => { projects.delete(projectId); saveMeta(); return true; },
+    'project.close': ({ projectId }) => {
+      project(projectId);
+      if ([...runs.values()].some(r => r.projectId === projectId && !r.endedAt)) throw fail('PROJECT_BUSY', 'Stop the project’s running work first');
+      projects.delete(projectId); saveMeta(); return true;
+    },
     'session.create': async ({ projectId, name, mode = 'assisted', model, satId = '' }) => {
       project(projectId); if (!MODES.includes(mode)) throw fail('INVALID_PARAMS', 'Unknown mode');
       if (mode === 'unattended') { const problem = G.worktreeError(await G.worktreeReadiness(project(projectId).root)); if (problem) throw problem; }
       if (satId !== '' && !SATS.includes(satId)) throw fail('INVALID_PARAMS', 'Unknown Sat');
-      const s = { sessionId: newSessionId(), projectId, name: (name || 'Nuova sessione').slice(0, 80), mode, model: model || null, satModels: {}, keep: false, updatedAt: now(), messages: [] };
+      const s = { sessionId: newSessionId(), projectId, name: (name || 'New session').slice(0, 80), mode, model: model || null, satModels: {}, keep: false, updatedAt: now(), messages: [] };
       s.satId = satId;
       sessions.set(s.sessionId, s); persistSession(s); return sessionMeta(s);
     },
@@ -666,10 +679,15 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       hasKey: !!(secrets.get(name) || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey) || isLocalProvider(p) })),
     'model.describe': ({ spec }) => describeModel(spec),
     'commands.list': ({ projectId } = {}) => listCommands(projectId ? project(projectId).root : null),
-    'models.available': async () => {
+    'models.available': async ({ refresh = false } = {}) => {
       const cfg = config(), providers = allProviders(cfg);
-      const cloud = Object.entries(providers).filter(([, p]) => !isLocalProvider(p)).map(([name, p]) => ({ provider: name, spec: p.defaultModel ? `${name}/${p.defaultModel}` : null, model: p.defaultModel || null,
-        hasKey: !!(secrets.get(name) || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey) }));
+      // Each cloud provider lists the models it really serves (OpenRouter even without a key); the listing is cached.
+      const cloud = await Promise.all(Object.entries(providers).filter(([, p]) => !isLocalProvider(p)).map(async ([name, p]) => {
+        const key = secrets.get(name), hasKey = !!(key || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey);
+        const listing = settings.localOnly ? { models: [] } : await cloudModels(name, p, key, hasKey, refresh);
+        return { provider: name, spec: p.defaultModel ? `${name}/${p.defaultModel}` : null, model: p.defaultModel || null, hasKey, error: listing.error || null,
+          models: listing.models.map(m => ({ spec: `${name}/${m.id}`, model: m.id, detail: m.hint || '' })) };
+      }));
       const inv = await localInventory(cfg, { timeoutMs: 1500, home: inventoryHome }); pickAutoLocal(inv);
       const local = inv.servers.map(sv => ({ provider: sv.name, label: sv.label, baseURL: sv.baseURL, configured: sv.configured, running: sv.running,
         hint: sv.models.length ? null : localSetupHint(sv.name, sv.running),
@@ -790,7 +808,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
         skills: root ? loadSkills(root).map(({ name, description, file }) => ({ name, description, file })) : [],
         mcp: Object.entries(cfg.mcp || {}).map(([name, spec]) => ({ name, command: spec.command || spec.url || '', enabled: spec.enabled !== false })) };
     },
-    'review.walkthrough': async ({ projectId, lang = 'it' }) => {
+    'review.walkthrough': async ({ projectId, lang = 'en' }) => {
       const root = project(projectId).root, st = await G.status(root);
       if (!st.repo || !st.files.length) return { text: null, files: 0 };
       const tracked = st.hasCommits ? await G.git(root, ['diff', '--no-color', 'HEAD']) : '';

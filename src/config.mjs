@@ -32,6 +32,7 @@ export const BUILTIN_PROVIDERS = {
     api: "openai",
     baseURL: "https://openrouter.ai/api/v1",
     keyEnv: "OPENROUTER_API_KEY",
+    publicModels: true,
     defaultModel: "anthropic/claude-sonnet-4.6",
   },
   groq: {

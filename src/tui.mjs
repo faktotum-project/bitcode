@@ -117,6 +117,13 @@ function* parseEvents(data) {
   }
 }
 
+// ---- full-screen driver ----
+// While the full-screen UI owns the terminal, questions and secrets are asked in its prompt.
+let driver = null;
+export function setInputDriver(next) {
+  driver = next;
+}
+
 // ---- helpers ----
 
 function visibleWidth(s) {
@@ -198,6 +205,7 @@ function fallbackLine(prompt, signal) {
 //   submit: true → Enter on the row runs it immediately
 export function readLine({ prompt = "", menu = null, history = [], signal } = {}) {
   if (signal?.aborted) return Promise.resolve(null);
+  if (driver) return driver.ask(prompt, { signal });
   if (!stdin.isTTY) return fallbackLine(prompt, signal);
 
   return new Promise((resolve) => {
@@ -423,6 +431,7 @@ export async function question(prompt, { signal } = {}) {
 // Masked input for secrets (API keys). Echoes "•" per character.
 // Returns "" if cancelled.
 export function readSecret({ prompt = "" } = {}) {
+  if (driver) return driver.ask(prompt, { secret: true }).then((x) => (x ?? "").trim());
   if (!stdin.isTTY) return fallbackLine(prompt).then((x) => x ?? "");
 
   return new Promise((resolve) => {

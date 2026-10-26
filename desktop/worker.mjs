@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline';
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +7,7 @@ import { runAgent, systemPrompt } from '../src/agent.mjs';
 import { createEventBus } from '../src/runtime/events.mjs';
 import { runSubagent } from '../src/subagents.mjs';
 import { runSat } from '../src/sat-runtime.mjs';
+import { readFileTool, writeFileTool, editFileTool, listDirTool, grepTool, globTool, applyEdits } from '../src/tools.mjs';
 import { workspacePath, hash } from './core/primitives.mjs';
 import { DESKTOP_CAPABILITIES } from './core/prompt.mjs';
 
@@ -37,14 +38,23 @@ async function run(input) {
   };
   const read = relative => { const file = workspacePath(root, relative); if (statSync(file).size > 1024 * 1024) throw new Error('File exceeds 1 MiB'); return readFileSync(file, 'utf8'); };
   const version = relative => { const p = workspacePath(root, relative); return existsSync(p) ? hash(read(relative)) : null; };
+  // File tools share the CLI's names, schemas and edit semantics; the desktop keeps its own boundary:
+  // every path passes workspacePath (denied names, symlink escapes), search results never list denied
+  // paths, and writes go through the controller's lease and approval with the exact new content.
+  const DENIED = /(^|\/)(\.bitcode|\.aws|\.ssh|\.gnupg)(\/|:|$)/;
+  const confined = tool => ({ ...tool, run: async (args, ctx) => {
+    workspacePath(root, args.path || '.');
+    const out = await tool.run(args, ctx);
+    return ['grep', 'glob'].includes(tool.name) ? String(out).split('\n').filter(line => !DENIED.test(line)).join('\n') : out;
+  } });
+  const write = (relative, content) => { const f = workspacePath(root, relative, { write: true }); mkdirSync(path.dirname(f), { recursive: true }); writeFileSync(f, content); };
   const tools = [
-    { name: 'read_file', mutating: false, description: 'Read a project-relative UTF-8 file.', parameters: schema({ path: string }), run: ({ path: p }) => read(p) },
-    { name: 'list_dir', mutating: false, description: 'List a project-relative directory.', parameters: schema({ path: string }), run: ({ path: p }) => readdirSync(workspacePath(root, p), { withFileTypes: true }).slice(0, 500).map(e => e.name + (e.isDirectory() ? '/' : '')).join('\n') },
-    { name: 'write_file', description: 'Write a complete UTF-8 file in the project.', parameters: schema({ path: string, content: string }), run: args => gate({ tool: 'write_file', args, baseVersion: version(args.path) }, () => { const f = workspacePath(root, args.path, { write: true }); mkdirSync(path.dirname(f), { recursive: true }); writeFileSync(f, args.content); return 'File written.'; }) },
-    { name: 'edit_file', description: 'Replace one exact occurrence in a UTF-8 file.', parameters: schema({ path: string, old_text: string, new_text: string }), run: args => {
-      const original = read(args.path); if (!args.old_text || original.split(args.old_text).length !== 2) throw new Error('old_text must match exactly once');
-      const next = original.replace(args.old_text, () => args.new_text);
-      return gate({ tool: 'edit_file', args: { path: args.path, content: next }, baseVersion: hash(original) }, () => { writeFileSync(workspacePath(root, args.path, { write: true }), next); return 'File edited.'; });
+    ...[readFileTool(root), listDirTool(root), grepTool(root), globTool(root)].map(confined),
+    { ...writeFileTool(root), run: args => gate({ tool: 'write_file', args: { path: args.path, content: args.content ?? '' }, baseVersion: version(args.path) }, () => { write(args.path, args.content ?? ''); return `wrote ${args.path}`; }) },
+    { ...editFileTool(root), run: args => {
+      const original = read(args.path);
+      const next = applyEdits(original, args.edits || [{ old_string: args.old_string, new_string: args.new_string }], args.path);
+      return gate({ tool: 'edit_file', args: { path: args.path, content: next }, baseVersion: hash(original) }, () => { write(args.path, next); return `edited ${args.path}`; });
     } },
     { name: 'bash', description: 'Run a command in the isolated project; direct network is unavailable. Use network_fetch for an approved destination.', parameters: schema({ command: string }), run: args => gate({ tool: 'bash', args }, () => new Promise((resolve, reject) => {
       const proc = spawn('/bin/bash', ['--noprofile', '--norc', '-c', args.command], { cwd: root, env: { PATH: '/usr/bin:/bin', HOME: '/home/agent', LANG: 'C.UTF-8' }, detached: true });

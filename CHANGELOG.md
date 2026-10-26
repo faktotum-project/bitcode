@@ -1,6 +1,60 @@
 # Changelog
 
-## Unreleased
+## Desktop 0.3.0 — 2026-10-26
+
+### Desktop
+
+- English is the default language for new installs; Italian stays available
+  in Settings. Tray, dialogs and notifications follow the app language; the
+  fix prompt, the phone (LAN) page and the `/sats` observer are in English.
+  The CLI follows: English unless `BITCODE_LANG=it` or the saved `lang`
+  setting (`/settings` → Language).
+- The sidebar leads with chats; Stats, Archive, Issues, Remote access,
+  Scheduled tasks and Integrations fold under **More**.
+- One labeled **Panel** toggle replaces seven glyph buttons; timeline, keep
+  and export move to the chat's **…** menu; clicking a Sat in the top bar
+  lets you use it in the chat or read about it.
+- Composer: a **+** menu (attachments, goal, dictation, model comparison), a
+  **Build / Plan** toggle (`Shift+Tab`) in the terminal's mode colors, and
+  agent and permission chips instead of drop-downs.
+- Tool calls carry the dot of the Sat whose role they serve, with short
+  names (read, edit, shell…).
+- A first-run checklist covers model, project folder and sandbox.
+- The worker runs the CLI's file tools (`read_file` ranges, `edit_file`
+  with `edits[]`, `grep`, `glob`) behind the same desktop boundary: checked
+  paths, denied paths filtered from search results, writes through the
+  controller's lease and approval. `bash` stays sandbox-specific.
+- The renderer is split into one module per area; no behavior change.
+
+
+### CLI
+
+- Full-screen terminal interface: home screen, conversation with Markdown,
+  prompt fixed at the bottom with multi-line editing, status bar and a sidebar
+  with Sats, context, plan, modified files and MCP servers. `BITCODE_UI=line`
+  keeps the line REPL, which pipes and colorless terminals still use.
+- Every tool call carries the dot of the Sat whose role it serves (Node,
+  Script, Hash, Merkle); consecutive reads collapse to one line and edits show
+  a colored diff.
+- `Tab` switches BUILD and PLAN; `Esc Esc` interrupts; `Ctrl+P` palette,
+  `Ctrl+L` sessions, `Ctrl+B` sidebar, `Ctrl+O` expand; `@` mentions files.
+- Approval cards with `y`/`a`/`n`; "always" lasts for the session and never
+  applies to payments.
+- `/models` picks a provider, then one of the models it reports live;
+  `/settings` changes model, profile, permissions, Sat and API keys with the
+  arrow keys.
+- Copy by dragging, paste with `Ctrl+V`, a right-click Copy/Paste menu, and
+  pasted API keys masked as dots.
+- `/help` grouped by task; `/status`, `/skills`, `/mcp`, `/commands` and
+  `/sat info` print readable text instead of JSON.
+- Terminal colors follow a dark background unless `BITCODE_THEME=light` or
+  `COLORFGBG` says otherwise.
+- MCP stdio server logs go through bitcode instead of writing over the screen.
+
+### Runtime
+
+- Token usage is published on the event bus (`model.usage`).
+- Run states from the runtime reducer resolve to the same Sat visual states.
 
 ### Brand
 

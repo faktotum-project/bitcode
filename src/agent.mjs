@@ -123,7 +123,10 @@ export async function runAgent({ target, messages, system, tools, hooks = {}, li
       if (toolCalls.some(tc => !tc.id || !tc.name) || new Set(toolCalls.map(tc => tc.id)).size !== toolCalls.length) throw new Error("model returned missing or duplicate tool call IDs");
       messages.push({ role: "assistant", content: text || "", toolCalls: response.incomplete ? [] : toolCalls, ...(response.incomplete ? { incomplete: response.incomplete } : {}), ...(providerState ? { providerState } : {}), ...(usage ? { usage } : {}) });
       hooks.onAssistantEnd?.(text);
-      if (usage) hooks.onUsage?.(usage);
+      if (usage) {
+        hooks.onUsage?.(usage);
+        observe(context, "model.usage", { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens });
+      }
       if (response.incomplete) {
         outcome = 'error';
         const notice = `[stopped: model output/context limit reached; response is incomplete, partial text retained, no tools from this turn executed. ${response.completionHint || 'Reduce context or increase the configured output budget.'}]`;

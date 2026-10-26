@@ -1,7 +1,7 @@
 # bitcode — full reference
 
 A terminal coding and Bitcoin agent, written in Node.js ESM. This reference
-covers CLI 0.3 and Desktop 0.2; see [CHANGELOG.md](../CHANGELOG.md) for what
+covers CLI 0.4 and Desktop 0.3; see [CHANGELOG.md](../CHANGELOG.md) for what
 changed in each version.
 
 ## Install and run
@@ -122,6 +122,39 @@ outside `--finance` retain their older approval behavior and do not gain these
 financial guarantees. Use only testnet funds until the remaining boundaries
 have been implemented and reviewed.
 
+### Full-screen terminal
+
+On a color terminal `bitcode` opens a full-screen interface: a home screen with
+the prompt, then the conversation, a prompt fixed at the bottom, a status bar
+(mode, folder:branch, profile, network, permissions) and, from 120 columns, a
+sidebar with the Sats, context, plan, modified files and MCP servers. Each tool
+call is one line marked by the Sat whose role it serves: Node (blue) Bitcoin
+infrastructure, Script (orange) code and shell, Hash (lime) reading and
+verification, Merkle (purple) plans and delegation. Three or more successful
+reads collapse into one line; edits show a colored diff.
+
+| Key | Action |
+| --- | --- |
+| `Enter` / `Shift+Enter`, `Alt+Enter`, `\` + `Enter` | Send / new line |
+| `Tab` | Switch BUILD and PLAN; in PLAN a request runs `/plan` |
+| `/`, `@` | Command menu with argument hints; fuzzy file mention |
+| `Esc` `Esc`, `Ctrl+C` | Interrupt the running turn |
+| `Ctrl+P`, `Ctrl+L` | Command palette; saved sessions |
+| `Ctrl+B`, `Ctrl+O` | Toggle the sidebar; expand or collapse tool output |
+| `PgUp`/`PgDn`, mouse wheel | Scroll the conversation |
+| Drag, right click, middle click, `Ctrl+V` | Copy the selection; Copy/Paste menu; paste |
+
+Approvals replace the prompt with a card: `y` allow, `a` allow this tool for the
+rest of the session, `n` deny. Payments never offer `a`. Pasted API keys are
+shown as dots with their length. `/models` (or `/model` alone) lists providers,
+then the models each provider reports (its `/models` endpoint, or the local
+server), plus the default and configured ones and a free-form id; `/settings`
+moves through model, profile, permissions, Sat and API keys with the arrow keys.
+
+`BITCODE_UI=line` keeps the previous line-based REPL, which is also used for
+pipes and terminals without color. `BITCODE_MOUSE=0` leaves the mouse to the
+terminal. `BITCODE_THEME=light|dark` overrides the background detection.
+
 | Slash command | Behavior |
 | --- | --- |
 | `/plan <task>` | Investigate with read-only tools and save an implementation plan |
@@ -130,11 +163,11 @@ have been implemented and reviewed.
 | `/status` | Show model, context size, reported token usage and current task plan |
 | `/profile [code\|bitcoin]` | Inspect or switch the active tool profile; the switch is saved in config |
 | `/diff`, `/undo` | Show the latest agent-turn diff or safely restore that complete turn |
-| `/model [spec]`, `/models` | Inspect/switch provider and model |
+| `/model [spec]`, `/models` | Switch model; full screen: pick a provider, then one of its models |
 | `/login [provider]` | Choose a provider and save its API key with masked input |
 | `/provider add <name>`, `list`, `health` | Set a masked API key, list providers, probe endpoints |
 | `/config get [path]`, `/config set <path> <value>` | Read/set configuration, including JSON objects and arrays |
-| `/setting` | Provider key status and active configuration path |
+| `/setting`, `/settings` | Provider key status; full screen: arrow-key settings menu |
 | `/session list`, `save [label]`, `load <id>`, `export [md\|json]` | Manage conversations |
 | `/subagent [persona] <task>` | Delegate a bounded task with inherited permissions and budgets |
 | `/tools [filter]` | Inspect tools and approval requirements |
@@ -360,7 +393,7 @@ does not grant blanket permission to its later operations. `--permission`,
 `--yolo` and one-shot automation keep their documented approval semantics.
 
 The panel distinguishes pending approval, denial, execution, errors and runtime
-limits. “Completato” means the agent loop finished; the CLI answer contains the
+limits. “Completed” means the agent loop finished; the CLI answer contains the
 actual findings and verification. Reduced motion, hidden tabs and offscreen cards
 pause animation. Closing the browser leaves the CLI task running. `/exit` and EOF
 close the local server; Ctrl+C during a task requests cancellation.

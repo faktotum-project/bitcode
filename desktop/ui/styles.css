@@ -86,7 +86,7 @@ button { cursor: pointer; }
 .m-tools { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: .83em; color: var(--mutedStrong); }
 .m-tools .toolnames { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .m-tools .toolname { display: inline-flex; gap: 6px; align-items: center; }
-.m-tools .toolname::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--relayed); }
+.m-tools .toolname::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--dot, var(--relayed)); }
 .runline { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; }
 .spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--hairlineStrong); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -338,7 +338,7 @@ table.list th { font-size: 12px; color: var(--muted); font-weight: 500; }
 .modelbtn .caret { color: var(--muted); font-size: 10px; }
 .loc { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--muted); }
 .loc.local { background: var(--up); } .loc.cloud { background: var(--info); } .loc.off { background: var(--down); }
-.modelpop { position: absolute; bottom: calc(100% + 8px); left: 0; width: 380px; max-width: 80vw; background: var(--card); border: 1px solid var(--hairlineStrong); border-radius: 12px; z-index: 30; box-shadow: 0 12px 32px rgba(0, 0, 0, .35); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: 440px; }
+.modelpop { position: absolute; bottom: calc(100% + 8px); left: 0; width: 460px; max-width: 80vw; background: var(--card); border: 1px solid var(--hairlineStrong); border-radius: 12px; z-index: 30; box-shadow: 0 12px 32px rgba(0, 0, 0, .35); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: 440px; }
 .modelpop > input { margin: 8px; height: 34px; border-radius: 8px; border: 1px solid var(--hairline); background: var(--canvas); color: var(--ink); padding: 0 10px; outline: none; }
 .mlist { overflow: auto; padding: 0 6px 6px; }
 .mgroup { display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
@@ -593,3 +593,42 @@ html.mini .home .sats4, html.mini .home .lockup { display: none; }
 .attachbtn.rec { color: var(--down); }
 html.mini .topbar > .ibtn { display: none; }
 .rdialog { width: min(1000px, 94vw); } .rterm { height: 60vh; background: var(--canvas); border-radius: 8px; padding: 6px; }
+
+/* "More" group in the sidebar: secondary pages, indented under their toggle */
+.smore { display: grid; gap: 1px; padding-left: 14px; }
+
+/* Composer chips: one shape for agent, permissions and goal; Build/Plan carries the TUI mode colors */
+.cchip { display: inline-flex; align-items: center; gap: 6px; height: 30px; max-width: 200px; border: 1px solid var(--hairline); background: var(--canvas); border-radius: 6px; padding: 0 9px; font-size: 12.5px; color: var(--body); white-space: nowrap; cursor: pointer; }
+.cchip:hover:not([disabled]) { border-color: var(--hairlineStrong); color: var(--ink); }
+.cchip[disabled] { opacity: .5; cursor: default; }
+.cchip .clabel { overflow: hidden; text-overflow: ellipsis; }
+.cchip .caret { color: var(--muted); font-size: 10px; }
+.cchip.on { color: var(--accent); border-color: transparent; background: var(--accentSoft); }
+.cchip .sat { margin: 0 -2px; }
+.seg.modeseg button { height: 30px; padding: 0 11px; font-weight: 600; }
+.seg.modeseg button.on { background: var(--accent); color: var(--onAccent); }
+.seg.modeseg.plan button.on { background: var(--sat-merkle); color: var(--onAccent); }
+.seg.modeseg.plan { border-color: var(--sat-merkle); }
+.composer:has(.modeseg.plan) { border-color: color-mix(in srgb, var(--sat-merkle) 55%, var(--hairline)); }
+/* Topbar: one labeled panel toggle instead of seven glyphs */
+.panelbtn { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.panelbtn.on { color: var(--ink); background: var(--elevated); }
+.satbtn.on { background: var(--accentSoft); }
+
+/* First-run checklist on the home screen */
+.setup { list-style: none; margin: 4px auto 18px; padding: 0; display: grid; gap: 8px; width: min(420px, 100%); text-align: left; }
+.setup li { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--card); color: var(--body); }
+.setup li .mark { width: 18px; color: var(--muted); font-weight: 700; }
+.setup li.done { color: var(--mutedStrong); }
+.setup li.done .mark { color: var(--up); }
+.setup .linkbtn { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-align: left; }
+.setup .linkbtn:hover { text-decoration: underline; }
+.topbar .kept { color: var(--accent); display: inline-flex; flex: none; }
+/* Cloud providers in the model picker: a clickable group header per provider */
+.mprovbtn { width: 100%; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.mprovbtn:hover { background: var(--hover); }
+.mprovbtn .caret { width: 12px; color: var(--muted); font-size: 10px; }
+.mprovbtn .chip { height: 20px; font-size: 11px; }
+/* Long cloud ids (vendor/model) keep their name visible; the description gives way */
+.mitem .mname { flex: 1 1 auto; }
+.mitem .mdetail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
