@@ -52,20 +52,26 @@ function lineCounts(before, after) {
   return { added: Math.max(0, endB - start + 1), removed: Math.max(0, endA - start + 1) };
 }
 
+// Snapshot folders live only as long as their turn: the next turn, an undo or the process exit removes them.
+const liveDirs = new Set();
+process.once("exit", () => { for (const dir of liveDirs) removeOne(dir); });
+
 const OVERSIZED = "This workspace is too large for checkpoints; use Git to review or revert the turn.";
 
 // A checkpoint is deliberately filesystem based. It also snapshots .git/index,
 // so a turn that ran `git add` can be restored without using stash/reset.
 export class TurnCheckpoint {
   constructor(root = process.cwd(), { limits = CHECKPOINT_LIMITS } = {}) { this.root = projectRoot(root); this.limits = limits; this.reset(); }
-  reset() { this.oversized = false; this.active = false; this.dir = null; this.before = new Map(); this.after = new Map(); this.protected = new Set(); this.changed = []; this.git = false; this.index = null; this.afterIndex = null; }
+  reset() {
+    if (this.dir) { removeOne(this.dir); liveDirs.delete(this.dir); }
+    this.oversized = false; this.active = false; this.dir = null; this.before = new Map(); this.after = new Map(); this.protected = new Set(); this.changed = []; this.git = false; this.index = null; this.afterIndex = null; }
   begin(tc = {}) {
     if (this.active) return;
     this.active = true; this.git = isGit(this.root);
     let files;
     try { files = walk(this.root, this.root, new Set(), { ...this.limits }); }
     catch (err) { if (err instanceof WorkspaceTooLarge) { this.oversized = true; return; } throw err; }
-    this.dir = mkdtempSync(path.join(os.tmpdir(), "bitcode-checkpoint-"));
+    this.dir = mkdtempSync(path.join(os.tmpdir(), "bitcode-checkpoint-")); liveDirs.add(this.dir);
     for (const rel of files) this.capture(rel);
     if (this.git) {
       const index = runGit(this.root, ["rev-parse", "--git-path", "index"])?.trim();

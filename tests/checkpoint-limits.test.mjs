@@ -30,3 +30,14 @@ test("a workspace within budget is still snapshotted", () => {
   assert.equal(checkpoint.oversized, false);
   assert.deepEqual(checkpoint.finalize().map((f) => f.path), ["a.txt"]);
 });
+
+test("a turn's snapshot folder is removed when the next turn starts", async () => {
+  const { existsSync } = await import("node:fs");
+  const root = workspace([["a.txt", 4]]);
+  const checkpoint = new TurnCheckpoint(root);
+  checkpoint.begin({ name: "bash" });
+  const dir = checkpoint.dir;
+  assert.ok(existsSync(dir));
+  checkpoint.reset();
+  assert.equal(existsSync(dir), false);
+});
