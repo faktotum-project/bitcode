@@ -14,7 +14,7 @@ import { atomicJSON, fail, loadJSON, workspacePath } from './core/primitives.mjs
 import { createAttachments } from './core/attachments.mjs';
 import { ensureCertificate, hashPassword, startLanServer } from './core/lan.mjs';
 import { LAN_PAGE, LAN_SCRIPT } from './core/lan-page.mjs';
-import { HIDDEN_ARG, MIN_WINDOW, autostartEntry, autostartFile, createCrashPolicy, restoreBounds, trayModel } from './core/shell.mjs';
+import { HIDDEN_ARG, MIN_WINDOW, autostartEntry, autostartFile, createCrashPolicy, restoreBounds, trayModel, mainWords } from './core/shell.mjs';
 import { watchTree } from './core/watcher.mjs';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url)); // dist/
@@ -148,6 +148,7 @@ const trusted = () => [win, ...minis].filter(w => w && !w.isDestroyed());
 function send(channel, payload) { for (const w of trusted()) w.webContents.send('bitcode:event', { channel, payload }); }
 // A notification without a live reference can be collected before its click arrives.
 const shownNotifications = new Set();
+const words = () => mainWords(controller?.settings?.().lang);
 function notify(title, body, target) {
   if (!Notification.isSupported() || (win?.isVisible() && win.isFocused())) return;
   const n = new Notification({ title, body, silent: false });
@@ -174,8 +175,9 @@ function watchRenderer(w) {
     const step = policy.next(reason);
     if (step === 'reload') return setTimeout(() => { if (!w.isDestroyed()) w.webContents.reload(); }, 100);
     if (step !== 'stop') return;
-    const { response } = await dialog.showMessageBox({ type: 'error', buttons: ['Ricarica', 'Esci'], defaultId: 0, cancelId: 1,
-      message: 'La finestra di bitcode continua a chiudersi', detail: `Motivo: ${reason}. Le attività in corso proseguono nel processo principale.` });
+    const w = words();
+    const { response } = await dialog.showMessageBox({ type: 'error', buttons: [w.reload, w.quit], defaultId: 0, cancelId: 1,
+      message: w.crashTitle, detail: w.crashDetail(reason) });
     if (response === 0 && !w.isDestroyed()) { policy.reset(); w.webContents.reload(); } else quit();
   });
 }
@@ -209,29 +211,30 @@ function keepAwake(active) {
 }
 
 function updateTray() {
-  const runs = controller.activeRuns(), model = trayModel({ runs, pending: controller.pending() });
+  const runs = controller.activeRuns(), w = words(), model = trayModel({ runs, pending: controller.pending(), lang: controller.settings().lang });
   keepAwake(runs.length > 0);
   if (!tray) return;
   const activity = () => { show(); send('navigate', { view: 'activity' }); };
   tray.setToolTip(model.tooltip);
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: win?.isVisible() ? 'Nascondi bitcode' : 'Apri bitcode', click: toggle },
-    { label: 'Nuova mini chat', click: () => openMiniChat() },
+    { label: win?.isVisible() ? w.hide : w.open, click: toggle },
+    { label: w.mini, click: () => openMiniChat() },
     { type: 'separator' },
-    ...(model.approvals.length ? [{ label: 'Richieste in attesa', enabled: false }, ...model.approvals.map(a => ({ label: a.label, click: activity })),
-      ...(model.moreApprovals ? [{ label: `Altre ${model.moreApprovals}…`, click: activity }] : []), { type: 'separator' }] : []),
-    { label: runs.length ? `${runs.length} attività in corso` : 'Nessuna attività in corso', enabled: false },
-    ...model.runs.map(r => ({ label: `Annulla: ${r.label}`, click: () => controller.invoke('run.cancel', { runId: r.runId }, 'tray') })),
+    ...(model.approvals.length ? [{ label: w.pending, enabled: false }, ...model.approvals.map(a => ({ label: a.label, click: activity })),
+      ...(model.moreApprovals ? [{ label: w.more(model.moreApprovals), click: activity }] : []), { type: 'separator' }] : []),
+    { label: runs.length ? w.running(runs.length) : w.idle, enabled: false },
+    ...model.runs.map(r => ({ label: w.cancel(r.label), click: () => controller.invoke('run.cancel', { runId: r.runId }, 'tray') })),
     { type: 'separator' },
-    { label: 'Esci', click: quit }
+    { label: w.quit, click: quit }
   ]));
 }
 
 async function quit() {
   const active = controller.activeRuns().length;
   if (active) {
-    const { response } = await dialog.showMessageBox(win?.isVisible() ? win : undefined, { type: 'warning', buttons: ['Annulla', 'Termina attività ed esci'], defaultId: 0, cancelId: 0,
-      message: `${active} attività in corso`, detail: 'Uscendo le attività vengono interrotte e non riprendono automaticamente.' });
+    const w = words();
+    const { response } = await dialog.showMessageBox(win?.isVisible() ? win : undefined, { type: 'warning', buttons: [w.cancelBtn, w.quitRuns], defaultId: 0, cancelId: 0,
+      message: w.running(active), detail: w.quitDetail });
     if (response !== 1) return;
   }
   shutdown(); app.quit();
@@ -404,8 +407,8 @@ app.whenReady().then(() => {
     spawnWorker: opts => spawnWorker({ ...opts, runtime: process.execPath }),
     emit: (channel, payload) => {
       send(channel, payload);
-      if (channel === 'approval' && payload.status === 'pending' && controller.settings().notifyApprovals) notify('bitcode · approvazione richiesta', `${payload.subject?.project || ''} · ${payload.kind}`, { view: 'activity' });
-      if (channel === 'run' && ['success', 'error', 'interrupted'].includes(payload.state) && controller.settings().notifyRuns) notify(`bitcode · attività ${payload.state === 'success' ? 'completata' : 'terminata con errore'}`, payload.prompt.slice(0, 60), { view: 'chat', sessionId: payload.sessionId });
+      if (channel === 'approval' && payload.status === 'pending' && controller.settings().notifyApprovals) notify(words().approval, `${payload.subject?.project || ''} · ${payload.kind}`, { view: 'activity' });
+      if (channel === 'run' && ['success', 'error', 'interrupted'].includes(payload.state) && controller.settings().notifyRuns) notify(words().runDone(payload.state === 'success'), payload.prompt.slice(0, 60), { view: 'chat', sessionId: payload.sessionId });
       if (channel === 'run' || channel === 'approval') updateTray();
     } });
   controller.invoke('project.list').then(list => list.forEach(watchProject));
