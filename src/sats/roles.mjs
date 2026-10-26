@@ -15,3 +15,11 @@ export function satForTool(name, { activeSatId } = {}) {
   if (MERKLE_TOOLS.has(tool)) return "merkle";
   return "hash";
 }
+
+// Short verbs for tool lines; unknown tools fall back to their name without underscores.
+const TOOL_LABELS = {
+  read_file: "read", write_file: "write", edit_file: "edit", list_dir: "list", bash: "shell", exec_command: "run",
+  write_stdin: "input", terminate_process: "stop", git_status: "git status", git_diff: "git diff", git_log: "git log",
+  web_fetch: "fetch", update_plan: "plan", read_plan: "plan", ask_user: "ask", list_skills: "skills", read_skill: "skill",
+};
+export const toolLabel = (name) => TOOL_LABELS[name] || String(name).replace(/_/g, " ");

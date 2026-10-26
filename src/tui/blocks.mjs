@@ -5,6 +5,9 @@ import { seg, fromAnsi, wrapLine, wrapLines } from "./text.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { truncate } from "./width.mjs";
 import { SAT_GLYPH } from "./theme.mjs";
+import { toolLabel } from "../sats/roles.mjs";
+
+export { toolLabel };
 
 export const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const READ_GROUP_MIN = 3;
@@ -12,12 +15,6 @@ const DIFF_PREVIEW = 12;
 const OUTPUT_PREVIEW = 4;
 
 const satName = (id) => id[0].toUpperCase() + id.slice(1);
-const TOOL_LABELS = {
-  read_file: "read", write_file: "write", edit_file: "edit", list_dir: "list", bash: "shell", exec_command: "run",
-  write_stdin: "input", terminate_process: "stop", git_status: "git status", git_diff: "git diff", git_log: "git log",
-  web_fetch: "fetch", update_plan: "plan", read_plan: "plan", ask_user: "ask", list_skills: "skills", read_skill: "skill",
-};
-export const toolLabel = (name) => TOOL_LABELS[name] || String(name).replace(/_/g, " ");
 const compact = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
 export const formatTokens = compact;
 const seconds = (ms) => (ms >= 60000 ? `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s` : `${Math.max(1, Math.round(ms / 1000))}s`);
