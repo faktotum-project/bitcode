@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="it">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -17,7 +17,7 @@
       </div>
       <div class="connection">
         <span id="connection-dot"></span
-        ><span id="connection-label" role="status">Collegamento…</span>
+        ><span id="connection-label" role="status">Connecting…</span>
       </div>
     </header>
     <main>
@@ -25,9 +25,9 @@
       <section class="intro">
         <div>
           <p class="eyebrow">Sats · by bitcode</p>
-          <h1>Quattro volti. Un solo bitcode.</h1>
+          <h1>Four faces. One bitcode.</h1>
           <p class="subtitle">
-            Node legge la rete. Script costruisce. Hash verifica. Merkle coordina.
+            Node reads the network. Script builds. Hash verifies. Merkle coordinates.
           </p>
         </div>
         <div class="session">
@@ -38,19 +38,19 @@
       <section
         id="sats"
         class="sats-grid"
-        aria-label="I quattro Sats"
+        aria-label="The four Sats"
       ></section>
       <div class="work-status">
-        <span id="parent-status">In attesa di una delega.</span
+        <span id="parent-status">Waiting for a delegation.</span
         ><label class="motion"
-          ><input type="checkbox" id="motion-off" /> Riduci movimento</label
+          ><input type="checkbox" id="motion-off" /> Reduce motion</label
         >
       </div>
-      <section class="panel activity-panel" aria-label="Registro attività">
+      <section class="panel activity-panel" aria-label="Activity log">
         <div class="panel-heading">
           <div>
-            <p class="eyebrow">Reasoning · operazioni osservabili</p>
-            <h2 id="activity-title">Attività dei Sats</h2>
+            <p class="eyebrow">Reasoning · observable operations</p>
+            <h2 id="activity-title">Sats activity</h2>
           </div>
           <button
             id="all-activity"
@@ -58,14 +58,14 @@
             type="button"
             hidden
           >
-            Tutte le attività
+            All activity
           </button>
         </div>
         <ol id="activity" class="activity">
-          <li class="empty">Avvia una delega per seguirne le operazioni.</li>
+          <li class="empty">Start a delegation to follow its operations.</li>
         </ol>
         <p id="observer-note" class="panel-note">
-          Richieste e conferme rimangono nel terminale.
+          Requests and confirmations stay in the terminal.
         </p>
       </section>
       <div
@@ -77,8 +77,8 @@
       ></div>
     </main>
     <footer>
-      <span>Locale · nessuna telemetria</span
-      ><span>Un esito “Completato” indica la fine della delega.</span>
+      <span>Local · no telemetry</span
+      ><span>“Completed” means the delegation finished.</span>
     </footer>
   </body>
 </html>

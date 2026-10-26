@@ -94,5 +94,5 @@ a sustained OS-level slow-reader stress test was not performed.
 
 The observer is local; configured model providers still receive their normal
 prompts/tool results. Cancellation does not roll back completed changes and does
-not guarantee termination of detached shell descendants. “Completato” describes
+not guarantee termination of detached shell descendants. “Completed” describes
 the agent loop's completion, not proof that code is correct or secure.

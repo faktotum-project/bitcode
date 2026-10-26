@@ -2,17 +2,17 @@ import { reduceEvent } from "/ui/state.mjs";
 
 const $ = (id) => document.getElementById(id);
 const labels = {
-  idle: "Pronto",
-  thinking: "Sta pensando",
-  responding: "Sta rispondendo",
-  reading: "Sta leggendo",
-  running: "Sta eseguendo",
-  drafting: "Sta modificando",
-  awaiting_approval: "In attesa di conferma",
-  success: "Completato",
-  error: "Da verificare",
-  cancelled: "Interrotto",
-  delegating: "Delega in corso",
+  idle: "Ready",
+  thinking: "Thinking",
+  responding: "Responding",
+  reading: "Reading",
+  running: "Running",
+  drafting: "Editing",
+  awaiting_approval: "Waiting for confirmation",
+  success: "Completed",
+  error: "Needs a look",
+  cancelled: "Interrupted",
+  delegating: "Delegating",
 };
 const poses = {
   idle: "idle",
@@ -52,22 +52,22 @@ async function api(route, options = {}) {
     },
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Richiesta non completata.");
+  if (!response.ok) throw new Error(data.error || "Request not completed.");
   return data;
 }
 function connection(ok) {
   document.body.classList.toggle("connected", ok);
   document.body.classList.toggle("disconnected", !ok);
   $("connection-label").textContent = ok
-    ? "Collegato · locale"
-    : "Collegamento interrotto · stato non aggiornato";
+    ? "Connected · local"
+    : "Connection lost · state not updated";
 }
 function selectAgent(id) {
   selected = id;
   for (const [key, card] of cards)
     card.button.setAttribute("aria-pressed", String(id === key));
   $("activity-title").textContent =
-    (registry.find((a) => a.id === id)?.name || "bitcode") + " · attività";
+    (registry.find((a) => a.id === id)?.name || "bitcode") + " · activity";
   $("all-activity").hidden = false;
   renderActivity();
 }
@@ -81,7 +81,7 @@ function createCards() {
     button.setAttribute("aria-pressed", "false");
     button.setAttribute(
       "aria-label",
-      `${agent.name}, ${agent.role}. Seleziona attività.`,
+      `${agent.name}, ${agent.role}. Show activity.`,
     );
     const top = el("div", "sat-top mono"),
       dot = el("span", "identity");
@@ -112,7 +112,7 @@ function createCards() {
     picture.append(webp, img);
     avatar.append(picture);
     const status = el("span", "sat-state", labels.idle);
-    const operation = el("span", "sat-operation", "Nessuna operazione");
+    const operation = el("span", "sat-operation", "No operation");
     button.append(
       top,
       avatar,
@@ -153,10 +153,10 @@ function renderCards(celebrateId = null) {
     card.button.dataset.state = current;
     card.status.textContent =
       current === "awaiting_approval"
-        ? "Conferma nel terminale"
+        ? "Confirm in the terminal"
         : labels[current] || current;
     const activeTool = Object.values(run?.tools || {}).findLast(t => t.status !== "requested");
-    card.operation.textContent = activeTool?.summary || run?.lastTool?.summary || "Nessuna operazione";
+    card.operation.textContent = activeTool?.summary || run?.lastTool?.summary || "No operation";
     if (pose !== card.pose) {
       card.img.dataset.fallback = "";
       card.img.parentElement.hidden = false;
@@ -176,16 +176,16 @@ function renderCards(celebrateId = null) {
   const parent = active.find((r) => !r.parentRunId);
   $("parent-status").textContent = parent
     ? `${registry.find((a) => a.id === parent.agentId)?.name || parent.displayName || parent.agentId} · ${labels[parent.state] || parent.state}${parent.childAgentId ? " · " + parent.childAgentId : ""}`
-    : "Nessuna delega in corso.";
+    : "No delegation running.";
 }
 function activityText(event) {
   const { type, data } = event;
-  if (type === "run.started") return ["●", "thinking", "Delega avviata", ""];
+  if (type === "run.started") return ["●", "thinking", "Delegation started", ""];
   if (type === "approval.requested")
     return [
       "○",
       "approval",
-      "Conferma nel terminale · " + data.tool,
+      "Confirm in the terminal · " + data.tool,
       "",
     ];
   if (type === "approval.resolved")
@@ -193,8 +193,8 @@ function activityText(event) {
       data.outcome === "approved" ? "✓" : "⊘",
       "approval",
       data.outcome === "approved"
-        ? "Operazione approvata"
-        : "Operazione rifiutata",
+        ? "Operation approved"
+        : "Operation denied",
       "",
     ];
   if (type === "tool.started") return ["●", data.stage, data.summary, ""];
@@ -202,7 +202,7 @@ function activityText(event) {
     return [
       data.outcome === "ok" ? "✓" : data.outcome === "denied" ? "⊘" : "✗",
       data.stage,
-      `${data.summary} · ${data.outcome === "ok" ? "completato" : data.outcome === "denied" ? "rifiutato" : data.outcome === "cancelled" ? "interrotto" : "errore"}`,
+      `${data.summary} · ${data.outcome === "ok" ? "completed" : data.outcome === "denied" ? "denied" : data.outcome === "cancelled" ? "interrupted" : "error"}`,
       data.outcome === "ok" ? "ok" : data.outcome === "denied" ? "" : "error",
     ];
   if (type === "run.finished")
@@ -210,12 +210,12 @@ function activityText(event) {
       data.outcome === "ok" ? "✓" : "—",
       "done",
       data.outcome === "ok"
-        ? "Delega completata"
+        ? "Delegation completed"
         : data.outcome === "cancelled"
-          ? "Delega interrotta"
+          ? "Delegation interrupted"
           : data.outcome === "max_steps"
-            ? "Limite di passaggi raggiunto"
-            : "Delega da verificare",
+            ? "Step limit reached"
+            : "Delegation needs a look",
       data.outcome === "ok" ? "ok" : "error",
     ];
   return null;
@@ -228,7 +228,7 @@ function renderActivity() {
   $("activity").replaceChildren();
   if (!rows.length) {
     $("activity").append(
-      el("li", "empty", "Nessuna operazione registrata per questa selezione."),
+      el("li", "empty", "No operations recorded for this selection."),
     );
     return;
   }
@@ -248,7 +248,7 @@ function renderActivity() {
     );
     li.append(
       el("span", "mark " + outcome, mark),
-      el("time", "stamp", new Date(event.at).toLocaleTimeString("it-IT")),
+      el("time", "stamp", new Date(event.at).toLocaleTimeString("en-GB")),
       el("span", "pill " + (stage || "thinking"), stage || "thinking"),
       summary,
     );
@@ -269,7 +269,7 @@ function applyEvent(event, live) {
     ["run.started", "approval.requested", "run.finished"].includes(event.type)
   ) {
     $("announcer").textContent =
-      `${event.displayName || event.agentId}: ${activityText(event)?.[2] || "stato aggiornato"}`;
+      `${event.displayName || event.agentId}: ${activityText(event)?.[2] || "state updated"}`;
   }
 }
 function connectEvents() {
@@ -292,7 +292,7 @@ $("all-activity").addEventListener("click", () => {
   selected = null;
   for (const card of cards.values())
     card.button.setAttribute("aria-pressed", "false");
-  $("activity-title").textContent = "Attività dei Sats";
+  $("activity-title").textContent = "Sats activity";
   $("all-activity").hidden = true;
   renderActivity();
 });
@@ -331,7 +331,7 @@ async function start() {
       document.documentElement.style.setProperty("--" + key, value);
   }
   $("network").textContent = bootstrap.network;
-  $("mode-label").textContent = "Solo osservazione";
+  $("mode-label").textContent = "Observe only";
   createCards();
   renderCards();
   renderActivity();

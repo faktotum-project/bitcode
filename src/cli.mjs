@@ -353,7 +353,7 @@ export async function main(argv) {
     if (opts.prompt) return await oneShot({ target, system, tools, network: ctx.name, prompt: opts.prompt, limits, fallbacks, opts, permissions, root, profile, project });
     if (opts.sats) {
       satsServer = await startSatsServer({ bus, network: ctx.name });
-      out(`Sats · apri ${satsServer.url}`);
+      out(`Sats · open ${satsServer.url}`);
     }
     const commands = loadCommands();
     await interactive({ target, system, tools, network: ctx.name, config, yolo: opts.yolo, agents, commands, modelRef, resume: opts.resume, limits, fallbacks, ext, readOnly: opts.readOnly, plan, maxStepsOverride: opts.maxSteps, permissions, root, profile, project, bus, noSession: opts.noSession });
@@ -675,7 +675,7 @@ function buildHooks({ approve, askUser, onCheckpoint, checkpoint, onMutation } =
     },
     onToolEnd: async (tc, result, metadata) => {
       const isErr = result.startsWith("ERROR");
-      const mark = metadata?.outcome === "denied" ? t.danger("⊘ Rifiutato") : isErr ? t.danger("✗") : t.ok("✓");
+      const mark = metadata?.outcome === "denied" ? t.danger("⊘ Denied") : isErr ? t.danger("✗") : t.ok("✓");
       const lines = result.split("\n");
       out("    " + mark + " " + t.body(clip(lines[0] ?? "", 100)));
       for (const l of lines.slice(1, 5)) out("      " + t.faint(clip(l, 100)));

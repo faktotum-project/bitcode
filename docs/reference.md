@@ -393,7 +393,7 @@ does not grant blanket permission to its later operations. `--permission`,
 `--yolo` and one-shot automation keep their documented approval semantics.
 
 The panel distinguishes pending approval, denial, execution, errors and runtime
-limits. “Completato” means the agent loop finished; the CLI answer contains the
+limits. “Completed” means the agent loop finished; the CLI answer contains the
 actual findings and verification. Reduced motion, hidden tabs and offscreen cards
 pause animation. Closing the browser leaves the CLI task running. `/exit` and EOF
 close the local server; Ctrl+C during a task requests cancellation.

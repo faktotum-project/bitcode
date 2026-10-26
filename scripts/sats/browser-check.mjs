@@ -72,7 +72,7 @@ try {
   f.send("/subagent script change");
   const script = page.locator('[data-agent="script"]');
   await page.locator('[data-agent="script"][data-state="awaiting_approval"]').waitFor();
-  assert.equal(await script.locator(".sat-state").textContent(), "Conferma nel terminale");
+  assert.equal(await script.locator(".sat-state").textContent(), "Confirm in the terminal");
   assert.equal(await page.locator('.sat[data-state="idle"]').count(), 3);
   const snapshot = await page.evaluate(async () => (await (await fetch("/api/bootstrap")).json()).snapshot);
   assert.equal(snapshot.activity.some(e => e.type === "tool.started"), false);
@@ -81,7 +81,7 @@ try {
   f.send("n");
   await page.locator('[data-agent="script"][data-state="success"]').waitFor();
   await script.click();
-  assert.match(await page.locator("#activity").textContent(), /rifiutato/);
+  assert.match(await page.locator("#activity").textContent(), /denied/);
   assert.equal(await stat(f.cwd + "/example.txt").then(() => true, () => false), false);
   check("manual CLI delegation animates only Script; denial never starts a write and warnings stay visible");
 
@@ -105,7 +105,7 @@ try {
   f.send("/subagent hash error"); await page.locator('[data-agent="hash"][data-state="error"]').waitFor();
   f.send("/subagent merkle max"); await page.locator('[data-agent="merkle"][data-state="error"]').waitFor();
   await page.locator('[data-agent="merkle"]').click();
-  assert.match(await page.locator("#activity").textContent(), /Limite di passaggi/);
+  assert.match(await page.locator("#activity").textContent(), /Step limit reached/);
   check("provider errors and step limits produce error states, never success");
 
   f.send("/subagent node wait"); await until(() => f.requests.at(-1)?.messages?.some(m => m.content === "wait"));
@@ -166,7 +166,7 @@ try {
   await page.screenshot({ path: output + "verified-flow.png", fullPage: true });
   f.send("/exit"); assert.equal(await f.exited(), 0);
   await page.locator("body.disconnected").waitFor();
-  assert.match(await page.locator("#connection-label").textContent(), /stato non aggiornato/);
+  assert.match(await page.locator("#connection-label").textContent(), /state not updated/);
   check("CLI exit closes HTTP/SSE; disconnected panel keeps the last known task states");
   assert.deepEqual(external, []); assert.deepEqual(errors, []);
   check("zero external browser requests, zero unexpected page/console errors");
