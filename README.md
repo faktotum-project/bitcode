@@ -201,3 +201,7 @@ and [development](docs/reference.md#development). Changes per version:
 ## License
 
 [MIT](LICENSE)
+
+### Personal full node (review candidate)
+
+`bitcode node install` opens the Bitcoin Core wizard without requiring an AI provider. Desktop's **Node** page uses the same installer, with optional local mempool explorer, connection/adoption of existing nodes, and Merkle-assisted diagnosis. See [node setup and current limitations](docs/fullnode.md); privileged host provisioning and ARM64 still need end-to-end validation, including the experimental Mutinynet source-build recipe.

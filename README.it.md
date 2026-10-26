@@ -205,3 +205,7 @@ e [development](docs/reference.md#development). Modifiche per versione:
 ## Licenza
 
 [MIT](LICENSE)
+
+### Full node personale (versione da collaudare)
+
+`bitcode node install` apre il wizard Bitcoin Core anche senza un modello AI. La pagina **Nodo** del Desktop usa lo stesso installatore, con explorer mempool locale opzionale, collegamento/adozione di nodi esistenti e diagnosi assistita da Merkle. Vedi [installazione e limiti attuali](docs/fullnode.md): restano i collaudi completi sul sistema host e su ARM64; inclusa la procedura sperimentale di compilazione Mutinynet.
