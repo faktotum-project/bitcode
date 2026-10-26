@@ -20,7 +20,9 @@ export function mcpConnect(spec = {}) {
   const transport = spec.url
     ? new StreamableHTTPClientTransport(new URL(spec.url), { requestInit: { headers, redirect: "error" } })
     : new StdioClientTransport({ command: spec.command, args: spec.args || [], cwd: spec.cwd,
-        env: { ...getDefaultEnvironment(), ...spec.env }, stderr: "inherit" });
+        env: { ...getDefaultEnvironment(), ...spec.env }, stderr: "pipe" });
+  // Through process.stderr, not the inherited descriptor, so the full-screen UI can hold server logs.
+  transport.stderr?.on?.("data", chunk => process.stderr.write(chunk));
   const client = new Client({ name: "bitcode", version: VERSION }, {
     versionNegotiation: { mode: spec.protocolVersion ? { pin: spec.protocolVersion } : spec.negotiation || "auto", probe: { timeoutMs: Math.min(timeout, 2000) } },
   });
