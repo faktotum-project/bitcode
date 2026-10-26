@@ -58,6 +58,7 @@ import {
 } from "./session.mjs";
 import * as t from "./theme.mjs";
 import { listText, mcpText, satInfoText, statusText } from "./cli-format.mjs";
+import { applyModel, pickModel, pickPermission, pickProfile, pickProvider, pickSat, settingsMenu } from "./cli-pickers.mjs";
 
 // The full-screen UI while it owns the terminal; null in the line REPL and one-shot mode.
 let screenUi = null;
@@ -104,17 +105,17 @@ export const SLASH_COMMANDS = [
   { name: "subagent", hint: "delegate a prompt to a persona", args: true, group: "Work" },
   { name: "compact", hint: "summarize older context, keeping recent turns", group: "Session" },
   { name: "status", hint: "context size, token usage and task progress", group: "Session" },
-  { name: "session", hint: "save · load · list · export", args: true, group: "Session" },
+  { name: "session", hint: "save · load · list · export", args: true, optional: true, group: "Session" },
   { name: "reset", hint: "clear conversation history", group: "Session" },
-  { name: "model", hint: "show or switch the active model", args: true, group: "Model" },
+  { name: "model", hint: "show or switch the active model", args: true, optional: true, group: "Model" },
   { name: "models", hint: "pick a provider or an installed local model", group: "Model" },
-  { name: "login", hint: "configure a provider with a masked API key", args: true, group: "Model" },
-  { name: "provider", hint: "add an API key · list providers", args: true, group: "Model" },
+  { name: "login", hint: "configure a provider with a masked API key", args: true, optional: true, group: "Model" },
+  { name: "provider", hint: "add an API key · list providers", args: true, optional: true, group: "Model" },
   { name: "setting", hint: "provider status & active model", group: "Model" },
-  { name: "config", hint: "get · set config values", args: true, group: "Model" },
+  { name: "config", hint: "get · set config values", args: true, optional: true, group: "Model" },
   { name: "sats", hint: "list persistent Sats", group: "Sats" },
-  { name: "sat", hint: "select · info · workspace", args: true, group: "Sats" },
-  { name: "profile", hint: "show or switch code/bitcoin/rgb profile", args: true, group: "Tools" },
+  { name: "sat", hint: "select · info · workspace", args: true, optional: true, group: "Sats" },
+  { name: "profile", hint: "show or switch code/bitcoin/rgb profile", args: true, optional: true, group: "Tools" },
   { name: "tools", hint: "list available tools", group: "Tools" },
   { name: "skills", hint: "list local skills", group: "Tools" },
   { name: "mcp", hint: "show MCP connections", group: "Tools" },
@@ -995,9 +996,66 @@ function firstUserLine(messages) {
 }
 
 
+// Full-screen versions of the settings commands: arrow-key pickers instead of typed numbers.
+function screenSettings(ctx) {
+  const lang = satLang();
+  const model = async () => {
+    const spec = await pickModel({ ui: screenUi, config: ctx.config, activeSpec: ctx.getActive().spec, lang });
+    if (!spec) return;
+    try {
+      const next = applyModel({ spec, config: ctx.config, setActive: ctx.setActive });
+      screenUi.toast(`${next.spec} · ${lang === "it" ? "salvato come predefinito" : "saved as default"}`, "success");
+    } catch (err) { screenUi.toast(err.message, "error", 6000); }
+  };
+  const profile = async () => {
+    const next = await pickProfile({ ui: screenUi, current: ctx.profile || "code", lang });
+    if (next && next !== ctx.profile) { await handleSlash(`/profile ${next}`, ctx); ctx.profile = next; }
+  };
+  const permission = async () => {
+    const next = await pickPermission({ ui: screenUi, current: ctx.permissions?.mode, lang });
+    if (!next || !ctx.permissions || next === ctx.permissions.mode) return;
+    ctx.config.permissions = { ...ctx.config.permissions, mode: next };
+    saveConfig(ctx.config);
+    // The sandbox is chosen when tools are built, so full-auto takes effect on the next start.
+    if (next === "full-auto") return screenUi.toast(lang === "it" ? "full-auto salvato: riavvia bitcode per la sandbox" : "full-auto saved: restart bitcode for the sandbox", "info", 6000);
+    ctx.permissions.mode = next;
+    screenUi.toast(`${lang === "it" ? "permessi" : "permissions"}: ${next}`, "success");
+  };
+  const sat = async () => {
+    const next = await pickSat({ ui: screenUi, current: ctx.session.satId, lang });
+    if (next === null) return;
+    if (next) await handleSlash(`/sat ${next}`, ctx);
+    else { delete ctx.session.satId; ctx.persist?.(); screenUi.toast("bitcode", "success"); }
+  };
+  const keys = async () => {
+    const name = await pickProvider({ ui: screenUi, config: ctx.config, lang });
+    if (!name) return;
+    const result = await providerAdd(ctx.config, name);
+    screenUi.toast(result.msg, result.ok ? "success" : "error", 5000);
+    if (result.ok) try { ctx.setActive(resolveModel({ cliModel: ctx.getActive().spec, config: ctx.config })); } catch { /* the key belongs to another provider */ }
+  };
+  return { model, profile, permission, sat, keys,
+    menu: () => settingsMenu({ ui: screenUi, lang, actions: { model, profile, permission, sat, keys },
+      read: () => ({ model: ctx.getActive().spec, profile: ctx.profile || "code", permission: ctx.permissions?.mode, sat: ctx.session.satId }) }) };
+}
+
 export async function handleSlash(input, ctx) {
-  const [cmd, ...rest] = input.slice(1).split(/\s+/);
+  const [cmd, ...rest] = input.slice(1).split(/\s+/).filter(Boolean);
   const arg = rest.join(" ");
+  if (screenUi && ctx.setActive) {
+    const pick = screenSettings(ctx);
+    if (cmd === "models" || (cmd === "model" && !arg)) return pick.model();
+    if (cmd === "profile" && !arg) return pick.profile();
+    if (cmd === "sat" && !arg) return pick.sat();
+    if (cmd === "setting" || cmd === "settings" || (cmd === "config" && !arg)) return pick.menu();
+    if (cmd === "login" && !arg) return pick.keys();
+    if (cmd === "session" && rest[0] === "load" && !rest[1]) {
+      const list = listSessions(ctx.cwd);
+      const choice = list.length ? await screenUi.select({ title: "Session", items: list.map(x => ({ label: x.name || x.id, value: x.id, hint: `${x.messageCount} msg${x.model ? " · " + x.model : ""}`, current: x.id === ctx.session.id })) }) : null;
+      if (!choice) return;
+      return handleSlash(`/session load ${choice.value}`, ctx);
+    }
+  }
   switch (cmd) {
     case "sats":
       { const caps = detectCaps();
