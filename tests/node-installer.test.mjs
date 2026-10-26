@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createStore, options, coreConfig, NETWORKS, RELEASE, nodeError } from '../src/node/model.mjs';
 import { installExplorer } from '../src/node/explorer.mjs';
-import { failure } from '../src/node/process.mjs';
+import { failure, execute } from '../src/node/process.mjs';
 import { signatures, archiveEntries } from '../src/node/verify.mjs';
 import { parseNodeArgs, nodeCLI } from '../src/node/cli.mjs';
 import { createNodeService, rpc, serviceRuntime } from '../src/node/service.mjs';
@@ -180,4 +180,7 @@ test('explorer services use a runtime that survives Node version managers', t =>
 test('a stopped node reports NODE_NOT_RUNNING instead of a file error', async t => {
   const home = temp(t); const i = options({ network: 'signet', datadir: home + '/data' }, home);
   await assert.rejects(rpc(i, 'getblockchaininfo'), e => e.code === 'NODE_NOT_RUNNING' && !e.message.includes(home));
+});
+test('a command killed by its timeout says so', async () => {
+  await assert.rejects(execute('sleep', ['5'], { timeout: 50 }), e => e.code === 'COMMAND_TIMEOUT');
 });
