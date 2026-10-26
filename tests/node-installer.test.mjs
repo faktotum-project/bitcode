@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createStore, options, coreConfig, NETWORKS } from '../src/node/model.mjs';
+import { createStore, options, coreConfig, NETWORKS, nodeError } from '../src/node/model.mjs';
+import { installExplorer } from '../src/node/explorer.mjs';
 import { failure } from '../src/node/process.mjs';
 import { signatures, archiveEntries } from '../src/node/verify.mjs';
 import { parseNodeArgs, nodeCLI } from '../src/node/cli.mjs';
@@ -154,6 +155,11 @@ test('plan shows the dependency command for the planned components', async t => 
   const service = createNodeService({ home: temp(t) });
   const { environment } = await service.plan({ network: 'signet', explorer: true });
   assert.match(environment.commands.dependencies, /"profile":"explorer"/);
+});
+test('explorer build stops with an actionable error when native tooling is missing', async t => {
+  const run = async file => { if (file === 'rustc') return { stdout: 'rustc 1.90.0' }; throw nodeError('COMMAND_UNAVAILABLE', `${file}: ENOENT`); };
+  const i = options({ network: 'signet', explorer: true }, temp(t));
+  await assert.rejects(installExplorer(i, { dir: temp(t), run }), /EXPLORER_DEPENDENCIES_REQUIRED|node dependencies/);
 });
 test('failed commands surface their last diagnostic line', () => {
   assert.equal(failure('cargo', 101, 'Compiling x\nerror: Unable to find libclang\n'), 'cargo exited 101: error: Unable to find libclang');

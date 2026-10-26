@@ -22,6 +22,8 @@ export async function installExplorer(i, { dir, run, fetchImpl = fetch }) {
   const rust = (await run('rustc', ['--version'])).stdout.match(/rustc (\d+)\.(\d+)/);
   const minimumRust = i.network === 'mutinynet' ? 87 : 85;
   if (!rust || Number(rust[1]) < 1 || (Number(rust[1]) === 1 && Number(rust[2]) < minimumRust)) throw nodeError(`RUST_1_${minimumRust}_REQUIRED`);
+  try { await run('clang', ['--version']); }
+  catch (e) { if (e.code === 'COMMAND_UNAVAILABLE') throw nodeError('EXPLORER_DEPENDENCIES_REQUIRED', 'Install the explorer dependencies first: bitcode node dependencies --explorer'); throw e; }
   const electrs = path.join(dir, 'electrs-source');
   const mempool = path.join(dir, 'mempool-source');
   let electrsBinary;
