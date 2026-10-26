@@ -6,7 +6,7 @@ const CSI_KEYS = {
 };
 const CONTROL = {
   "\x01": "home", "\x02": "ctrl-b", "\x03": "ctrl-c", "\x04": "ctrl-d", "\x05": "end", "\x0b": "ctrl-k", "\x0c": "ctrl-l",
-  "\x0e": "ctrl-n", "\x0f": "ctrl-o", "\x10": "ctrl-p", "\x12": "ctrl-r", "\x14": "ctrl-t", "\x15": "ctrl-u", "\x17": "ctrl-w",
+  "\x0e": "ctrl-n", "\x0f": "ctrl-o", "\x10": "ctrl-p", "\x12": "ctrl-r", "\x14": "ctrl-t", "\x15": "ctrl-u", "\x16": "ctrl-v", "\x17": "ctrl-w",
   "\x18": "ctrl-x", "\x0a": "ctrl-j",
 };
 const PASTE_START = "\x1b[200~", PASTE_END = "\x1b[201~";

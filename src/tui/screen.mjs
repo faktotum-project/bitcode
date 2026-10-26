@@ -58,7 +58,7 @@ export function createScreen({ output = process.stdout, truecolor = true, color 
       cursor = null;
     },
     fill(x, y, width, height, style) {
-      const cell = { ch: " ", sgr: sgr(style), bg: style?.bg };
+      const cell = { ch: " ", sgr: sgr(style), bg: style?.bg, style };
       for (let row = Math.max(0, y); row < Math.min(rows, y + height); row++)
         for (let col = Math.max(0, x); col < Math.min(cols, x + width); col++) next[row][col] = cell;
     },
@@ -72,9 +72,9 @@ export function createScreen({ output = process.stdout, truecolor = true, color 
         if (x >= 0) {
           const under = next[y][x];
           const merged = style.bg || !under.bg ? style : { ...style, bg: under.bg };
-          const cell = { ch: g, sgr: sgr(merged), bg: merged.bg };
+          const cell = { ch: g, sgr: sgr(merged), bg: merged.bg, style: merged };
           next[y][x] = cell;
-          if (w === 2 && x + 1 < cols) next[y][x + 1] = { ch: "", sgr: cell.sgr, bg: merged.bg };
+          if (w === 2 && x + 1 < cols) next[y][x + 1] = { ch: "", sgr: cell.sgr, bg: merged.bg, style: merged };
         }
         x += w;
       }
@@ -85,6 +85,25 @@ export function createScreen({ output = process.stdout, truecolor = true, color 
       return x;
     },
     setCursor(x, y) { cursor = { x, y }; },
+    // Recolours the cells of a selection (row-major from start to end, within columns [minX, maxX)).
+    highlight(start, end, { minX = 0, maxX = cols, style }) {
+      for (let y = Math.max(0, start.y); y <= Math.min(rows - 1, end.y); y++) {
+        const from = y === start.y ? start.x : minX, to = y === end.y ? end.x : maxX - 1;
+        for (let x = Math.max(minX, from); x <= Math.min(maxX - 1, to); x++) {
+          const cell = next[y][x], merged = { ...cell.style, ...style };
+          next[y][x] = { ...cell, sgr: sgr(merged), bg: merged.bg, style: merged };
+        }
+      }
+    },
+    // The characters of a selection, one line per row, trailing spaces trimmed.
+    textRange(start, end, { minX = 0, maxX = cols } = {}) {
+      const lines = [];
+      for (let y = Math.max(0, start.y); y <= Math.min(rows - 1, end.y); y++) {
+        const from = y === start.y ? start.x : minX, to = y === end.y ? end.x : maxX - 1;
+        lines.push(next[y].slice(Math.max(minX, from), Math.min(maxX - 1, to) + 1).map((c) => c.ch).join("").trimEnd());
+      }
+      return lines.join("\n");
+    },
     flush() {
       let outText = "\x1b[?2026h";
       let current = null;
