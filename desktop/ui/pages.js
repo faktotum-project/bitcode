@@ -73,7 +73,7 @@ export function settingsPage() {
     h('div', { class: 'form' },
       h('label', {}, t('language')), h('select', { onChange: set('lang') }, ['it', 'en'].map(l => h('option', { value: l, selected: st.lang === l }, l === 'it' ? 'Italiano' : 'English'))),
       h('label', {}, t('theme')), h('select', { onChange: set('theme') }, ['dark', 'light', 'system'].map(l => h('option', { value: l, selected: (st.theme || 'dark') === l }, t(l))))),
-    h('div', { class: 'section' }, t('model')),
+    h('div', { class: 'section' }, t('modelSection')),
     h('div', { class: 'form' },
       h('label', {}, t('defaultModel')), modelField(st.model || S.status?.defaultModel?.spec, !st.model, () => openModelDialog({ title: t('defaultModel'), current: st.model,
         onPick: async spec => { S.settings = await api('settings.set', { key: 'model', value: spec }); await refreshStatus(); renderCenter(); } })),
