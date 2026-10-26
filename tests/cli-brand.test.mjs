@@ -117,3 +117,11 @@ test('diff gutter, boxes and cards keep their facts and fall back to plain text'
   assert.match(strip(financeBox({ policy: null, proposals: [] }, full, 'en')), /No policy yet/);
   assert.match(strip(welcomeSats(loadSats())), /Node.*Script.*Hash.*Merkle/);
 });
+
+test('terminal scheme defaults to dark and honours BITCODE_THEME and COLORFGBG', async () => {
+  const { terminalScheme } = await import('../src/theme.mjs');
+  assert.equal(terminalScheme({}), 'dark');
+  assert.equal(terminalScheme({ BITCODE_THEME: 'light' }), 'light');
+  assert.equal(terminalScheme({ COLORFGBG: '0;15' }), 'light');
+  assert.equal(terminalScheme({ COLORFGBG: '15;0' }), 'dark');
+});
