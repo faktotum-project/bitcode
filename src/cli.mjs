@@ -57,6 +57,7 @@ import {
   exportSession,
 } from "./session.mjs";
 import * as t from "./theme.mjs";
+import { listText, mcpText, satInfoText, statusText } from "./cli-format.mjs";
 
 // The full-screen UI while it owns the terminal; null in the line REPL and one-shot mode.
 let screenUi = null;
@@ -1007,7 +1008,7 @@ export async function handleSlash(input, ctx) {
         const [action, name, extra] = rest;
         if (extra || !action || (name && !['info', 'workspace'].includes(action))) throw new Error('usage: /sat <name> | /sat info <name> | /sat workspace <name>');
         const sat = findSat(['info', 'workspace'].includes(action) ? name : action);
-        if (action === 'info') return printData({ ...sat, ...satWorkspace(sat.id), history: satHistory(sat.id, { cwd: ctx.cwd }) });
+        if (action === 'info') return out(satInfoText({ ...sat, ...satWorkspace(sat.id), history: satHistory(sat.id, { cwd: ctx.cwd }) }));
         if (action === 'workspace') return out(satWorkspace(sat.id).workspace);
         ctx.session.satId = sat.id;
         ctx.persist?.();
@@ -1141,10 +1142,10 @@ export async function handleSlash(input, ctx) {
       out(t.faint("— done —"));
       return;
     }
-    case "skills": return printData(loadSkills());
-    case "commands": return printData((ctx.commands || loadCommands()).map(({ name, description }) => ({ name, description })));
-    case "mcp": return printData(ctx.ext?.mcpServers || []);
-    case "status": return printData({ model: ctx.getActive().spec, profile: ctx.profile || "code", root: ctx.project?.root || ctx.cwd, commands: ctx.project?.commands || [], permissions: ctx.permissions ? { mode: ctx.permissions.mode, readOnly: ctx.permissions.readOnly, allow: [...ctx.permissions.allow] } : undefined, readOnly: !!ctx.readOnly, ...contextStats(ctx.messages), usage: ctx.messages.reduce((u, m) => ({ input_tokens: u.input_tokens + (m.usage?.input_tokens || 0), output_tokens: u.output_tokens + (m.usage?.output_tokens || 0) }), { input_tokens: 0, output_tokens: 0 }), plan: ctx.plan });
+    case "skills": return out(listText("Skills", loadSkills()));
+    case "commands": return out(listText("Commands", ctx.commands || loadCommands(), { name: c => "/" + c.name }));
+    case "mcp": return out(mcpText(ctx.ext?.mcpServers || []));
+    case "status": return out(statusText({ model: ctx.getActive().spec, profile: ctx.profile || "code", root: ctx.project?.root || ctx.cwd, commands: ctx.project?.commands || [], permissions: ctx.permissions ? { mode: ctx.permissions.mode, readOnly: ctx.permissions.readOnly, allow: [...ctx.permissions.allow] } : undefined, readOnly: !!ctx.readOnly, ...contextStats(ctx.messages), usage: ctx.messages.reduce((u, m) => ({ input_tokens: u.input_tokens + (m.usage?.input_tokens || 0), output_tokens: u.output_tokens + (m.usage?.output_tokens || 0) }), { input_tokens: 0, output_tokens: 0 }), plan: ctx.plan }));
     case "compact": {
       try {
         ctx.persist?.();
