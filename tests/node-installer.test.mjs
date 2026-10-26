@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createStore, options, coreConfig, NETWORKS } from '../src/node/model.mjs';
+import { failure } from '../src/node/process.mjs';
 import { signatures, archiveEntries } from '../src/node/verify.mjs';
 import { parseNodeArgs, nodeCLI } from '../src/node/cli.mjs';
 import { createNodeService, rpc } from '../src/node/service.mjs';
@@ -148,4 +149,8 @@ test('recovery excludes normal operations and does not trust a stale diagnostic'
   const lock = path.join(store.directory(i.id), '.lock'); fs.writeFileSync(lock, String(process.pid));
   await assert.rejects(service.recover(i.id, { confirmed: true }), { code: 'NODE_BUSY' });
   assert.equal(fs.readFileSync(lock, 'utf8'), String(process.pid)); assert.equal(fs.existsSync(marker), false);
+});
+test('failed commands surface their last diagnostic line', () => {
+  assert.equal(failure('cargo', 101, 'Compiling x\nerror: Unable to find libclang\n'), 'cargo exited 101: error: Unable to find libclang');
+  assert.equal(failure('tar', 2, ''), 'tar exited 2');
 });
