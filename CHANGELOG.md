@@ -1,6 +1,35 @@
 # Changelog
 
-## Unreleased
+## CLI 0.4.0 — 2026-10-26
+
+### CLI
+
+- Full-screen terminal interface: home screen, conversation with Markdown,
+  prompt fixed at the bottom with multi-line editing, status bar and a sidebar
+  with Sats, context, plan, modified files and MCP servers. `BITCODE_UI=line`
+  keeps the line REPL, which pipes and colorless terminals still use.
+- Every tool call carries the dot of the Sat whose role it serves (Node,
+  Script, Hash, Merkle); consecutive reads collapse to one line and edits show
+  a colored diff.
+- `Tab` switches BUILD and PLAN; `Esc Esc` interrupts; `Ctrl+P` palette,
+  `Ctrl+L` sessions, `Ctrl+B` sidebar, `Ctrl+O` expand; `@` mentions files.
+- Approval cards with `y`/`a`/`n`; "always" lasts for the session and never
+  applies to payments.
+- `/models` picks a provider, then one of the models it reports live;
+  `/settings` changes model, profile, permissions, Sat and API keys with the
+  arrow keys.
+- Copy by dragging, paste with `Ctrl+V`, a right-click Copy/Paste menu, and
+  pasted API keys masked as dots.
+- `/help` grouped by task; `/status`, `/skills`, `/mcp`, `/commands` and
+  `/sat info` print readable text instead of JSON.
+- Terminal colors follow a dark background unless `BITCODE_THEME=light` or
+  `COLORFGBG` says otherwise.
+- MCP stdio server logs go through bitcode instead of writing over the screen.
+
+### Runtime
+
+- Token usage is published on the event bus (`model.usage`).
+- Run states from the runtime reducer resolve to the same Sat visual states.
 
 ### Brand
 
