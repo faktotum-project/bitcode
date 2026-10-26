@@ -115,7 +115,7 @@ export function createApp({
     render();
   }
   function tick() {
-    const animating = state.busy || [...tools.values()].some((b) => b.status === "running");
+    const animating = state.busy || state.dialog?.loading || [...tools.values()].some((b) => b.status === "running");
     if (state.toast && Date.now() > state.toast.until) { state.toast = null; requestRender(); }
     if (animating) { state.frame++; requestRender(); }
   }
@@ -133,7 +133,7 @@ export function createApp({
       const q = slash[1].toLowerCase();
       const rows = commands.filter((c) => c.name.toLowerCase().startsWith(q))
         .concat(q ? commands.filter((c) => !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q)) : []);
-      return rows.length ? rows.map((c) => ({ label: "/" + c.name, hint: c.hint, group: c.group, insert: c.args ? `/${c.name} ` : `/${c.name}`, submit: !c.args })) : null;
+      return rows.length ? rows.map((c) => ({ label: "/" + c.name, hint: c.hint, group: c.group, insert: c.args && !c.optional ? `/${c.name} ` : `/${c.name}`, submit: !c.args || c.optional, completeWith: c.args ? `/${c.name} ` : `/${c.name}` })) : null;
     }
     const arg = /^\/(\S+) (\S*)$/.exec(text);
     if (arg) {
@@ -183,7 +183,7 @@ export function createApp({
         state.menuIndex = (state.menuIndex + (key.name === "up" ? -1 : 1) + items.length) % items.length;
         return render();
       }
-      if (key.name === "tab") return acceptMenu({ ...items[state.menuIndex], submit: false });
+      if (key.name === "tab") { const item = items[state.menuIndex]; return acceptMenu({ ...item, insert: item.completeWith || item.insert, submit: false }); }
       if (key.name === "enter" && !key.alt && !key.shift) return acceptMenu(items[state.menuIndex]);
       if (key.name === "escape") { state.menuDismissed = true; return render(); }
     }
@@ -259,9 +259,23 @@ export function createApp({
   }
 
   // ---------- dialogs (palette, sessions, pickers)
-  function openDialog({ title, items, onPick }) {
+  // items may be a promise (e.g. models fetched from a provider): the dialog shows a loading row meanwhile.
+  function openDialog({ title, subtitle, items, onPick }) {
     return new Promise((resolve) => {
-      state.dialog = { title, items, filter: "", index: 0, resolve: (item) => { state.dialog = null; render(); resolve(item); onPick?.(item); } };
+      const dialog = { title, subtitle, items: Array.isArray(items) ? items : [], loading: !Array.isArray(items), filter: "", index: 0,
+        resolve: (item) => { state.dialog = null; render(); resolve(item); onPick?.(item); } };
+      state.dialog = dialog;
+      if (dialog.loading) Promise.resolve(items).then((list) => {
+        dialog.items = list || [];
+        dialog.loading = false;
+        const current = dialog.items.findIndex((i) => i.current);
+        if (current >= 0) dialog.index = current;
+        requestRender();
+      }, (err) => { dialog.loading = false; dialog.error = err.message; requestRender(); });
+      else {
+        const current = dialog.items.findIndex((i) => i.current);
+        if (current >= 0) dialog.index = current;
+      }
       render();
     });
   }
@@ -280,7 +294,8 @@ export function createApp({
     if (key.name === "escape" || key.name === "ctrl-c" || (key.name === "ctrl-p" && d.title === words.palette)) return d.resolve(null);
     if (key.name === "up") return moveDialog(-1);
     if (key.name === "down" || key.name === "tab") return moveDialog(1);
-    if (key.name === "enter") return d.resolve(dialogRows()[d.index] || null);
+    if (key.name === "enter") { const item = dialogRows()[d.index]; return item ? d.resolve(item) : undefined; }
+    if (key.name === "left" && !d.filter) return d.resolve(null);
     if (key.name === "backspace") { d.filter = d.filter.slice(0, -1); d.index = 0; return render(); }
     if (key.name === "text" || key.name === "paste") { d.filter += key.text; d.index = 0; return render(); }
   }
@@ -595,23 +610,32 @@ export function createApp({
     const width = Math.min(72, cols - 4), height = Math.min(18, rows - 4);
     const x = Math.floor((cols - width) / 2), y = Math.max(1, Math.floor((rows - height) / 3));
     screen.fill(x, y, width, height, { bg: theme.element });
-    screen.text(x + 2, y + 1, d.title, { fg: theme.strong, bold: true });
+    const titleEnd = screen.text(x + 2, y + 1, d.title, { fg: theme.strong, bold: true });
+    if (d.subtitle) screen.text(titleEnd + 2, y + 1, truncate(d.subtitle, width - (titleEnd - x) - 10), { fg: theme.faint });
     screen.text(x + width - 5, y + 1, "esc", { fg: theme.faint });
     const filter = d.filter || words.filter;
     screen.text(x + 2, y + 2, "› ", { fg: theme.accent });
     const end = screen.text(x + 4, y + 2, filter, { fg: d.filter ? theme.strong : theme.faint });
     screen.setCursor(d.filter ? end : x + 4, y + 2);
-    const visible = height - 5;
+    const visible = height - 6;
+    const footer = lang === "it" ? "↑↓ muovi · ⏎ scegli · ← esc indietro · scrivi per filtrare" : "↑↓ move · ⏎ select · ← esc back · type to filter";
+    screen.text(x + 2, y + height - 1, truncate(footer, width - 4), { fg: theme.faint });
+    if (d.loading || d.error || !list.length) {
+      const message = d.loading ? `${SPINNER[state.frame % SPINNER.length]} ${lang === "it" ? "carico…" : "loading…"}` : d.error || (lang === "it" ? "nessun risultato" : "no matches");
+      screen.text(x + 2, y + 4, message, { fg: d.error ? theme.error : theme.faint });
+      return;
+    }
     d.index = Math.min(d.index, Math.max(0, list.length - 1));
     const start = Math.max(0, Math.min(d.index - visible + 1, list.length - visible));
-    const labelW = Math.min(28, Math.max(8, ...list.map((i) => stringWidth(i.label))) + 2);
+    const labelW = Math.min(34, Math.max(8, ...list.map((i) => stringWidth(i.label) + (i.sat ? 2 : 0))) + 2);
     list.slice(start, start + visible).forEach((item, i) => {
       const row = y + 4 + i, selected = start + i === d.index;
       if (selected) screen.fill(x + 1, row, width - 2, 1, { bg: theme.elevated });
-      let at = x + 2;
+      screen.text(x + 2, row, selected ? "›" : item.current ? "●" : " ", { fg: item.current && !selected ? theme.success : theme.accent });
+      let at = x + 4;
       if (item.sat) at = screen.text(at, row, SAT_GLYPH[item.sat] + " ", { fg: theme.sat[item.sat] });
-      screen.text(at, row, truncate(item.label, labelW), { fg: selected ? theme.strong : theme.text, bold: selected });
-      if (item.hint) screen.text(x + 2 + labelW + 2, row, truncate(item.hint, width - labelW - 7), { fg: theme.faint });
+      screen.text(at, row, truncate(item.label, labelW - (at - x - 4)), { fg: item.muted ? theme.faint : selected ? theme.strong : theme.text, bold: selected });
+      if (item.hint) screen.text(x + 4 + labelW + 1, row, truncate(item.hint, width - labelW - 8), { fg: item.hintColor ? theme[item.hintColor] : theme.faint });
     });
   }
 
@@ -674,8 +698,8 @@ export function createApp({
         render();
       });
     },
-    select({ title, items }) { return openDialog({ title, items }); },
-    user(text) { push({ kind: "user", text, modeColor: modeColor() }); },
+    select({ title, subtitle, items }) { return openDialog({ title, subtitle, items }); },
+    user(text) { push(text.startsWith("/") ? { kind: "command", text } : { kind: "user", text, modeColor: modeColor() }); },
     note(text) { push({ kind: "note", text: String(text).replace(/\n+$/, "") }); },
     error(text) { push({ kind: "error", text: String(text) }); },
     assistantDelta(piece) {

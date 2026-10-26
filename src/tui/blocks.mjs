@@ -112,6 +112,7 @@ export function renderBlock(block, ctx) {
   const { theme, width } = ctx;
   switch (block.kind) {
     case "user": return userLines(block, ctx);
+    case "command": return [[seg("› ", { fg: theme.accent }), seg(block.text, { fg: theme.faint })]];
     case "assistant": return renderMarkdown(block.text, width, theme);
     case "tool": return toolLines(block, ctx);
     case "group": return ctx.expanded ? block.blocks.flatMap((b) => toolLines(b, ctx)) : groupLine(block.blocks, ctx);
