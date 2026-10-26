@@ -564,7 +564,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     return { sessionId: s.sessionId, runId: run?.runId };
   }
   const tickSchedules = () => { for (const t of schedules.values()) if (t.enabled && t.nextRunAt && t.nextRunAt <= now() && projects.has(t.projectId)) runSchedule(t).catch(e => log({ kind: 'schedule', id: t.id, status: 'error', error: redactor.text(e.message) })); };
-  const human = [...finance.human, 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'session.deleteMany', 'run.start', 'notes.set', 'session.fork', 'session.move', 'session.rename.ai', 'session.compact',
+  const human = [...finance.human, 'project.close', 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'session.deleteMany', 'run.start', 'notes.set', 'session.fork', 'session.move', 'session.rename.ai', 'session.compact',
     'git.checkout', 'git.stash', 'git.remote', 'review.walkthrough', 'schedule.save', 'schedule.delete', 'schedule.runNow', 'mcp.add', 'mcp.remove', 'run.revert', 'audio.transcribe', 'remote.advice'];
   const methods = {
     ...finance.methods,
@@ -576,7 +576,11 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       projects.set(projectId, entry); saveMeta(); return entry;
     },
     'project.list': () => [...projects.values()].sort((a, b) => b.openedAt - a.openedAt),
-    'project.close': ({ projectId }) => { projects.delete(projectId); saveMeta(); return true; },
+    'project.close': ({ projectId }) => {
+      project(projectId);
+      if ([...runs.values()].some(r => r.projectId === projectId && !r.endedAt)) throw fail('PROJECT_BUSY', 'Stop the project’s running work first');
+      projects.delete(projectId); saveMeta(); return true;
+    },
     'session.create': async ({ projectId, name, mode = 'assisted', model, satId = '' }) => {
       project(projectId); if (!MODES.includes(mode)) throw fail('INVALID_PARAMS', 'Unknown mode');
       if (mode === 'unattended') { const problem = G.worktreeError(await G.worktreeReadiness(project(projectId).root)); if (problem) throw problem; }

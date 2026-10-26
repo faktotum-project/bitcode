@@ -311,3 +311,19 @@ test('models.available lists every cloud model: public catalogs without a key, k
     assert.ok(calls.length > count, 'refresh asks again');
   } finally { c.shutdown(); }
 });
+
+test('project.close removes a project from the list only, never while it runs, and only from the UI', async () => {
+  const { c, root, workers } = setup();
+  try {
+    const { p, s } = await sessionIn(c, root);
+    await c.invoke('chat.submit', { sessionId: s.sessionId, text: 'work' }, 'ui:1');
+    await until(() => workers.length);
+    await assert.rejects(c.invoke('project.close', { projectId: p.projectId }, 'ui:1'), { code: 'PROJECT_BUSY' });
+    workers[0].onMessage({ type: 'done', answer: 'ok' }); workers[0].stop();
+    await until(() => !c.activeRuns().length);
+    await assert.rejects(c.invoke('project.close', { projectId: p.projectId }, 'lan'));
+    assert.equal(await c.invoke('project.close', { projectId: p.projectId }, 'ui:1'), true);
+    assert.deepEqual(await c.invoke('project.list'), []);
+    assert.ok(existsSync(root), 'the folder stays on disk');
+  } finally { c.shutdown(); }
+});

@@ -13,6 +13,28 @@ import { S } from './state.js';
 
 // ---------- deleting chats: one, a selection, or all of them behind a typed word ----------
 export const BURN_WORD = 'burnall';
+// Removing a project only takes it out of bitcode: the folder and its files stay on disk.
+// Its chats stay too, unless the user also asks to delete them (kept chats are never deleted).
+export function removeProjectDialog(p) {
+  const chats = S.sessions.filter(s => s.projectId === p.projectId), deletable = chats.filter(s => !s.keep);
+  const dialog = h('dialog', { class: 'sat-info burn', 'aria-labelledby': 'remove-title' });
+  const also = h('input', { type: 'checkbox', id: 'remove-chats', disabled: !deletable.length });
+  const go = h('button', { class: 'btn danger', onClick: guard(async () => {
+    if (also.checked && deletable.length) await api('session.deleteMany', { sessionIds: deletable.map(s => s.sessionId) });
+    await api('project.close', { projectId: p.projectId });
+    dialog.close();
+    S.projects = await api('project.list'); await loadSessions();
+    if (S.projectId === p.projectId) { S.projectId = null; S.sessionId = null; S.session = null; S.panel = null; S.git = null; }
+    toast(fmt('projectRemoved', { p: p.name })); renderShell();
+  }) }, t('removeProject'));
+  fill(dialog,
+    h('h2', { id: 'remove-title' }, fmt('removeProjectTitle', { p: p.name })),
+    h('p', {}, t('removeProjectBody')), h('p', { class: 'mono status' }, p.root),
+    h('label', { class: 'row', for: 'remove-chats' }, also, ` ${fmt(deletable.length === 1 ? 'removeProjectChat' : 'removeProjectChats', { n: deletable.length })}`),
+    chats.length > deletable.length ? h('p', { class: 'status' }, fmt('removeProjectKept', { n: chats.length - deletable.length })) : null,
+    h('div', { class: 'row end' }, h('button', { class: 'btn', onClick: () => dialog.close() }, t('cancel')), go));
+  dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal();
+}
 export function exitSelect() { S.selecting = null; S.selected.clear(); }
 // Kept and running chats are never bulk-deleted; the controller enforces the same rule.
 export const skipCounts = list => ({ keep: list.filter(s => s.keep).length, active: list.filter(s => !s.keep && activeRun(s.sessionId)).length });
@@ -105,7 +127,13 @@ export function renderSidebar() {
       h('div', { class: `prow${p.projectId === S.projectId ? ' cur' : ''}`, role: 'button', tabindex: 0, title: p.root, onClick: () => { open ? S.collapsed.add(p.projectId) : S.collapsed.delete(p.projectId); renderSidebar(); } },
         icon(open ? 'chevronDown' : 'chevronRight', { size: 12, cls: 'chev' }), icon('folder', { size: 15 }), h('span', { class: 'pname' }, p.name),
         live ? h('span', { class: 'tstate run', title: `${live} ${t('runsActive').toLowerCase()}` }) : null,
-        all.length && !selecting ? h('button', { class: 'padd', title: `${t('selectChats')} · ${p.name}`, 'aria-label': t('selectChats'), onClick: e => { e.stopPropagation(); S.selecting = p.projectId; S.selected.clear(); S.collapsed.delete(p.projectId); renderSidebar(); } }, icon('check', { size: 14 })) : null,
+        !selecting ? h('button', { class: 'padd', title: `${t('wb_more')} · ${p.name}`, 'aria-label': `${t('wb_more')} · ${p.name}`, onClick: e => {
+          e.stopPropagation(); const b = e.currentTarget.getBoundingClientRect();
+          openMenu(b.left, b.bottom + 4, [
+            { label: t('newChat'), run: guard(() => goHome(p.projectId)) },
+            { label: t('selectChats'), disabled: !all.length, run: () => { S.selecting = p.projectId; S.selected.clear(); S.collapsed.delete(p.projectId); renderSidebar(); } },
+            '-', { label: `${t('removeProject')}…`, run: () => removeProjectDialog(p) }]);
+        } }, icon('more', { size: 14 })) : null,
         h('button', { class: 'padd', title: `${t('newChat')} · ${p.name}`, 'aria-label': t('newChat'), onClick: guard(async e => { e.stopPropagation(); await goHome(p.projectId); }) }, icon('compose', { size: 14 }))),
       open ? h('div', { class: 'threads' }, selBar, shown.map(threadRow),
         !all.length ? h('div', { class: 'tempty' }, t('noChats')) : null,
