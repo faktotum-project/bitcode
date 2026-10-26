@@ -572,7 +572,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       project(projectId); if (!MODES.includes(mode)) throw fail('INVALID_PARAMS', 'Unknown mode');
       if (mode === 'unattended') { const problem = G.worktreeError(await G.worktreeReadiness(project(projectId).root)); if (problem) throw problem; }
       if (satId !== '' && !SATS.includes(satId)) throw fail('INVALID_PARAMS', 'Unknown Sat');
-      const s = { sessionId: newSessionId(), projectId, name: (name || 'Nuova sessione').slice(0, 80), mode, model: model || null, satModels: {}, keep: false, updatedAt: now(), messages: [] };
+      const s = { sessionId: newSessionId(), projectId, name: (name || 'New session').slice(0, 80), mode, model: model || null, satModels: {}, keep: false, updatedAt: now(), messages: [] };
       s.satId = satId;
       sessions.set(s.sessionId, s); persistSession(s); return sessionMeta(s);
     },

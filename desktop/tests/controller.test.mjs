@@ -74,9 +74,9 @@ test('model errors survive RPC and worker failure with copyable, redacted diagno
     assert.equal(listed.state, 'error'); assert.equal(listed.errorCode, 'HTTP_401'); assert.equal(listed.errorStatus, 401);
     const details = await c.invoke('run.diagnostics', { runId: run.runId });
     assert.ok(details.fixPrompt.includes(prompt)); assert.ok(details.fixPrompt.includes(root));
-    assert.match(details.fixPrompt, /Verifica configurazione delle credenziali/);
+    assert.match(details.fixPrompt, /Check the credential configuration/);
     assert.doesNotMatch(JSON.stringify(details), /sk-cloud-secret/);
-    assert.match(details.fixPrompt, /Modello: cloud\/big/);
+    assert.match(details.fixPrompt, /Model: cloud\/big/);
   } finally { c.shutdown(); }
 });
 

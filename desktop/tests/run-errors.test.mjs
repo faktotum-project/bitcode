@@ -21,9 +21,9 @@ test('fix prompt uses the full original task and failing model, includes focused
     project: { name: 'Project', root: '/project' }, redact: s => s.replaceAll('private-key', '[redacted]'),
   });
   assert.ok(text.includes(task));
-  assert.match(text, /Modello: child\/model/);
-  assert.match(text, /Percorso progetto: \/project/);
-  assert.match(text, /Workspace di esecuzione: \/worktree/);
-  assert.match(text, /raggiungibilità del server/);
+  assert.match(text, /Model: child\/model/);
+  assert.match(text, /Project path: \/project/);
+  assert.match(text, /Run workspace: \/worktree/);
+  assert.match(text, /server is reachable/);
   assert.doesNotMatch(text, /private-key/);
 });
