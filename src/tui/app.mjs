@@ -10,6 +10,7 @@ import { renderBlock, groupBlocks, needsGap, SPINNER, formatTokens } from "./blo
 import { SAT_GLYPH, SAT_IDS } from "./theme.mjs";
 import { strings } from "./strings.mjs";
 import { fuzzyFiles } from "./files.mjs";
+import { readClipboard, writeClipboard } from "./clipboard.mjs";
 import { satForTool } from "../sats/roles.mjs";
 import { satStateLabel, visualState } from "../sat-states.mjs";
 import { phrasesFor, PHRASE_MS, fmtElapsed } from "../work-meter.mjs";
@@ -27,7 +28,7 @@ const satName = (id) => id[0].toUpperCase() + id.slice(1);
 export function createApp({
   input = process.stdin, output = process.stdout, theme, lang = "en", caps = {},
   status = () => ({}), commands = [], argChoices = () => [], files = () => [], sessions = () => [],
-  history = [], mouse = true,
+  history = [], mouse = true, clipboard = { read: readClipboard, write: writeClipboard },
 }) {
   const words = strings(lang);
   const screen = createScreen({ output: { write: (s) => rawWrite(s) }, truecolor: caps.truecolor !== false, color: caps.color !== false });
@@ -39,7 +40,7 @@ export function createApp({
     blocks: [], editor: createEditor(history), mode: "build", busy: null, scroll: 0, sidebar: null, expanded: false,
     dialog: null, approval: null, question: null, inputWaiter: null, toast: null, frame: 0, interruptArmedAt: 0,
     satActivity: {}, activeSat: null, usage: { inputTokens: 0, outputTokens: 0 }, files: new Map(),
-    menuIndex: 0, menuDismissed: false, newBelow: false,
+    menuIndex: 0, menuDismissed: false, newBelow: false, selection: null, contextMenu: null, mainWidth: 0,
   };
   const tools = new Map();
   const renderCache = new WeakMap();
@@ -80,7 +81,7 @@ export function createApp({
     if (running) return;
     running = true;
     screen.resize(output.columns || 80, output.rows || 24);
-    rawWrite("\x1b[?1049h\x1b[?25l\x1b[?2004h" + (mouse ? "\x1b[?1000h\x1b[?1006h" : ""));
+    rawWrite("\x1b[?1049h\x1b[?25l\x1b[?2004h" + (mouse ? "\x1b[?1002h\x1b[?1006h" : ""));
     if (input.isTTY) input.setRawMode(true);
     input.setEncoding("utf8");
     input.on("data", onData);
@@ -94,7 +95,7 @@ export function createApp({
     render();
   }
   function restoreTerminal() {
-    originalStdout("\x1b[0m\x1b[?1000l\x1b[?1006l\x1b[?2004l\x1b[?25h\x1b[?1049l");
+    originalStdout("\x1b[0m\x1b[?1002l\x1b[?1006l\x1b[?2004l\x1b[?25h\x1b[?1049l");
   }
   function stop() {
     if (!running) return;
@@ -165,6 +166,11 @@ export function createApp({
 
   function handleKey(key) {
     if (key.name === "mouse") return handleMouse(key);
+    if (state.contextMenu) return contextMenuKey(key);
+    if (state.selection && !state.selection.dragging) { state.selection = null; requestRender(); }
+    if (key.name === "ctrl-v") return pasteFromClipboard();
+    // A pasted key or password never carries the line breaks or spaces around it.
+    if (key.name === "paste" && state.question?.secret) key = { ...key, text: key.text.replace(/\s+/g, "") };
     if (state.dialog) return dialogKey(key);
     if (state.approval) return approvalKey(key);
     if (key.name === "ctrl-c") return ctrlC();
@@ -206,10 +212,91 @@ export function createApp({
     }
   }
 
+  // ---------- mouse: wheel scrolls, drag selects and copies, right click opens Copy/Paste, middle click pastes
+  const MOUSE_LEFT = 0, MOUSE_MIDDLE = 1, MOUSE_RIGHT = 2, MOUSE_MOTION = 32;
   function handleMouse(key) {
-    if (!key.press) return;
-    if (key.button === 64) return state.dialog ? moveDialog(-1) : scrollBy(3);
-    if (key.button === 65) return state.dialog ? moveDialog(1) : scrollBy(-3);
+    if (key.button === 64) return key.press && (state.dialog ? moveDialog(-1) : scrollBy(3));
+    if (key.button === 65) return key.press && (state.dialog ? moveDialog(1) : scrollBy(-3));
+    const button = key.button & 3, motion = Boolean(key.button & MOUSE_MOTION);
+    if (state.contextMenu) {
+      if (key.press && !motion && button === MOUSE_LEFT) {
+        const m = state.contextMenu, index = key.y - m.y - 1;
+        if (key.x >= m.x && key.x < m.x + m.width && index >= 0 && index < m.items.length) return runContextItem(m.items[index]);
+      }
+      if (key.press && !motion) { state.contextMenu = null; render(); }
+      return;
+    }
+    if (button === MOUSE_LEFT && key.press && !motion) {
+      const region = key.x >= state.mainWidth ? [state.mainWidth, screen.cols] : [0, state.mainWidth || screen.cols];
+      state.selection = { anchor: { x: key.x, y: key.y }, head: { x: key.x, y: key.y }, dragging: true, region };
+      return;
+    }
+    if (button === MOUSE_LEFT && motion && state.selection?.dragging) {
+      state.selection.head = { x: key.x, y: key.y };
+      return requestRender();
+    }
+    if (!key.press && state.selection?.dragging) {
+      const sel = state.selection;
+      sel.dragging = false;
+      if (sel.anchor.x === sel.head.x && sel.anchor.y === sel.head.y) { state.selection = null; return render(); }
+      return copySelection();
+    }
+    if (button === MOUSE_RIGHT && key.press && !motion) return openContextMenu(key.x, key.y);
+    if (button === MOUSE_MIDDLE && key.press && !motion) return pasteFromClipboard({ primary: true });
+  }
+
+  function orderedSelection() {
+    const { anchor, head } = state.selection;
+    return anchor.y < head.y || (anchor.y === head.y && anchor.x <= head.x) ? [anchor, head] : [head, anchor];
+  }
+  function selectedText() {
+    if (!state.selection) return "";
+    const [start, end] = orderedSelection();
+    const [minX, maxX] = state.selection.region;
+    return screen.textRange(start, end, { minX, maxX }).replace(/^\s*[┃▎]\s?/gm, "").trim();
+  }
+  function copyText(text) {
+    if (!text) return;
+    const ok = clipboard.write(text, { write: rawWrite });
+    toast(ok ? (lang === "it" ? "copiato" : "copied") : (lang === "it" ? "copiato nel terminale (OSC 52)" : "copied via the terminal (OSC 52)"), "success", 1500);
+  }
+  function copySelection() {
+    copyText(selectedText());
+    render();
+  }
+  function pasteFromClipboard({ primary = false } = {}) {
+    const text = clipboard.read({ primary });
+    if (text == null) return toast(lang === "it" ? "appunti non disponibili: usa ctrl+shift+v" : "clipboard unavailable: use ctrl+shift+v", "error", 4000);
+    if (text) handleKey({ name: "paste", text: text.replace(/\r\n?/g, "\n") });
+  }
+  function lastAnswer() {
+    return state.blocks.findLast((b) => b.kind === "assistant")?.text || "";
+  }
+  function openContextMenu(x, y) {
+    const it = lang === "it";
+    const items = [
+      ...(selectedText() ? [{ label: it ? "Copia" : "Copy", action: "copy" }] : []),
+      { label: it ? "Incolla" : "Paste", action: "paste" },
+      ...(lastAnswer() ? [{ label: it ? "Copia ultima risposta" : "Copy last answer", action: "answer" }] : []),
+    ];
+    const width = Math.max(...items.map((i) => stringWidth(i.label))) + 4;
+    state.contextMenu = { x: Math.min(x, screen.cols - width - 1), y: Math.min(y, screen.rows - items.length - 2), width, items, index: 0 };
+    render();
+  }
+  function runContextItem(item) {
+    state.contextMenu = null;
+    if (item.action === "copy") copySelection();
+    if (item.action === "answer") copyText(lastAnswer());
+    if (item.action === "paste") pasteFromClipboard();
+    state.selection = null;
+    render();
+  }
+  function contextMenuKey(key) {
+    const m = state.contextMenu;
+    if (key.name === "up" || key.name === "down") { m.index = (m.index + (key.name === "up" ? -1 : 1) + m.items.length) % m.items.length; return render(); }
+    if (key.name === "enter") return runContextItem(m.items[m.index]);
+    state.contextMenu = null;
+    render();
   }
 
   function scrollBy(delta) {
@@ -402,6 +489,12 @@ export function createApp({
     if (!state.approval && !state.dialog) drawMenu(promptX, panelY, promptW);
     if (state.dialog) drawDialog(cols, rows);
     if (state.toast) drawToast(mainW);
+    state.mainWidth = mainW;
+    if (state.selection) {
+      const [start, end] = orderedSelection();
+      screen.highlight(start, end, { minX: state.selection.region[0], maxX: state.selection.region[1], style: { bg: theme.borderStrong, fg: theme.strong } });
+    }
+    if (state.contextMenu) drawContextMenu();
     screen.flush();
   }
 
@@ -452,7 +545,10 @@ export function createApp({
       cursorRow -= start;
     }
     const lines = [[]];
-    if (q) lines.push(...wrapLine([seg(q.prompt.replace(/\x1b\[[0-9;]*m/g, "").trim(), { fg: theme.accent, bold: true })], inner));
+    if (q) {
+      const count = q.secret && state.editor.text ? `  ${state.editor.text.length} ${lang === "it" ? "caratteri, nascosti" : "characters, hidden"}` : "";
+      lines.push(...wrapLine([seg(q.prompt.replace(/\x1b\[[0-9;]*m/g, "").trim(), { fg: theme.accent, bold: true }), seg(count, { fg: theme.faint })], inner));
+    }
     const placeholder = !state.editor.text && !q;
     for (const row of rowsShown) lines.push([seg(row, { fg: theme.strong })]);
     if (placeholder) lines[lines.length - 1] = [seg(state.mode === "plan" ? words.placeholderPlan : words.placeholder, { fg: theme.faint })];
@@ -636,6 +732,16 @@ export function createApp({
       if (item.sat) at = screen.text(at, row, SAT_GLYPH[item.sat] + " ", { fg: theme.sat[item.sat] });
       screen.text(at, row, truncate(item.label, labelW - (at - x - 4)), { fg: item.muted ? theme.faint : selected ? theme.strong : theme.text, bold: selected });
       if (item.hint) screen.text(x + 4 + labelW + 1, row, truncate(item.hint, width - labelW - 8), { fg: item.hintColor ? theme[item.hintColor] : theme.faint });
+    });
+  }
+
+  function drawContextMenu() {
+    const m = state.contextMenu;
+    screen.fill(m.x, m.y, m.width, m.items.length + 2, { bg: theme.elevated });
+    m.items.forEach((item, i) => {
+      const y = m.y + 1 + i;
+      if (i === m.index) screen.fill(m.x, y, m.width, 1, { bg: theme.borderStrong });
+      screen.text(m.x + 2, y, item.label, { fg: theme.strong, bold: i === m.index });
     });
   }
 

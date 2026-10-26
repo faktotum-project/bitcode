@@ -95,3 +95,39 @@ test("the line REPL stays for pipes, plain terminals and BITCODE_UI=line", async
   assert.equal(fullscreenSupported(caps, {}, { isTTY: false }), false);
   assert.equal(fullscreenSupported({ tty: true, level: "text" }, {}, { isTTY: true }), false);
 });
+
+function clipboardApp(initial = "") {
+  const clip = { value: initial, written: [] };
+  const clipboard = { read: () => clip.value, write: (text) => { clip.written.push(text); clip.value = text; return true; } };
+  return { clip, ...app({ clipboard, columns: 90 }) };
+}
+const mouse = (button, x, y, press = true) => `\x1b[<${button};${x + 1};${y + 1}${press ? "M" : "m"}`;
+
+test("dragging with the left button selects and copies screen text", (t) => {
+  const { ui, type, clip } = clipboardApp();
+  t.after(() => ui.stop());
+  ui.note("hello copy world");
+  const row = ui.snapshot().split("\n").findIndex((l) => l.includes("hello copy world"));
+  const col = ui.snapshot().split("\n")[row].indexOf("hello");
+  type(mouse(0, col, row));
+  type(mouse(32, col + 9, row));
+  type(mouse(0, col + 9, row, false));
+  assert.deepEqual(clip.written, ["hello copy"]);
+});
+
+test("right click offers paste, and ctrl+v pastes a secret without spaces as dots", async (t) => {
+  const { ui, type, clip } = clipboardApp("  sk-test-123\n");
+  t.after(() => ui.stop());
+  const answer = ui.ask("API key", { secret: true });
+  type("\x16");
+  assert.match(ui.snapshot(), /•{11}/);
+  assert.doesNotMatch(ui.snapshot(), /sk-test/);
+  type("\r");
+  assert.equal(await answer, "sk-test-123");
+  const input = ui.readInput();
+  type(mouse(2, 10, 5));
+  assert.match(ui.snapshot(), /Paste/);
+  type("\r");
+  type("\r");
+  assert.equal((await input).line, "sk-test-123");
+});
