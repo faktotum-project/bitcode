@@ -15,7 +15,7 @@ import { ensureTerminal, termHost } from './terminal.js';
 // ---------- right panel ----------
 export function renderPanel() {
   const el = $('panel'); if (!el) return;
-  $('app').classList.toggle('panel-open', !!S.panel && S.view === 'chat' && !!S.projectId);
+  $('app').classList.toggle('panel-open', !!S.panel && ['chat', 'node'].includes(S.view) && !!S.projectId);
   if (!S.panel || !S.projectId) return fill(el);
   S.lastPanel = S.panel;
   const tabs = h('div', { class: 'ptabs', role: 'tablist' }, PANELS.map(k => h('button', { class: `ptab${S.panel === k ? ' on' : ''}`, onClick: () => { S.panel = k; renderPanel(); renderTopbar(); } }, panelLabel(k))),

@@ -3,6 +3,7 @@
 import { oneDark } from '@codemirror/theme-one-dark';
 import { t, setLang, errorText } from './i18n.js';
 import { icon } from './icons.js';
+import { createNodesView } from './nodes.js';
 import { createFinanceView } from './finance.js';
 import { createWorkbench } from './workbench.js';
 import { renderComposer, resetHistory } from './composer.js';
@@ -10,7 +11,7 @@ import { loadAll, loadSessions, openSession, refreshGit, refreshStatus, selectPr
 import { $, ago, api, applyTheme, fill, fmtTime, guard, h, isDark, project, toast } from './dom.js';
 import { diffPre, openDiff, openFile, themeSlot } from './editor.js';
 import { panelLabel } from './panel.js';
-import { md, showShortcuts } from './reading.js';
+import { md, showShortcuts, copyText, runInTerminal } from './reading.js';
 import { goHome, openFolder, renderCenter, renderShell } from './shell.js';
 import { renderSidebar } from './sidebar.js';
 import { S } from './state.js';
@@ -34,6 +35,7 @@ export const wb = createWorkbench({ S, h, fill, api, toast, guard, t, icon, md, 
 } });
 export const finView = createFinanceView({ h, fill, api, toast, guard, t, icon, rerender: () => { if (S.view === 'bitcoin') renderCenter(); } });
 export const bitcoinPage = () => finView.page();
+export const nodeView = createNodesView({ h, api, guard, toast, copyText, runInTerminal, assist: async text => { S.agent = 'merkle'; if (S.sessionId) await api('session.update', { sessionId: S.sessionId, satId: 'merkle' }); S.view = 'chat'; S.draft = text; renderShell(); } });
 // ---------- boot ----------
 export function retheme() {
   for (const tab of S.tabs) tab.view?.dispatch({ effects: themeSlot.reconfigure(isDark() ? oneDark : []) });

@@ -3,7 +3,7 @@ import { t } from './i18n.js';
 import { logo, sat } from './marks.js';
 import { icon } from './icons.js';
 import { word } from '../../src/work-meter.mjs';
-import { wb } from './app.js';
+import { wb, nodeView } from './app.js';
 import { loadSessions, openSession } from './data.js';
 import { $, activeRun, ago, api, fill, fmt, guard, h, toast } from './dom.js';
 import { openDiff } from './editor.js';
@@ -149,6 +149,7 @@ export function renderSidebar() {
     h('div', { class: 'sactions' },
       action('compose', t('newChat'), guard(() => S.projectId ? goHome(S.projectId) : openFolder()), { kbd: 'Ctrl N' }),
       searchBox || action('search', t('search'), openSearch, { kbd: 'Ctrl K' }),
+      action('bitcoin', document.documentElement.lang === 'en' ? 'Node' : 'Nodo', () => { nodeView.invalidate(); S.view = 'node'; renderShell(); }, { on: S.view === 'node' }),
       action('bitcoin', t('bitcoin'), () => { S.view = 'bitcoin'; renderShell(); }, { on: S.view === 'bitcoin' }),
       action('activity', t('activity'), () => { S.view = 'activity'; renderShell(); }, { on: S.view === 'activity', badge: S.pending.length || null }),
       // Less frequent pages stay one click away under "More" (and in the Ctrl+P palette), so the sidebar leads with chats.

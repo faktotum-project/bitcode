@@ -2,7 +2,7 @@
 import { t, errorText } from './i18n.js';
 import { sat } from './marks.js';
 import { closingText, actionText } from '../../src/work-meter.mjs';
-import { finView, wb } from './app.js';
+import { finView, wb, nodeView } from './app.js';
 import { note, renderComposer, sendQueued } from './composer.js';
 import { loadSessions, openSession, refreshGit } from './data.js';
 import { $, api, toast, wlang } from './dom.js';
@@ -77,6 +77,7 @@ window.bitcode.subscribe(({ channel, payload }) => {
     const rt = remoteTerms.get(payload.ptyId); if (payload.data) rt.write(payload.data); if (payload.exit !== undefined) { rt.write('\r\n[ssh chiuso]\r\n'); remoteTerms.delete(payload.ptyId); }
   } else if (channel === 'pty' && payload.ptyId === ptyId) {
     if (payload.data) term?.write(payload.data); if (payload.exit !== undefined) { term?.write('\r\n[exit]\r\n'); ptyExited(); }
+  } else if (channel === 'node') { nodeView.invalidate(); if (S.view === 'node') renderCenter();
   } else if (channel === 'finance') { finView.onEvent(payload);
   } else if (channel === 'navigate') { if (payload.sessionId && S.sessions.some(x => x.sessionId === payload.sessionId)) openSession(payload.sessionId).then(renderShell, e => toast(errorText(e), true)); else { S.view = payload.view; renderShell(); } }
 });

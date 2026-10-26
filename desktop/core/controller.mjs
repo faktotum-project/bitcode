@@ -20,13 +20,15 @@ import { Approvals, Redactor, Semaphore, atomicJSON, fail, hash, loadJSON, works
 import { unifiedDiff } from './diff.mjs';
 import { runError, buildFixPrompt } from './run-errors.mjs';
 import * as G from './git.mjs';
+import { createNodes } from './nodes.mjs';
+import { nodeToolCall } from '../../src/node/tools.mjs';
 import { createFinance } from './finance.mjs';
 import { createRgb } from './rgb.mjs';
 import { closeMcpConnections } from '../../src/mcp.mjs';
 import { loadSats, findSat } from '../../src/sats.mjs';
 import { satWorkspace, satHistory, recordSatRun } from '../../src/sat-workspace.mjs';
 import { satEvents } from '../../src/sat-events.mjs';
-import { loadSkills } from '../../src/context.mjs';
+import { loadSkills, readSkillResource } from '../../src/context.mjs';
 
 export const MODES = ['manual', 'assisted', 'unattended'];
 const SATS = ['node', 'script', 'hash', 'merkle'];
@@ -94,6 +96,7 @@ const matchesPolicy = (policy, argv) => !!argv && policy.commands.some(r =>
 
 export function createController({ home, appDir, agents = [], emit = () => {}, sandbox = { available: false }, spawnWorker,
   callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, githubFetch = fetch, transcribeFetch = fetch, modelsFetch = fetch, rgbFetch, rgbMcpTools, rgbWdkAccount, secrets = { get: () => undefined }, now = Date.now } = {}) {
+  const nodes = createNodes({ home, emit });
   const dir = path.join(home, 'desktop');
   const sats = loadSats(appDir && existsSync(path.join(appDir, 'sats')) ? { directory: path.join(appDir, 'sats') } : {});
   const files = { settings: path.join(dir, 'settings.json'), projects: path.join(dir, 'projects.json'), sessions: path.join(dir, 'sessions.json'), worktrees: path.join(dir, 'worktrees.json'), log: path.join(dir, 'approvals.jsonl'), usage: path.join(dir, 'usage.jsonl'), schedules: path.join(dir, 'schedules.json') };
@@ -364,7 +367,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     const config = Object.freeze({ mode: s.mode, profile, model: model.spec, locality: model.locality, satModels: Object.freeze(satModels), localOnly: settings.localOnly, policyVersion: pol.version,
       limits: Object.freeze({ maxSteps: 60, maxTotalToolCalls: 200 }) });
     const r = { runId: randomUUID(), sessionId, projectId: p.projectId, root: p.root, agentId: agent || 'bitcode', prompt, config, rgbEnv: rgbSession?.env, state: 'queued', startedAt: now(),
-      usage: { inputTokens: 0, outputTokens: 0, costMicros: null }, aborter: new AbortController(), egress: new Set(), kind };
+      usage: { inputTokens: 0, outputTokens: 0, costMicros: null }, aborter: new AbortController(), egress: new Set(), kind, readOnly };
     runs.set(r.runId, r);
     s.messages = [...(s.messages || []), { role: 'user', content: prompt }]; s.updatedAt = now(); persistSession(s);
     sessionEvent(sessionId, 'messages', { messages: transcript(s.messages) });
@@ -398,7 +401,14 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
   function onWorkerMessage(r, msg) {
     if (msg.type === 'request') {
-      const handlers = { 'todo.update': p => updateTodo(r, p), 'model.request': p => modelRequest(r, p), 'mutation.acquire': p => acquire(r, p), 'mutation.release': p => releaseLease(r, p), 'network.fetch': p => networkFetch(r, p), 'rgb.call': p => rgbCall(r, p) };
+      const handlers = { 'todo.update': p => updateTodo(r, p), 'model.request': p => modelRequest(r, p), 'mutation.acquire': p => acquire(r, p), 'mutation.release': p => releaseLease(r, p), 'network.fetch': p => networkFetch(r, p), 'rgb.call': p => rgbCall(r, p), 'node.call': async p => {
+        if (p.name === 'node_action') {
+          if (r.readOnly || r.kind === 'plan' || r.executingSat !== 'script') throw fail('FORBIDDEN');
+          const subject = p.args?.action === 'install' ? await nodes.service.plan(p.args) : p.args;
+          if (!(await ask(r, 'install', { operation: 'node', ...subject }))) throw fail('DENIED');
+        }
+        return nodeToolCall(nodes.service, p.name, p.args || {}, { approved: p.name === 'node_action' });
+      } };
       const h = handlers[msg.method];
       Promise.resolve().then(() => { if (!h) throw fail('FORBIDDEN', 'Unknown worker method'); return h(msg.params || {}); })
         .then(result => r.worker?.send({ type: 'response', id: msg.id, result }), e => {
@@ -564,9 +574,11 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     return { sessionId: s.sessionId, runId: run?.runId };
   }
   const tickSchedules = () => { for (const t of schedules.values()) if (t.enabled && t.nextRunAt && t.nextRunAt <= now() && projects.has(t.projectId)) runSchedule(t).catch(e => log({ kind: 'schedule', id: t.id, status: 'error', error: redactor.text(e.message) })); };
-  const human = [...finance.human, 'project.close', 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'session.deleteMany', 'run.start', 'notes.set', 'session.fork', 'session.move', 'session.rename.ai', 'session.compact',
+  const human = ['node.execute', ...finance.human, 'project.close', 'models.addLocalProvider', 'approval.resolve', 'mode.set', 'policy.propose', 'settings.set', 'chat.submit', 'worktree.integrate', 'worktree.discard', 'git.init', 'session.delete', 'session.deleteMany', 'run.start', 'notes.set', 'session.fork', 'session.move', 'session.rename.ai', 'session.compact',
+
     'git.checkout', 'git.stash', 'git.remote', 'review.walkthrough', 'schedule.save', 'schedule.delete', 'schedule.runNow', 'mcp.add', 'mcp.remove', 'run.revert', 'audio.transcribe', 'remote.advice'];
   const methods = {
+    ...nodes.methods,
     ...finance.methods,
     'rgb.overview': () => rgb.overview(),
     'app.status': () => ({ sandbox, settings, defaultModel: describeModel(defaultSpec()), runs: [...runs.values()].map(publicRun), pending: approvals.list(), projects: [...projects.values()] }),
@@ -798,9 +810,9 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     },
     // Read-only inventory for Settings → Library; editing stays in the Markdown/JSON files the CLI shares.
     // Skill text for `$name` in a message: the sandboxed worker cannot read ~/.bitcode, so the instructions travel in the prompt.
-    'skill.read': ({ projectId, name }) => {
+    'skill.read': ({ projectId, name, resource }) => {
       const skill = loadSkills(project(projectId).root).find(x => x.name === name); if (!skill) throw fail('NOT_FOUND', 'Unknown skill');
-      return { name: skill.name, text: readFileSync(skill.file, 'utf8').slice(0, 50_000) };
+      return { name: skill.name, text: readSkillResource(skill, resource) };
     },
     'library.list': ({ projectId } = {}) => {
       const root = projectId ? project(projectId).root : undefined, cfg = config();

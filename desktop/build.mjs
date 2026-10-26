@@ -38,7 +38,8 @@ writeFileSync(path.join(dist, 'ui/icon.png'), iconPng(256));
 // electron-builder installs a directory of NxN.png files as the hicolor icon theme sizes.
 mkdirSync(path.join(dist, 'icons'));
 for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) writeFileSync(path.join(dist, 'icons', `${size}x${size}.png`), iconPng(size));
-for (const dir of ['agents', 'commands', 'sats']) cpSync(path.join(repo, 'content', dir), path.join(dist, dir), { recursive: true });
+for (const dir of ['agents', 'commands', 'sats', 'skills']) cpSync(path.join(repo, 'content', dir), path.join(dist, dir), { recursive: true });
+cpSync(path.join(repo, 'src/node'), path.join(dist, 'node-resources'), { recursive: true });
 copyCli(path.join(dist, 'cli'));
 console.log('desktop build → dist/');
 

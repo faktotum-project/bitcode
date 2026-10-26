@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 import { runAgent, systemPrompt } from '../src/agent.mjs';
 import { createEventBus } from '../src/runtime/events.mjs';
 import { runSubagent } from '../src/subagents.mjs';
+import { nodeToolSchemas } from '../src/node/tools.mjs';
+import { loadSkills, readSkillResource } from '../src/context.mjs';
 import { runSat } from '../src/sat-runtime.mjs';
 import { readFileTool, writeFileTool, editFileTool, listDirTool, grepTool, globTool, applyEdits } from '../src/tools.mjs';
 import { workspacePath, hash } from './core/primitives.mjs';
@@ -68,6 +70,12 @@ async function run(input) {
       run: args => rpc('todo.update', args) },
     { name: 'network_fetch', mutating: true, description: 'GET an HTTP(S) URL through the project destination allowlist. No credentials or arbitrary headers.', parameters: schema({ url: string }), run: args => rpc('network.fetch', args) }
   ];
+  const bundledSkills = loadSkills(root);
+  tools.push(
+    ...nodeToolSchemas.map(t => ({ ...t, run: args => rpc('node.call', { name: t.name, args }) })),
+    { name: 'list_skills', mutating: false, description: 'List bundled skills.', parameters: schema({}), run: () => bundledSkills.map(({ name, description }) => ({ name, description })) },
+    { name: 'read_skill', mutating: false, description: 'Read an available skill.', parameters: { type: 'object', properties: { name: string, resource: string }, required: ['name'], additionalProperties: false }, run: ({ name, resource }) => { const skill = bundledSkills.find(s => s.name === name); if (!skill) throw new Error('Unknown skill'); return readSkillResource(skill, resource); } },
+  );
   // RGB wallet sessions: only the node tools the controller offered, each call
   // mediated (and, for state changes, approved) by the controller.
   if (input.profile === 'rgb') {
@@ -80,7 +88,7 @@ async function run(input) {
   const model = request => rpc('model.request', { agent: request.provider.desktopAgent, system: request.system, messages: request.messages, tools: request.tools });
   const system = input.profile === 'rgb'
     ? systemPrompt({ profile: 'rgb' }) + '\nDesktop mode: never attempt to approve actions yourself.' + (input.systemExtra ? `\n${input.systemExtra}` : '')
-    : systemPrompt({ project: { root }, profile: 'code' }) + '\nDesktop mode: remain inside the project. All changes and commands are policy-controlled. Never attempt to approve actions yourself.' + '\n\n' + DESKTOP_CAPABILITIES + (input.systemExtra ? `\n${input.systemExtra}` : '');
+    : systemPrompt({ project: { root }, profile: 'code' }) + '\nDesktop mode: remain inside the project. All changes and commands are policy-controlled. Never attempt to approve actions yourself.' + '\nFor node installation use the bitcoin-fullnode skill and controlled node tools. Merkle coordinates the Sats.' + '\n\n' + DESKTOP_CAPABILITIES + (input.systemExtra ? `\n${input.systemExtra}` : '');
   if (input.profile !== 'rgb') tools.push({ name: 'subagent', serial: true, description: 'Delegate one task to node (research), script (coding), hash (security) or merkle (review).', parameters: schema({ agent: { enum: ['node', 'script', 'hash', 'merkle'] }, prompt: string }), run: args => runSubagent({ ...args, agents: input.agents,
     target: { spec: input.model, model: input.model, provider: { desktopAgent: args.agent } },
     system, tools, parentContext: context, hooks: { onUsage: hooks.onUsage }, callModelImpl: model, signal, limits: input.limits,
