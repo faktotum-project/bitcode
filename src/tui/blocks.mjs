@@ -117,7 +117,7 @@ export function renderBlock(block, ctx) {
     case "group": return ctx.expanded ? block.blocks.flatMap((b) => toolLines(b, ctx)) : groupLine(block.blocks, ctx);
     case "turn": return turnLines(block, ctx);
     case "error": return wrapLine([seg("✗ " + block.text, { fg: theme.error })], width, { indent: 2 });
-    case "note": return wrapLines(fromAnsi(block.text, { fg: theme.text }), width, { indent: 0 });
+    case "note": return fromAnsi(block.text, { fg: theme.text }).flatMap((line) => wrapLine(line, width, { indent: Math.min(8, /^ */.exec(line[0]?.text || "")[0].length + 2) }));
     default: return [];
   }
 }
