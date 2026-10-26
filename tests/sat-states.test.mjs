@@ -28,9 +28,9 @@ test('ethics lines follow the real manifest permissions only', () => {
   assert.deepEqual(satEthics({}, 'it'), []);
 });
 
-test('language detection', () => {
-  assert.equal(satLang({ LANG: 'it_IT.UTF-8' }), 'it');
-  assert.equal(satLang({ BITCODE_LANG: 'en', LANG: 'it_IT.UTF-8' }), 'en');
+test('English is the primary language; Italian is opt-in', () => {
+  assert.equal(satLang({ LANG: 'it_IT.UTF-8' }), 'en');
+  assert.equal(satLang({ BITCODE_LANG: 'it' }), 'it');
   assert.equal(satLang({}), 'en');
 });
 

@@ -25,21 +25,21 @@ const WORDS = {
   it: { waiting: 'Aspetta il tuo sì', done: 'Fatto', problem: 'Si ferma e respira', cancelled: 'Interrotto', token: 'token' },
   en: { waiting: 'Waiting for your yes', done: 'Done', problem: 'Pausing to breathe', cancelled: 'Stopped', token: 'tokens' }
 };
-const pick = lang => (lang === 'en' ? 'en' : 'it');
-export const phrasesFor = (id, lang = 'it') => PHRASES[pick(lang)][id] || PHRASES[pick(lang)].bitcode;
-export const word = (key, lang = 'it') => WORDS[pick(lang)][key];
+const pick = lang => (lang === 'it' ? 'it' : 'en');
+export const phrasesFor = (id, lang = 'en') => PHRASES[pick(lang)][id] || PHRASES[pick(lang)].bitcode;
+export const word = (key, lang = 'en') => WORDS[pick(lang)][key];
 
 // ---- formatting ----
 export function fmtElapsed(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
 }
-export function fmtCount(n, lang = 'it') {
+export function fmtCount(n, lang = 'en') {
   if (n < 1000) return String(Math.round(n));
   const v = n / 1000, text = (v < 10 ? v.toFixed(1) : String(Math.round(v)));
   return `${pick(lang) === 'it' ? text.replace('.', ',') : text}k`;
 }
-export function fmtBytes(b, lang = 'it') {
+export function fmtBytes(b, lang = 'en') {
   const gb = b / 1024 ** 3;
   const text = gb >= 10 ? String(Math.round(gb)) : gb >= 1 ? gb.toFixed(1) : null;
   if (!text) return `${Math.max(1, Math.round(b / 1024 ** 2))} MB`;
@@ -70,18 +70,18 @@ export function createWorkMeter({ now = Date.now } = {}) {
 }
 
 // Data available right now, in a stable order.
-export function datums(snap, lang = 'it') {
+export function datums(snap, lang = 'en') {
   const list = [fmtElapsed(snap.elapsed)];
   if (snap.outTokens > 0) list.push(`${snap.inTokens > 0 ? `↑ ${fmtCount(snap.inTokens, lang)} ` : ''}↓ ${fmtCount(snap.outTokens, lang)} ${word('token', lang)}`);
   if (snap.speed) list.push(`${snap.speed} tok/s`);
   if (snap.memory?.bytes) list.push(memoryText(snap.memory, lang));
   return list;
 }
-export const memoryText = (mem, lang = 'it') => (mem.vram && mem.vram >= mem.bytes * 0.5 ? `${fmtBytes(mem.vram, lang)} GPU` : `${fmtBytes(mem.bytes, lang)} RAM`);
+export const memoryText = (mem, lang = 'en') => (mem.vram && mem.vram >= mem.bytes * 0.5 ? `${fmtBytes(mem.vram, lang)} GPU` : `${fmtBytes(mem.bytes, lang)} RAM`);
 
 // The line for a working run at `ms` since it started. An action in progress is shown fixed (with the time);
 // otherwise the datum rotates every DATUM_MS and the phrase every PHRASE_MS.
-export function workText({ id, snap, ms, lang = 'it' }) {
+export function workText({ id, snap, ms, lang = 'en' }) {
   const phrases = phrasesFor(id, lang), seed = [...(id || 'bitcode')].reduce((a, c) => a + c.charCodeAt(0), 0);
   const phrase = phrases[(Math.floor(ms / PHRASE_MS) + seed) % phrases.length];
   const list = datums(snap, lang);
@@ -90,7 +90,7 @@ export function workText({ id, snap, ms, lang = 'it' }) {
 }
 
 // The fixed closing line: "Fatto · 14s · ↑ 3,1k ↓ 1,2k token · 17 GB GPU".
-export function closingText({ outcome, snap, lang = 'it' }) {
+export function closingText({ outcome, snap, lang = 'en' }) {
   const key = outcome === 'ok' || outcome === 'done' ? 'done' : outcome === 'cancelled' ? 'cancelled' : 'problem';
   const list = datums(snap, lang);
   const tokens = list.find(x => x.includes(word('token', lang))), speed = list.find(x => x.endsWith('tok/s'));
@@ -102,7 +102,7 @@ const ACTIONS = {
   it: { read_file: 'legge', list_dir: 'esplora', write_file: 'scrive', edit_file: 'modifica', patch: 'applica una modifica a', bash: 'esegue un comando', exec_command: 'esegue un comando' },
   en: { read_file: 'reading', list_dir: 'browsing', write_file: 'writing', edit_file: 'editing', patch: 'patching', bash: 'running a command', exec_command: 'running a command' }
 };
-export function actionText(data = {}, lang = 'it') {
+export function actionText(data = {}, lang = 'en') {
   const verb = ACTIONS[pick(lang)][data.tool]; if (!verb) return data.tool ? data.tool.replace(/_/g, ' ') : null;
   const target = String(data.summary || '').split(' · ')[1];
   return target ? `${verb} ${target}` : verb;

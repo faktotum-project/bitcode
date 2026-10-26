@@ -73,7 +73,7 @@ export function box(title, rows, caps, { accent = false } = {}) {
 const kv = (k, v, w = 11) => `${t.faint(k.padEnd(w))}${v}`;
 
 // Payment review: same facts, same confirmation rule as before; only the presentation changes.
-export function reviewCard(p, caps, lang = 'it') {
+export function reviewCard(p, caps, lang = 'en') {
   const it = lang === 'it', n = x => Number(x).toLocaleString(it ? 'it-IT' : 'en-US');
   return box(`${t.bold(it ? 'Controlla la proposta' : 'Review the proposal')}  ${t.faint(p.network)}`, [
     kv(it ? 'Wallet' : 'Wallet', p.wallet), kv(it ? 'Destinatario' : 'Recipient', p.to),
@@ -84,7 +84,7 @@ export function reviewCard(p, caps, lang = 'it') {
 }
 
 // `finance status` for people: policy limits + recent proposals. Scripts still get JSON (piped or --json).
-export function financeBox(state, caps, lang = 'it') {
+export function financeBox(state, caps, lang = 'en') {
   const it = lang === 'it', n = x => Number(x).toLocaleString(it ? 'it-IT' : 'en-US'), p = state.policy;
   const policy = p ? [kv(it ? 'Massimo per pagamento' : 'Per payment', `${n(p.maxPaymentSats)} sat`, 24), kv(it ? 'Limite giornaliero' : 'Daily limit', `${n(p.dailyLimitSats)} sat`, 24),
     kv(it ? 'Commissione massima' : 'Max fee', `${n(p.maxFeeSats)} sat`, 24), kv(it ? 'Riserva minima' : 'Min reserve', `${n(p.minReserveSats)} sat`, 24)]

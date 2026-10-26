@@ -15,7 +15,7 @@ const strip = s => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
 const label = id => (id ? `${t.bold(id[0].toUpperCase() + id.slice(1))} ${t.faint('·')} ` : '');
 
 // subject: { satId|null, runId, baseURL?, providerName?, model? }; the caller feeds it bus events and model hooks.
-export function createLiveLine({ caps, registry, lang = 'it', subject = {}, stdout = process.stdout, stderr = process.stderr, now = Date.now, interval = 125, memoryProbe, memoryRead }) {
+export function createLiveLine({ caps, registry, lang = 'en', subject = {}, stdout = process.stdout, stderr = process.stderr, now = Date.now, interval = 125, memoryProbe, memoryRead }) {
   const origOut = stdout.write, origErr = stderr.write;
   const raw = (stream, text) => (stream === stdout ? origOut : origErr).call(stream, text);
   const meter = createWorkMeter({ now });

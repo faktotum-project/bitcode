@@ -95,7 +95,7 @@ test('reduced and text levels never animate or touch the streams; they only clos
     assert.equal(stdout.write, before); assert.equal(log.length, 0);
     live.stop('error');
     assert.equal(log.length, expectLine ? 1 : 0);
-    if (expectLine) assert.match(strip(log[0][1]), /Node · Si ferma e respira · 0s/);
+    if (expectLine) assert.match(strip(log[0][1]), /Node · Pausing to breathe · 0s/);
   }
 });
 
