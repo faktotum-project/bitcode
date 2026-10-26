@@ -138,7 +138,7 @@ export function createNodeService({ home, run = execute, fetchImpl = fetch, admi
         i = { ...spec, mode: 'installing', steps: {}, phase: 'planned', createdAt: new Date().toISOString() }; save(i);
       }
       if (!i.binary) await step(i, 'verified-core', () => installCore(i));
-      if (i.explorer && !i.explorerPaths) await step(i, 'explorer-build', () => installExplorer(i, { dir: store.directory(i.id), run, fetchImpl }));
+      if (i.explorer && !i.explorerPaths) await step(i, 'explorer-build', () => installExplorer(i, { dir: store.directory(i.id), run, fetchImpl, progress: detail => emit('node', { id: i.id, phase: 'explorer-build', detail }) }));
       await step(i, 'services', () => configure(i));
       i.phase = 'syncing'; save(i); return publicInstance(i);
     });

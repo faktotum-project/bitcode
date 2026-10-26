@@ -26,13 +26,14 @@ export async function checkout(url, commit, dir, run, mirrors = []) {
 // Bundled RocksDB predates GCC 13, which no longer pulls <cstdint> in transitively.
 const rocksdbBuild = () => ({ CXXFLAGS: [process.env.CXXFLAGS, '-include cstdint'].filter(Boolean).join(' ') });
 // A resumed install reuses the indexer only if it is the exact binary built from the pinned source.
-async function mutinynetIndexer(i, { dir, run, fetchImpl }) {
+async function mutinynetIndexer(i, { dir, run, fetchImpl, progress }) {
   const output = path.join(dir, `mempool-electrs-${MUTINYNET.indexer.commit}`);
   const binary = path.join(output, 'electrs');
   const evidence = i.indexerVerification;
   if (evidence?.commit === MUTINYNET.indexer.commit && fs.existsSync(binary) && await hashFile(binary) === evidence.binaryHash) return binary;
   const tree = await pinnedSource(MUTINYNET.indexer, { directory: dir, run, fetchImpl });
   try {
+    await rustToolchain(tree.source, 87, run, progress);
     await run('cargo', ['build', '--locked', '--release', '--bin', 'electrs', '--jobs', '2'], { cwd: tree.source, timeout: 7_200_000, env: rocksdbBuild() });
     fs.mkdirSync(output, { recursive: true, mode: 0o700 });
     const pending = binary + '.pending'; fs.copyFileSync(path.join(tree.source, 'target/release/electrs'), pending); fs.chmodSync(pending, 0o755); fs.renameSync(pending, binary);
@@ -40,19 +41,24 @@ async function mutinynetIndexer(i, { dir, run, fetchImpl }) {
     return binary;
   } finally { tree.cleanup(); }
 }
-export async function installExplorer(i, { dir, run, fetchImpl = fetch }) {
+// Checked inside the source tree: a rust-toolchain file there makes rustup select,
+// and possibly download, a different compiler than the system default.
+async function rustToolchain(source, minimumMinor, run, progress) {
+  if (['rust-toolchain', 'rust-toolchain.toml'].some(name => fs.existsSync(path.join(source, name)))) progress('rust-toolchain');
+  const rust = (await run('rustc', ['--version'], { cwd: source, timeout: 1_800_000 })).stdout.match(/rustc (\d+)\.(\d+)/);
+  if (!rust || Number(rust[1]) < 1 || (Number(rust[1]) === 1 && Number(rust[2]) < minimumMinor)) throw nodeError(`RUST_1_${minimumMinor}_REQUIRED`);
+}
+export async function installExplorer(i, { dir, run, fetchImpl = fetch, progress = () => {} }) {
   if (i.profile !== 'full') throw nodeError('UNSUPPORTED_EXPLORER_PROFILE');
-  const rust = (await run('rustc', ['--version'])).stdout.match(/rustc (\d+)\.(\d+)/);
-  const minimumRust = i.network === 'mutinynet' ? 87 : 85;
-  if (!rust || Number(rust[1]) < 1 || (Number(rust[1]) === 1 && Number(rust[2]) < minimumRust)) throw nodeError(`RUST_1_${minimumRust}_REQUIRED`);
   try { await run('clang', ['--version']); }
   catch (e) { if (e.code === 'COMMAND_UNAVAILABLE') throw nodeError('EXPLORER_DEPENDENCIES_REQUIRED', 'Install the explorer dependencies first: bitcode node dependencies --explorer'); throw e; }
   const electrs = path.join(dir, 'electrs-source');
   const mempool = path.join(dir, 'mempool-source');
   let electrsBinary;
-  if (i.network === 'mutinynet') electrsBinary = await mutinynetIndexer(i, { dir, run, fetchImpl });
+  if (i.network === 'mutinynet') electrsBinary = await mutinynetIndexer(i, { dir, run, fetchImpl, progress });
   else {
     await checkout('https://github.com/romanz/electrs.git', RELEASE.electrs, electrs, run);
+    await rustToolchain(electrs, 85, run, progress);
     await run('cargo', ['build', '--locked', '--release'], { cwd: electrs, timeout: 7_200_000, env: rocksdbBuild() });
     electrsBinary = path.join(electrs, 'target/release/electrs');
   }

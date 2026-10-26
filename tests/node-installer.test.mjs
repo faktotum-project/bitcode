@@ -212,3 +212,14 @@ test('the explorer frontend build skips unpinned asset downloads', async t => {
   const frontendBuild = calls.find(c => c.file === 'npm' && c.args[1] === 'build' && c.opts.cwd.endsWith('frontend'));
   assert.equal(frontendBuild.opts.env.SKIP_SYNC, '1');
 });
+test('Rust is checked in the source tree, where a pinned toolchain applies', async t => {
+  const root = temp(t); const dir = path.join(root, 'signet'); const source = path.join(dir, 'electrs-source');
+  fs.mkdirSync(source, { recursive: true }); fs.writeFileSync(path.join(source, 'rust-toolchain'), '1.80\n');
+  const progress = []; let rustCwd;
+  const run = async (file, args, opts = {}) => {
+    if (file === 'rustc') { rustCwd = opts.cwd; return { stdout: 'rustc 1.80.0' }; }
+    return { stdout: args.includes('get-url') ? 'https://github.com/romanz/electrs.git' : args.includes('rev-parse') ? RELEASE.electrs : '' };
+  };
+  await assert.rejects(installExplorer(options({ network: 'signet', explorer: true }, root), { dir, run, progress: d => progress.push(d) }), /RUST_1_85_REQUIRED/);
+  assert.equal(rustCwd, source); assert.deepEqual(progress, ['rust-toolchain']);
+});
