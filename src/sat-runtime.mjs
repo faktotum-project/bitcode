@@ -28,7 +28,7 @@ export async function runSat({ satId, registry = loadSats(), persistence = true,
     },
   });
   const computer = satComputer(sat, available, { readOnly: options.readOnly });
-  if (!guardedTools && !options.hooks?.approve) computer.tools = computer.tools.filter(t => !['write_file', 'edit_file', 'bash'].includes(t.name));
+  if (!guardedTools && !options.hooks?.approve) computer.tools = computer.tools.filter(t => !t.mutating && !['write_file', 'edit_file', 'bash'].includes(t.name));
   let outcome = 'error';
   const unsubscribe = context.bus.subscribe(event => {
     if (event.runId === context.runId && event.type === 'run.finished') outcome = event.data.outcome === 'ok' ? 'success' : event.data.outcome === 'cancelled' ? 'idle' : 'error';

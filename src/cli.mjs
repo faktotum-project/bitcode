@@ -155,6 +155,7 @@ Usage:
   bitcode -p "<prompt>"              same as above (explicit)
   bitcode models                     list providers and the models installed locally
   bitcode login [provider]            choose a provider and save a masked API key
+  bitcode node <install|connect|adopt|status|doctor|list|commands>  manage local nodes
   bitcode tools|commands|skills       inspect available capabilities (supports --json)
   bitcode provider list|health        inspect provider configuration/connectivity
   bitcode session list                list saved sessions
@@ -262,6 +263,7 @@ export function parseArgs(argv) {
 }
 
 export async function main(argv) {
+  if (argv[0] === "node") { const { nodeCLI } = await import("./node/cli.mjs"); return nodeCLI(argv.slice(1)); }
   const opts = parseArgs(argv);
   if (opts.cwd) process.chdir(opts.cwd);
   if (opts.help) return out(HELP);

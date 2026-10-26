@@ -9,7 +9,7 @@ test('Sat CLI selection applies policy to real requests and --no-session leaves 
   await f.ready(); f.send('/sats'); await until(() => f.stdout().includes('Orchestration'));
   f.send('/sat hash'); await until(() => f.stdout().includes('Sat: Hash'));
   f.send('read'); await until(() => f.stdout().includes('PRIVATE_FINAL_RESULT'));
-  assert.deepEqual(f.requests[0].tools.map(t => t.function.name).sort(), ['list_dir', 'read_file']);
+  assert.deepEqual(f.requests[0].tools.map(t => t.function.name).sort(), ['list_dir', 'list_skills', 'node_discover', 'node_plan', 'node_status', 'read_file', 'read_skill']);
   assert.match(f.requests[0].messages[0].content, /Sat Identity: Hash/);
   f.send('/exit'); assert.equal(await f.exited(), 0);
   await assert.rejects(access(path.join(f.home, 'sats')));
@@ -31,7 +31,7 @@ test("Sats CLI: opt-in observer, manual gate, policies, session isolation and sh
   const script = Object.values(state.runs).find(r => r.agentId === "script");
   assert.equal(script.state, "awaiting_approval");
   assert.equal(state.activity.some(e => e.type === "tool.started"), false);
-  assert.deepEqual(f.requests[0].tools.map(t => t.function.name).sort(), ["bash", "edit_file", "list_dir", "read_file", "write_file"].sort());
+  assert.deepEqual(f.requests[0].tools.map(t => t.function.name).sort(), ["bash", "edit_file", "list_dir", "list_skills", "node_action", "node_discover", "node_plan", "node_status", "read_file", "read_skill", "write_file"].sort());
   f.send("n"); await until(() => f.stdout().includes("— done —"));
   await assert.rejects(access(path.join(f.cwd, "example.txt")));
   state = await snapshot();
@@ -50,7 +50,7 @@ test("Sats CLI: no flag adds no URL; auto delegation is silent and policies matc
   await until(() => f.requests.length === 4 && f.stdout().includes("PRIVATE_FINAL_RESULT"));
   assert.doesNotMatch(f.stdout(), /#token=|Sats · open/);
   assert.deepEqual(f.requests[1].messages.filter(m => m.role === "user"), [{ role: "user", content: "read" }]);
-  assert.deepEqual(f.requests[1].tools.map(t => t.function.name).sort(), ["list_dir", "read_file"]);
+  assert.deepEqual(f.requests[1].tools.map(t => t.function.name).sort(), ["list_dir", "list_skills", "node_discover", "node_plan", "node_status", "read_file", "read_skill"]);
   // The parent shows the returned tool result and streams its final answer.
   // Child deltas and its read_file trace never stream into the parent output.
   assert.equal(f.stdout().split("PRIVATE_FINAL_RESULT").length - 1, 2);

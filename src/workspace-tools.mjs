@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
-import { loadSkills } from "./context.mjs";
+import { loadSkills, readSkillResource } from "./context.mjs";
 import { formatResult } from "./runtime.mjs";
 import { projectRoot, resolveWorkspacePath } from "./project.mjs";
 
@@ -41,7 +41,7 @@ export function workspaceTools({ skills = loadSkills(), plan = { steps: [] }, wo
     { name: "ask_user", mutating: false, serial: true, retryable: false, description: "Ask the user a concise question when missing information blocks progress. Interactive only; one-shot mode returns an error so you can state what is missing.", parameters: { type: "object", properties: { question: { type: "string", minLength: 1 } }, required: ["question"] },
       run: async ({ question }, { hooks, signal } = {}) => { if (!hooks?.askUser) throw new Error("user input is unavailable in noninteractive mode"); signal?.throwIfAborted(); return hooks.askUser(question); } },
     { name: "list_skills", mutating: false, description: "List local skills from user and project directories.", parameters: { type: "object", properties: {} }, run: () => skills },
-    { name: "read_skill", mutating: false, description: "Load a listed skill's SKILL.md. Resolve its referenced files relative to the returned path.", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
-      run: async ({ name }) => { const skill = skills.find(x => x.name === name); if (!skill) throw new Error(`unknown skill: ${name}`); return `Skill: ${skill.file}\n\n${formatResult(await readFile(skill.file, "utf8"))}`; } },
+    { name: "read_skill", mutating: false, description: "Load a listed skill's SKILL.md. Resolve its referenced files relative to the returned path.", parameters: { type: "object", properties: { name: { type: "string" }, resource: { type: "string", description: "Optional relative Markdown reference within the skill" } }, required: ["name"] },
+      run: async ({ name, resource }) => { const skill = skills.find(x => x.name === name); if (!skill) throw new Error(`unknown skill: ${name}`); return `Skill: ${skill.file}\n\n${formatResult(readSkillResource(skill, resource))}`; } },
   ];
 }

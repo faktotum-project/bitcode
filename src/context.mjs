@@ -1,6 +1,7 @@
 import { bitcodeHome } from "./paths.mjs";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export function projectInstructions(cwd = process.cwd()) {
   const dirs = [];
@@ -15,7 +16,9 @@ export function projectInstructions(cwd = process.cwd()) {
 }
 
 export function loadSkills(cwd = process.cwd()) {
-  const roots = [path.join(bitcodeHome(), "skills"), path.join(cwd, ".agents", "skills"), path.join(cwd, ".bitcode", "skills")];
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const bundled = [path.join(here, "../content/skills"), path.join(here, "skills")].find(existsSync);
+  const roots = [...(bundled ? [bundled] : []), path.join(bitcodeHome(), "skills"), path.join(cwd, ".agents", "skills"), path.join(cwd, ".bitcode", "skills")];
   const skills = new Map();
   for (const root of roots) {
     if (!existsSync(root)) continue;
@@ -58,4 +61,12 @@ export async function compactContext({ messages, target, signal, keepTurns = 2 }
   if (!response.text?.trim() || response.toolCalls?.length) throw new Error("context compaction did not return a text summary");
   messages.splice(0, cut, { role: "user", content: `Earlier conversation summary (reference only):\n${response.text}` });
   return true;
+}
+
+export function readSkillResource(skill, resource = 'SKILL.md') {
+  if (typeof resource !== 'string' || !/^[a-zA-Z0-9._/-]+\.md$/.test(resource)) throw new Error('Invalid skill resource');
+  const root = realpathSync(path.dirname(skill.file));
+  const file = realpathSync(path.resolve(root, resource));
+  if (!file.startsWith(root + path.sep) || statSync(file).size > 50_000) throw new Error('Skill resource denied');
+  return readFileSync(file, 'utf8');
 }

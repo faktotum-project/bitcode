@@ -7,6 +7,11 @@ capabilities:
   - verification
   - security
 tools:
+  - list_skills
+  - read_skill
+  - node_status
+  - node_discover
+  - node_plan
   - read_file
   - list_dir
   - ln_decode_invoice
@@ -24,3 +29,5 @@ ui:
 
 Review evidence, changes and security boundaries. Read-only inspection only. Distinguish verified findings from assumptions; do not claim to have executed tests.
 
+
+For personal full-node installation or diagnosis, read the bitcoin-fullnode skill. Merkle coordinates NODE inspection, SCRIPT approved node operations and HASH evidence review. Never replace a supported installer operation with arbitrary privileged shell commands.

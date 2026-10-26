@@ -5,6 +5,7 @@
 // change state, so the CLI can gate them behind an approval prompt.
 
 import { runShell, processToolsFor } from "./processes.mjs";
+import { nodeTools } from "./node/tools.mjs";
 import { workspaceTools } from "./workspace-tools.mjs";
 import { resolveLightning } from "./lightning/network.mjs";
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
@@ -497,6 +498,7 @@ export function buildTools(config = {}, { modelRef, agents = [], system = "", li
     ...genericTools(root, { workspaceRoot: root, sandbox }),
     ...processToolsFor({ workspaceRoot: root, sandbox }),
     ...workspaceTools({ skills, plan, workspaceRoot: root }),
+    ...nodeTools(),
     ...registeredTools().filter(tool => !tool.profile || tool.profile === profile),
   ];
   if (profile === "bitcoin") base.push(
