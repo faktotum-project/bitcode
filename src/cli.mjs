@@ -26,7 +26,7 @@ import { runAgent, systemPrompt, agentLimits } from "./agent.mjs";
 import { runSubagent } from "./subagents.mjs";
 import { runSat } from "./sat-runtime.mjs";
 import { loadSats, findSat } from "./sats.mjs";
-import { satLang } from "./sat-states.mjs";
+import { satLang, setPreferredLang } from "./sat-states.mjs";
 import { detectCaps } from "./term-caps.mjs";
 import { randomUUID } from "node:crypto";
 import { headerLine, legacyHeader, satCards, approvalCard, WORDMARK, diffLine, reviewCard, financeBox, welcomeSats } from "./cli-brand.mjs";
@@ -58,7 +58,7 @@ import {
 } from "./session.mjs";
 import * as t from "./theme.mjs";
 import { listText, mcpText, satInfoText, statusText } from "./cli-format.mjs";
-import { applyModel, pickModel, pickPermission, pickProfile, pickProvider, pickSat, settingsMenu } from "./cli-pickers.mjs";
+import { applyModel, pickLanguage, pickModel, pickPermission, pickProfile, pickProvider, pickSat, settingsMenu } from "./cli-pickers.mjs";
 
 // The full-screen UI while it owns the terminal; null in the line REPL and one-shot mode.
 let screenUi = null;
@@ -268,6 +268,7 @@ export async function main(argv) {
   if (opts.version) return out(`${t.accent(t.BOLT)}${t.BOLT ? " " : ""}bitcode ${VERSION}`);
 
   const config = loadConfig();
+  setPreferredLang(config.lang);
   const root = projectRoot(process.cwd());
   const project = discoverProject(root);
   const profile = resolveProfile({ cliProfile: opts.profile, config, cwd: root });
@@ -1034,9 +1035,16 @@ function screenSettings(ctx) {
     screenUi.toast(result.msg, result.ok ? "success" : "error", 5000);
     if (result.ok) try { ctx.setActive(resolveModel({ cliModel: ctx.getActive().spec, config: ctx.config })); } catch { /* the key belongs to another provider */ }
   };
-  return { model, profile, permission, sat, keys,
-    menu: () => settingsMenu({ ui: screenUi, lang, actions: { model, profile, permission, sat, keys },
-      read: () => ({ model: ctx.getActive().spec, profile: ctx.profile || "code", permission: ctx.permissions?.mode, sat: ctx.session.satId }) }) };
+  const language = async () => {
+    const next = await pickLanguage({ ui: screenUi, current: satLang() });
+    if (!next || next === satLang()) return;
+    ctx.config.lang = next;
+    saveConfig(ctx.config);
+    screenUi.toast(next === "it" ? "Italiano: vale dal prossimo avvio" : "English: applies on the next start", "success", 5000);
+  };
+  return { model, profile, permission, sat, keys, language,
+    menu: () => settingsMenu({ ui: screenUi, lang, actions: { model, profile, permission, sat, keys, language },
+      read: () => ({ model: ctx.getActive().spec, profile: ctx.profile || "code", permission: ctx.permissions?.mode, sat: ctx.session.satId, language: ctx.config.lang === "it" ? "Italiano" : "English" }) }) };
 }
 
 export async function handleSlash(input, ctx) {

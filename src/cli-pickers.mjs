@@ -92,6 +92,11 @@ export async function pickProvider({ ui, config, lang }) {
   return choice?.value ?? null;
 }
 
+export async function pickLanguage({ ui, current }) {
+  const choice = await ui.select({ title: "Language · Lingua", items: [{ label: "English", value: "en", current: current === "en" }, { label: "Italiano", value: "it", current: current === "it" }] });
+  return choice?.value ?? null;
+}
+
 // The settings menu: one row per setting with its current value; ⏎ opens that setting's picker.
 export async function settingsMenu({ ui, lang, read, actions }) {
   const it = lang === "it";
@@ -103,6 +108,7 @@ export async function settingsMenu({ ui, lang, read, actions }) {
       { label: it ? "Permessi" : "Permissions", value: "permission", hint: v.permission },
       { label: "Sat", value: "sat", hint: v.sat || words(lang).none },
       { label: it ? "Chiavi API" : "API keys", value: "keys", hint: it ? "aggiungi o cambia una chiave" : "add or change a key" },
+      { label: it ? "Lingua" : "Language", value: "language", hint: v.language },
     ] });
     if (!row) return;
     await actions[row.value]();
