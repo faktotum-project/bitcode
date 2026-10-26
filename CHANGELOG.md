@@ -5,8 +5,10 @@
 ### Desktop
 
 - English is the default language for new installs; Italian stays available
-  in Settings. The CLI follows: English unless `BITCODE_LANG=it` or the saved
-  `lang` setting (`/settings` → Language).
+  in Settings. Tray, dialogs and notifications follow the app language; the
+  fix prompt, the phone (LAN) page and the `/sats` observer are in English.
+  The CLI follows: English unless `BITCODE_LANG=it` or the saved `lang`
+  setting (`/settings` → Language).
 - The sidebar leads with chats; Stats, Archive, Issues, Remote access,
   Scheduled tasks and Integrations fold under **More**.
 - One labeled **Panel** toggle replaces seven glyph buttons; timeline, keep
