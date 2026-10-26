@@ -17,7 +17,7 @@ async function getJSON(url, headers, { timeoutMs, signal, fetchImpl }) {
 
 async function liveModels(provider, options) {
   const base = String(provider.baseURL || "").replace(/\/+$/, "");
-  const key = providerApiKey(provider);
+  const key = options.apiKey || providerApiKey(provider);
   if (provider.api === "anthropic") {
     const { data = [] } = await getJSON(`${base}/v1/models?limit=100`, { "x-api-key": key, "anthropic-version": "2023-06-01" }, options);
     return data.map((m) => ({ id: m.id, hint: m.display_name || "" }));
@@ -27,7 +27,8 @@ async function liveModels(provider, options) {
 }
 
 // -> { models: [{ id, hint }], live: boolean, error? }; the default and configured models always appear.
-export async function providerModels(name, provider, { timeoutMs = 4000, signal, fetchImpl = fetch } = {}) {
+// apiKey: a key held elsewhere (the desktop keyring). Providers with publicModels list without a key.
+export async function providerModels(name, provider, { timeoutMs = 4000, signal, fetchImpl = fetch, apiKey } = {}) {
   const known = [provider.defaultModel, ...(Array.isArray(provider.models) ? provider.models : [])].filter(Boolean).map((id) => ({ id, hint: id === provider.defaultModel ? "default" : "" }));
   let models = [], error, live = false;
   try {
@@ -35,8 +36,8 @@ export async function providerModels(name, provider, { timeoutMs = 4000, signal,
       const local = await listLocalModels(name, provider, { timeoutMs, signal });
       if (!local.running) throw new Error(local.error || "not running");
       models = local.models.map((m) => ({ id: m.id, hint: describeLocalModel(m) }));
-    } else if (!providerNeedsKey(provider)) {
-      models = await liveModels(provider, { timeoutMs, signal, fetchImpl });
+    } else if (apiKey || provider.publicModels || !providerNeedsKey(provider)) {
+      models = await liveModels(provider, { timeoutMs, signal, fetchImpl, apiKey });
     }
     live = models.length > 0;
   } catch (err) {

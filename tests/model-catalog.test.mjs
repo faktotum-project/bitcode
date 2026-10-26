@@ -22,3 +22,13 @@ test("providerModels falls back to known models when the listing fails or a key 
   assert.equal(failing.error, "HTTP 401");
 });
 
+
+test("providerModels uses a key from elsewhere and lists public catalogs without one", async () => {
+  const seen = [];
+  const fetchImpl = async (url, { headers }) => { seen.push(headers.authorization || "none"); return { ok: true, json: async () => ({ data: [{ id: "vendor/model-a" }] }) }; };
+  const keyed = { api: "openai", baseURL: "https://example.test/v1", keyEnv: "NO_SUCH_KEY_FOR_TEST" };
+  assert.deepEqual((await providerModels("x", keyed, { fetchImpl, apiKey: "ring" })).models.map((m) => m.id), ["vendor/model-a"]);
+  const open = { ...keyed, publicModels: true };
+  assert.equal((await providerModels("y", open, { fetchImpl })).live, true);
+  assert.deepEqual(seen, ["Bearer ring", "none"]);
+});
