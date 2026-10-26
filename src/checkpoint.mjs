@@ -6,11 +6,15 @@ import path from "node:path";
 import { projectRoot, resolveWorkspacePath, relativeProjectPath } from "./project.mjs";
 
 const ignored = new Set([".git", "node_modules"]);
+// A checkpoint copies the workspace before the first change of a turn. Folders far beyond a
+// source tree (a Bitcoin datadir is ~1 TB) are not snapshotted: the turn runs without /undo.
+export const CHECKPOINT_LIMITS = Object.freeze({ files: 20000, bytes: 512 * 1024 * 1024 });
+class WorkspaceTooLarge extends Error {}
 function runGit(root, args) {
   try { return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; }
 }
 function isGit(root) { return runGit(root, ["rev-parse", "--is-inside-work-tree"])?.trim() === "true"; }
-function walk(root, base = root, out = new Set()) {
+function walk(root, base = root, out = new Set(), budget = null) {
   let names = [];
   try { names = readdirSync(root); } catch { return out; }
   for (const name of names) {
@@ -19,7 +23,9 @@ function walk(root, base = root, out = new Set()) {
     if (ignored.has(name)) continue;
     const file = path.join(root, name); const rel = path.relative(base, file);
     let st; try { st = lstatSync(file); } catch { continue; }
-    if (st.isDirectory()) walk(file, base, out); else out.add(rel);
+    if (st.isDirectory()) { walk(file, base, out, budget); continue; }
+    out.add(rel);
+    if (budget && (out.size > budget.files || (budget.bytes -= st.size) < 0)) throw new WorkspaceTooLarge();
   }
   return out;
 }
@@ -46,15 +52,20 @@ function lineCounts(before, after) {
   return { added: Math.max(0, endB - start + 1), removed: Math.max(0, endA - start + 1) };
 }
 
+const OVERSIZED = "This workspace is too large for checkpoints; use Git to review or revert the turn.";
+
 // A checkpoint is deliberately filesystem based. It also snapshots .git/index,
 // so a turn that ran `git add` can be restored without using stash/reset.
 export class TurnCheckpoint {
-  constructor(root = process.cwd()) { this.root = projectRoot(root); this.reset(); }
-  reset() { this.active = false; this.dir = null; this.before = new Map(); this.after = new Map(); this.protected = new Set(); this.changed = []; this.git = false; this.index = null; this.afterIndex = null; }
+  constructor(root = process.cwd(), { limits = CHECKPOINT_LIMITS } = {}) { this.root = projectRoot(root); this.limits = limits; this.reset(); }
+  reset() { this.oversized = false; this.active = false; this.dir = null; this.before = new Map(); this.after = new Map(); this.protected = new Set(); this.changed = []; this.git = false; this.index = null; this.afterIndex = null; }
   begin(tc = {}) {
     if (this.active) return;
-    this.active = true; this.git = isGit(this.root); this.dir = mkdtempSync(path.join(os.tmpdir(), "bitcode-checkpoint-"));
-    const files = walk(this.root);
+    this.active = true; this.git = isGit(this.root);
+    let files;
+    try { files = walk(this.root, this.root, new Set(), { ...this.limits }); }
+    catch (err) { if (err instanceof WorkspaceTooLarge) { this.oversized = true; return; } throw err; }
+    this.dir = mkdtempSync(path.join(os.tmpdir(), "bitcode-checkpoint-"));
     for (const rel of files) this.capture(rel);
     if (this.git) {
       const index = runGit(this.root, ["rev-parse", "--git-path", "index"])?.trim();
@@ -74,7 +85,7 @@ export class TurnCheckpoint {
     this.before.set(rel, mark); if (mark != null) copyOne(source, path.join(this.dir, "before", rel));
   }
   finalize() {
-    if (!this.active) return [];
+    if (!this.active || this.oversized) return [];
     const current = walk(this.root); const all = new Set([...this.before.keys(), ...current]);
     this.after = new Map([...all].map(rel => [rel, fingerprint(path.join(this.root, rel))]));
     this.changed = [...all].filter(rel => this.before.get(rel) !== this.after.get(rel)).sort();
@@ -91,6 +102,7 @@ export class TurnCheckpoint {
   }
   diff() {
     if (!this.active) return "No checkpoint for this turn.";
+    if (this.oversized) return OVERSIZED;
     const current = path.join(this.dir, "current"); removeOne(current); mkdirSync(current, { recursive: true });
     for (const rel of walk(this.root)) copyOne(path.join(this.root, rel), path.join(current, rel));
     try { return execFileSync("git", ["diff", "--no-index", "--no-ext-diff", "--color=always", path.join(this.dir, "before"), current], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 }); }
@@ -98,6 +110,7 @@ export class TurnCheckpoint {
   }
   undo() {
     if (!this.active) return { ok: false, error: "no agent checkpoint to undo" };
+    if (this.oversized) return { ok: false, error: OVERSIZED };
     const restore = this.git ? this.changed : this.changed.filter(rel => this.protected.has(rel));
     const conflicts = restore.filter(rel => fingerprint(path.join(this.root, rel)) !== this.after.get(rel));
     if (this.git && this.index && fingerprint(this.index) !== this.afterIndex) conflicts.push(".git/index");
