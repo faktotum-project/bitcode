@@ -95,6 +95,19 @@ function writeFileTool(root) { return {
   },
 }; }
 
+// Sequential exact replacements, shared with the desktop worker so both sides edit files the same way.
+export function applyEdits(content, edits, label) {
+  let updated = content;
+  for (const { old_string, new_string, replace_all = false } of edits) {
+    if (!old_string) throw new Error("old_string must be non-empty");
+    const idx = updated.indexOf(old_string);
+    if (idx === -1) throw new Error(`old_string not found in ${label}`);
+    if (!replace_all && updated.indexOf(old_string, idx + 1) !== -1) throw new Error(`old_string is not unique in ${label}; add more context or set replace_all`);
+    updated = replace_all ? updated.split(old_string).join(new_string) : updated.slice(0, idx) + new_string + updated.slice(idx + old_string.length);
+  }
+  return updated;
+}
+
 function editFileTool(root) { return {
   name: "edit_file",
   mutating: true,
@@ -109,15 +122,7 @@ function editFileTool(root) { return {
     const abs = resolvePath(root, p);
     const content = await readFile(abs, "utf8");
     assertFreshContent(abs, content, expected_hash, p);
-    let updated = content;
-    for (const edit of edits || [{ old_string, new_string }]) {
-      const { old_string, new_string, replace_all = false } = edit;
-      if (!old_string) throw new Error("old_string must be non-empty");
-      const idx = updated.indexOf(old_string);
-      if (idx === -1) throw new Error(`old_string not found in ${abs}`);
-      if (!replace_all && updated.indexOf(old_string, idx + 1) !== -1) throw new Error(`old_string is not unique in ${abs}; add more context or set replace_all`);
-      updated = replace_all ? updated.split(old_string).join(new_string) : updated.slice(0, idx) + new_string + updated.slice(idx + old_string.length);
-    }
+    const updated = applyEdits(content, edits || [{ old_string, new_string }], abs);
     await writeFile(abs, updated, "utf8");
     readHashes.set(abs, fileHash(updated));
     return `edited ${abs}`;
@@ -503,3 +508,6 @@ export function buildTools(config = {}, { modelRef, agents = [], system = "", li
   if (!modelRef) return realTools;
   return [...realTools.filter(t => t.name !== "subagent"), subagentTool({ modelRef, agents, system, realTools })];
 }
+
+// File tool definitions for hosts that enforce their own boundary around them (the desktop worker).
+export { readFileTool, writeFileTool, editFileTool, listDirTool, grepTool, globTool };
