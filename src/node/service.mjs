@@ -35,6 +35,15 @@ export async function download(url, target, fetchImpl = fetch) {
   catch (e) { fs.closeSync(file); fs.rmSync(temp, { force: true }); throw e; }
   fs.closeSync(file); fs.renameSync(temp, target);
 }
+// Services outlive the launching runtime: a version-managed Node (nvm, fnm…) can be
+// upgraded or removed, so only a root-owned runtime is referenced in place.
+export function serviceRuntime(directory, execPath = process.execPath) {
+  if (fs.statSync(execPath).uid === 0) return execPath;
+  const target = path.join(directory, 'runtime', 'node');
+  fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+  const pending = `${target}.pending`; fs.copyFileSync(execPath, pending); fs.chmodSync(pending, 0o755); fs.renameSync(pending, target);
+  return target;
+}
 export function createNodeService({ home, run = execute, fetchImpl = fetch, admin, emit = () => {} } = {}) {
   const store = createStore(home);
   const save = instance => store.write({ ...instance, updatedAt: new Date().toISOString() });
@@ -109,7 +118,7 @@ export function createNodeService({ home, run = execute, fetchImpl = fetch, admi
     if (!fs.existsSync(conf)) fs.writeFileSync(conf, expected, { mode: 0o600, flag: 'wx' });
     const webScript = path.join(store.directory(i.id), 'web.mjs');
     if (i.explorer) fs.copyFileSync(path.join(resources, 'web.mjs'), webScript);
-    const result = await elevated({ action: 'configure', instance: { ...i, mode: 'managed' }, node: process.execPath, webScript });
+    const result = await elevated({ action: 'configure', instance: { ...i, mode: 'managed' }, node: i.explorer ? serviceRuntime(store.directory(i.id)) : process.execPath, webScript });
     i.mode = 'managed'; save(i); return result;
   }
   async function install(input, { confirmed = false } = {}) {

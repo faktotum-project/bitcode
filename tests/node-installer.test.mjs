@@ -8,7 +8,7 @@ import { installExplorer } from '../src/node/explorer.mjs';
 import { failure } from '../src/node/process.mjs';
 import { signatures, archiveEntries } from '../src/node/verify.mjs';
 import { parseNodeArgs, nodeCLI } from '../src/node/cli.mjs';
-import { createNodeService, rpc } from '../src/node/service.mjs';
+import { createNodeService, rpc, serviceRuntime } from '../src/node/service.mjs';
 import { createNodes } from '../desktop/core/nodes.mjs';
 import { nodeToolCall } from '../src/node/tools.mjs';
 const temp = t => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bitcode-node-test-')); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
@@ -170,4 +170,10 @@ test('electrs builds include <cstdint> for the bundled RocksDB', async t => {
   const run = async (file, args, opts = {}) => { calls.push({ file, args, opts }); if (file === 'rustc') return { stdout: 'rustc 1.90.0' }; if (file === 'cargo') throw nodeError('STOP'); return { stdout: args.includes('rev-parse') ? RELEASE.electrs : 'https://github.com/romanz/electrs.git' }; };
   await assert.rejects(installExplorer(options({ network: 'signet', explorer: true }, temp(t)), { dir: temp(t), run }), /STOP/);
   assert.match(calls.find(c => c.file === 'cargo').opts.env.CXXFLAGS, /-include cstdint/);
+});
+test('explorer services use a runtime that survives Node version managers', t => {
+  const dir = temp(t); const source = path.join(dir, 'nvm-node'); fs.writeFileSync(source, 'runtime');
+  const runtime = serviceRuntime(dir, source);
+  assert.equal(runtime, path.join(dir, 'runtime', 'node')); assert.equal(fs.readFileSync(runtime, 'utf8'), 'runtime');
+  if (fs.statSync('/bin/sh').uid === 0) assert.equal(serviceRuntime(dir, '/bin/sh'), '/bin/sh');
 });
