@@ -69,7 +69,8 @@ export async function installExplorer(i, { dir, run, fetchImpl = fetch }) {
   const frontend = path.join(mempool, 'frontend');
   fs.writeFileSync(path.join(frontend, 'mempool-frontend-config.json'), JSON.stringify({ MEMPOOL_ENABLED: true, ROOT_NETWORK: i.network === 'mainnet' ? '' : i.network === 'mutinynet' ? 'signet' : i.network, TESTNET_ENABLED: false, TESTNET4_ENABLED: i.network === 'testnet4', SIGNET_ENABLED: ['signet', 'mutinynet'].includes(i.network), MAINNET_ENABLED: i.network === 'mainnet', BASE_MODULE: 'mempool' }));
   await run('npm', ['ci', '--no-audit', '--no-fund'], { cwd: frontend, timeout: 1_800_000 });
-  await run('npm', ['run', 'build'], { cwd: frontend, timeout: 7_200_000 });
+  // sync-assets would fetch unpinned promo media and pool logos from mempool.space and GitHub at build time.
+  await run('npm', ['run', 'build'], { cwd: frontend, timeout: 7_200_000, env: { SKIP_SYNC: '1' } });
   const publicRoot = path.join(frontend, 'dist/mempool/browser');
   if (!fs.existsSync(path.join(publicRoot, 'it/index.html'))) throw nodeError('FRONTEND_BUILD_MISSING');
   applyBrand(publicRoot, i.network);
