@@ -1,6 +1,29 @@
 # Changelog
 
-## CLI 0.4.0 — 2026-10-26
+## Desktop 0.3.0 — 2026-10-26
+
+### Desktop
+
+- English is the default language for new installs; Italian stays available
+  in Settings. The CLI follows: English unless `BITCODE_LANG=it` or the saved
+  `lang` setting (`/settings` → Language).
+- The sidebar leads with chats; Stats, Archive, Issues, Remote access,
+  Scheduled tasks and Integrations fold under **More**.
+- One labeled **Panel** toggle replaces seven glyph buttons; timeline, keep
+  and export move to the chat's **…** menu; clicking a Sat in the top bar
+  lets you use it in the chat or read about it.
+- Composer: a **+** menu (attachments, goal, dictation, model comparison), a
+  **Build / Plan** toggle (`Shift+Tab`) in the terminal's mode colors, and
+  agent and permission chips instead of drop-downs.
+- Tool calls carry the dot of the Sat whose role they serve, with short
+  names (read, edit, shell…).
+- A first-run checklist covers model, project folder and sandbox.
+- The worker runs the CLI's file tools (`read_file` ranges, `edit_file`
+  with `edits[]`, `grep`, `glob`) behind the same desktop boundary: checked
+  paths, denied paths filtered from search results, writes through the
+  controller's lease and approval. `bash` stays sandbox-specific.
+- The renderer is split into one module per area; no behavior change.
+
 
 ### CLI
 

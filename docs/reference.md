@@ -1,7 +1,7 @@
 # bitcode — full reference
 
 A terminal coding and Bitcoin agent, written in Node.js ESM. This reference
-covers CLI 0.4 and Desktop 0.2; see [CHANGELOG.md](../CHANGELOG.md) for what
+covers CLI 0.4 and Desktop 0.3; see [CHANGELOG.md](../CHANGELOG.md) for what
 changed in each version.
 
 ## Install and run
