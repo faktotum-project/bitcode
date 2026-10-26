@@ -1,0 +1,11 @@
+/* bitcode theme; upstream transaction-state colors remain intact. */
+:root { --bitcode-accent: #f7931a; }
+#bitcode-explorer-brand {display:flex;align-items:center;gap:24px;padding:12px 24px;background:#151515;border-bottom:1px solid #373737;color:#ddd;font-family:Inter,system-ui,sans-serif}
+#bitcode-explorer-brand img {width:112px;height:32px}
+#bitcode-explorer-brand span {font-size:12px}
+.btn-primary {background-color:#f7931a;border-color:#f7931a;color:#151515}
+button:focus-visible,a:focus-visible {outline:2px solid #f7931a;outline-offset:3px}
+@font-face{font-family:Inter;src:url('/bitcode/InterVariable.woff2') format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url('/bitcode/JetBrainsMono-Regular.woff2') format('woff2');font-display:swap}
+body{font-family:Inter,system-ui,sans-serif}
+code,.monospace{font-family:'JetBrains Mono',monospace}
