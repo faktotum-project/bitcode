@@ -31,7 +31,7 @@ export const MODES = ['manual', 'assisted', 'unattended'];
 const SATS = ['node', 'script', 'hash', 'merkle'];
 const RETENTION_MS = 30 * 24 * 3600_000;
 export const BURN_WORD = 'burnall';
-const DEFAULT_SETTINGS = { v: 1, lang: 'it', theme: 'dark', maxActive: 3, maxLocal: 1, model: null, satModels: {}, localOnly: false, notifyRuns: true, notifyApprovals: true, snippets: [], transcriptionModel: null, remoteMode: 'off' };
+const DEFAULT_SETTINGS = { v: 1, lang: 'en', theme: 'dark', maxActive: 3, maxLocal: 1, model: null, satModels: {}, localOnly: false, notifyRuns: true, notifyApprovals: true, snippets: [], transcriptionModel: null, remoteMode: 'off' };
 const DEFAULT_POLICY = { version: 1, commands: [], network: { destinations: [] } };
 const TTL = { patch: 900_000, command: 900_000, tool: 900_000, network: 300_000, egress: 300_000, policy: 300_000, integrate: 900_000, payment: 300_000 };
 export const PROFILES = ['code', 'rgb'];
@@ -790,7 +790,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
         skills: root ? loadSkills(root).map(({ name, description, file }) => ({ name, description, file })) : [],
         mcp: Object.entries(cfg.mcp || {}).map(([name, spec]) => ({ name, command: spec.command || spec.url || '', enabled: spec.enabled !== false })) };
     },
-    'review.walkthrough': async ({ projectId, lang = 'it' }) => {
+    'review.walkthrough': async ({ projectId, lang = 'en' }) => {
       const root = project(projectId).root, st = await G.status(root);
       if (!st.repo || !st.files.length) return { text: null, files: 0 };
       const tracked = st.hasCommits ? await G.git(root, ['diff', '--no-color', 'HEAD']) : '';

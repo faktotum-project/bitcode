@@ -194,7 +194,7 @@ const en = {
   cmd_login: 'configure a provider key', cmd_provider: 'providers and keys', cmd_doctor: 'diagnostics'
 };
 const dicts = { it, en };
-let lang = 'it';
-export const setLang = l => { lang = dicts[l] ? l : 'it'; document.documentElement.lang = lang; };
-export const t = key => dicts[lang][key] ?? dicts.it[key] ?? key;
+let lang = 'en';
+export const setLang = l => { lang = dicts[l] ? l : 'en'; document.documentElement.lang = lang; };
+export const t = key => dicts[lang][key] ?? dicts.en[key] ?? dicts.it[key] ?? key;
 export const errorText = e => (e?.code && dicts[lang][`E_${e.code}`]) || e?.message || String(e);
