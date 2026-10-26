@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createStore, options, coreConfig, NETWORKS, RELEASE, nodeError } from '../src/node/model.mjs';
-import { installExplorer } from '../src/node/explorer.mjs';
+import { installExplorer, checkout } from '../src/node/explorer.mjs';
 import { failure, execute } from '../src/node/process.mjs';
 import { signatures, archiveEntries } from '../src/node/verify.mjs';
 import { parseNodeArgs, nodeCLI } from '../src/node/cli.mjs';
@@ -183,4 +183,13 @@ test('a stopped node reports NODE_NOT_RUNNING instead of a file error', async t 
 });
 test('a command killed by its timeout says so', async () => {
   await assert.rejects(execute('sleep', ['5'], { timeout: 50 }), e => e.code === 'COMMAND_TIMEOUT');
+});
+test('checkout fetches a pinned commit from a sibling clone before the network', async t => {
+  const root = temp(t); const calls = [];
+  const sibling = path.join(root, 'signet', 'mempool-source'); fs.mkdirSync(path.join(sibling, '.git'), { recursive: true });
+  const target = path.join(root, 'mutinynet', 'mempool-source');
+  const run = async (file, args) => { calls.push(args.join(' ')); return { stdout: args.includes('get-url') ? 'https://example.org/repo.git' : 'c0ffee' }; };
+  await checkout('https://example.org/repo.git', 'c0ffee', target, run, [sibling, target]);
+  assert.ok(calls.some(c => c.endsWith(`fetch --depth=1 ${sibling} c0ffee`)));
+  assert.ok(!calls.some(c => c.includes('fetch --depth=1 origin')));
 });

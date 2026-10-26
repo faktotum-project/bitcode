@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { RELEASE, NETWORKS, cookiePath, nodeError } from './model.mjs';
 import { MUTINYNET, pinnedSource, mutinynetIndexerArgs } from './mutinynet.mjs';
 import { hashFile } from './verify.mjs';
-export async function checkout(url, commit, dir, run) {
+// Sibling instances pin the same commits; a commit id names its content, so a local
+// clone that already holds it is as good as the network and avoids a slow refetch.
+export async function checkout(url, commit, dir, run, mirrors = []) {
   if (!fs.existsSync(path.join(dir, '.git'))) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     await run('git', ['init', dir]);
@@ -13,12 +15,31 @@ export async function checkout(url, commit, dir, run) {
   }
   const actualUrl = (await run('git', ['-C', dir, 'remote', 'get-url', 'origin'])).stdout.trim();
   if (actualUrl !== url) throw nodeError('SOURCE_ORIGIN_MISMATCH');
-  await run('git', ['-C', dir, 'fetch', '--depth=1', 'origin', commit], { timeout: 600_000 });
+  let local = false;
+  for (const mirror of mirrors.filter(m => m !== dir && fs.existsSync(path.join(m, '.git')))) {
+    try { await run('git', ['-C', dir, 'fetch', '--depth=1', mirror, commit]); local = true; break; } catch {}
+  }
+  if (!local) await run('git', ['-C', dir, 'fetch', '--depth=1', 'origin', commit], { timeout: 1_800_000 });
   await run('git', ['-C', dir, 'checkout', '--detach', commit]);
   if ((await run('git', ['-C', dir, 'rev-parse', 'HEAD'])).stdout.trim() !== commit) throw nodeError('SOURCE_COMMIT_MISMATCH');
 }
 // Bundled RocksDB predates GCC 13, which no longer pulls <cstdint> in transitively.
 const rocksdbBuild = () => ({ CXXFLAGS: [process.env.CXXFLAGS, '-include cstdint'].filter(Boolean).join(' ') });
+// A resumed install reuses the indexer only if it is the exact binary built from the pinned source.
+async function mutinynetIndexer(i, { dir, run, fetchImpl }) {
+  const output = path.join(dir, `mempool-electrs-${MUTINYNET.indexer.commit}`);
+  const binary = path.join(output, 'electrs');
+  const evidence = i.indexerVerification;
+  if (evidence?.commit === MUTINYNET.indexer.commit && fs.existsSync(binary) && await hashFile(binary) === evidence.binaryHash) return binary;
+  const tree = await pinnedSource(MUTINYNET.indexer, { directory: dir, run, fetchImpl });
+  try {
+    await run('cargo', ['build', '--locked', '--release', '--bin', 'electrs', '--jobs', '2'], { cwd: tree.source, timeout: 7_200_000, env: rocksdbBuild() });
+    fs.mkdirSync(output, { recursive: true, mode: 0o700 });
+    const pending = binary + '.pending'; fs.copyFileSync(path.join(tree.source, 'target/release/electrs'), pending); fs.chmodSync(pending, 0o755); fs.renameSync(pending, binary);
+    i.indexerVerification = { ...tree.evidence, binaryHash: await hashFile(binary), guixAttested: false };
+    return binary;
+  } finally { tree.cleanup(); }
+}
 export async function installExplorer(i, { dir, run, fetchImpl = fetch }) {
   if (i.profile !== 'full') throw nodeError('UNSUPPORTED_EXPLORER_PROFILE');
   const rust = (await run('rustc', ['--version'])).stdout.match(/rustc (\d+)\.(\d+)/);
@@ -29,22 +50,14 @@ export async function installExplorer(i, { dir, run, fetchImpl = fetch }) {
   const electrs = path.join(dir, 'electrs-source');
   const mempool = path.join(dir, 'mempool-source');
   let electrsBinary;
-  if (i.network === 'mutinynet') {
-    const tree = await pinnedSource(MUTINYNET.indexer, { directory: dir, run, fetchImpl });
-    try {
-      await run('cargo', ['build', '--locked', '--release', '--bin', 'electrs', '--jobs', '2'], { cwd: tree.source, timeout: 7_200_000, env: rocksdbBuild() });
-      const built = path.join(tree.source, 'target/release/electrs');
-      const output = path.join(dir, `mempool-electrs-${MUTINYNET.indexer.commit}`); fs.mkdirSync(output, { recursive: true, mode: 0o700 });
-      electrsBinary = path.join(output, 'electrs');
-      const pending = electrsBinary + '.pending'; fs.copyFileSync(built, pending); fs.chmodSync(pending, 0o755); fs.renameSync(pending, electrsBinary);
-      i.indexerVerification = { ...tree.evidence, binaryHash: await hashFile(electrsBinary), guixAttested: false };
-    } finally { tree.cleanup(); }
-  } else {
+  if (i.network === 'mutinynet') electrsBinary = await mutinynetIndexer(i, { dir, run, fetchImpl });
+  else {
     await checkout('https://github.com/romanz/electrs.git', RELEASE.electrs, electrs, run);
     await run('cargo', ['build', '--locked', '--release'], { cwd: electrs, timeout: 7_200_000, env: rocksdbBuild() });
     electrsBinary = path.join(electrs, 'target/release/electrs');
   }
-  await checkout('https://github.com/mempool/mempool.git', RELEASE.mempool, mempool, run);
+  const instances = path.dirname(dir);
+  await checkout('https://github.com/mempool/mempool.git', RELEASE.mempool, mempool, run, fs.readdirSync(instances).map(id => path.join(instances, id, 'mempool-source')));
   const backend = path.join(mempool, 'backend');
   const source = path.join(backend, 'src/index.ts'); const before = fs.readFileSync(source, 'utf8');
   const from = 'this.server.listen(config.MEMPOOL.HTTP_PORT, () => {';
