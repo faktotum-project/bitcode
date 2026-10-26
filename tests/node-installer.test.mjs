@@ -6,7 +6,8 @@ import path from 'node:path';
 import { createStore, options, coreConfig, NETWORKS, RELEASE, nodeError } from '../src/node/model.mjs';
 import { installExplorer, checkout } from '../src/node/explorer.mjs';
 import { failure, execute } from '../src/node/process.mjs';
-import { signatures, archiveEntries } from '../src/node/verify.mjs';
+import { MUTINYNET } from '../src/node/mutinynet.mjs';
+import { signatures, archiveEntries, hashFile } from '../src/node/verify.mjs';
 import { parseNodeArgs, nodeCLI } from '../src/node/cli.mjs';
 import { createNodeService, rpc, serviceRuntime } from '../src/node/service.mjs';
 import { createNodes } from '../desktop/core/nodes.mjs';
@@ -192,4 +193,13 @@ test('checkout fetches a pinned commit from a sibling clone before the network',
   await checkout('https://example.org/repo.git', 'c0ffee', target, run, [sibling, target]);
   assert.ok(calls.some(c => c.endsWith(`fetch --depth=1 ${sibling} c0ffee`)));
   assert.ok(!calls.some(c => c.includes('fetch --depth=1 origin')));
+});
+test('a resumed Mutinynet install reuses the verified indexer binary', async t => {
+  const root = temp(t); const dir = path.join(root, 'mutinynet'); const output = path.join(dir, `mempool-electrs-${MUTINYNET.indexer.commit}`);
+  fs.mkdirSync(output, { recursive: true }); fs.writeFileSync(path.join(output, 'electrs'), 'built');
+  const i = { ...options({ network: 'mutinynet', explorer: true }, root), indexerVerification: { commit: MUTINYNET.indexer.commit, binaryHash: await hashFile(path.join(output, 'electrs')) } };
+  const files = [];
+  const run = async (file, args) => { files.push(file); if (file === 'rustc') return { stdout: 'rustc 1.90.0' }; if (file === 'git') throw nodeError('STOP'); return { stdout: '' }; };
+  await assert.rejects(installExplorer(i, { dir, run }), /STOP/);
+  assert.ok(!files.includes('cargo') && !files.includes('tar'));
 });
