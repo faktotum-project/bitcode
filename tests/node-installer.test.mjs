@@ -150,6 +150,11 @@ test('recovery excludes normal operations and does not trust a stale diagnostic'
   await assert.rejects(service.recover(i.id, { confirmed: true }), { code: 'NODE_BUSY' });
   assert.equal(fs.readFileSync(lock, 'utf8'), String(process.pid)); assert.equal(fs.existsSync(marker), false);
 });
+test('plan shows the dependency command for the planned components', async t => {
+  const service = createNodeService({ home: temp(t) });
+  const { environment } = await service.plan({ network: 'signet', explorer: true });
+  assert.match(environment.commands.dependencies, /"profile":"explorer"/);
+});
 test('failed commands surface their last diagnostic line', () => {
   assert.equal(failure('cargo', 101, 'Compiling x\nerror: Unable to find libclang\n'), 'cargo exited 101: error: Unable to find libclang');
   assert.equal(failure('tar', 2, ''), 'tar exited 2');

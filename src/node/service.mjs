@@ -50,15 +50,15 @@ export function createNodeService({ home, run = execute, fetchImpl = fetch, admi
     const src = path.join(resources, 'node-helper.py');
     return { bootstrap: `sudo install -d -o root -g root -m 755 /usr/local/lib/bitcode && sudo install -o root -g root -m 755 ${q(src)} ${HELPER}`, dependencies: `pkexec /usr/bin/python3 -I ${HELPER} <<'BITCODE_NODE_REQUEST'\n{"action":"dependencies","profile":"${profile}"}\nBITCODE_NODE_REQUEST` };
   }
-  async function environment(datadir) {
+  async function environment(datadir, input = {}) {
     let parent = datadir || os.homedir(); while (!fs.existsSync(parent)) parent = path.dirname(parent);
     const stat = fs.statfsSync(parent);
     const osRelease = fs.existsSync('/etc/os-release') ? fs.readFileSync('/etc/os-release', 'utf8') : '';
     const supported = process.platform === 'linux' && ['x64', 'arm64'].includes(process.arch) && /^(?:ID|ID_LIKE)=.*(?:ubuntu|debian)/m.test(osRelease);
-    return { supported, platform: process.platform, arch: process.arch, ramBytes: os.totalmem(), freeBytes: Number(stat.bavail) * Number(stat.bsize), commands: commands(), systemd: fs.existsSync('/run/systemd/system'), networks: NETWORKS, release: RELEASE };
+    return { supported, platform: process.platform, arch: process.arch, ramBytes: os.totalmem(), freeBytes: Number(stat.bavail) * Number(stat.bsize), commands: commands(input), systemd: fs.existsSync('/run/systemd/system'), networks: NETWORKS, release: RELEASE };
   }
   async function plan(input) {
-    const i = options(input, home); const env = await environment(i.datadir);
+    const i = options(input, home); const env = await environment(i.datadir, input);
     const reserveGB = i.profile === 'pruned' ? 40 : NETWORKS[i.network].reserveGB + (i.explorer ? 250 : 0);
     const occupied = [];
     const usedPorts = Object.entries(i.ports).filter(([name]) => i.explorer || ['rpc', 'p2p'].includes(name));
