@@ -3,9 +3,13 @@ import { phrasesFor, word } from './work-meter.mjs';
 // Tone: calm, one verb, the breath as metaphor; never hype.
 // Pure data and functions: no I/O, safe to bundle into the renderer.
 
-// Visual states are the ones the avatars animate; event states come from sat-events.mjs.
+// Visual states are the ones the avatars animate. Inputs may be sat-events.mjs states
+// or run states from runtime/state.mjs; both vocabularies resolve here.
 export const VISUAL_STATES = Object.freeze(['idle', 'thinking', 'reading', 'running', 'drafting', 'waiting', 'happy', 'concerned']);
-const EVENT_TO_VISUAL = { writing: 'drafting', waiting_approval: 'waiting', success: 'happy', error: 'concerned', planning: 'thinking', delegating: 'running' };
+const EVENT_TO_VISUAL = {
+  writing: 'drafting', waiting_approval: 'waiting', success: 'happy', error: 'concerned', planning: 'thinking', delegating: 'running',
+  awaiting_approval: 'waiting', responding: 'thinking', cancelled: 'idle'
+};
 export const visualState = state => EVENT_TO_VISUAL[state] || (VISUAL_STATES.includes(state) ? state : 'thinking');
 
 // Only four states carry words; the avatars still animate all eight. A resting Sat has no label at all.

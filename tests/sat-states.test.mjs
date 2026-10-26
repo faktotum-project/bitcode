@@ -33,3 +33,10 @@ test('language detection', () => {
   assert.equal(satLang({ BITCODE_LANG: 'en', LANG: 'it_IT.UTF-8' }), 'en');
   assert.equal(satLang({}), 'en');
 });
+
+test('run states from the runtime reducer resolve to visual states', () => {
+  assert.equal(visualState('awaiting_approval'), 'waiting');
+  assert.equal(visualState('cancelled'), 'idle');
+  assert.equal(visualState('responding'), 'thinking');
+  assert.equal(essentialState('awaiting_approval'), 'waiting');
+});
