@@ -11,6 +11,7 @@ import { MCP_CATALOG } from './catalog.mjs';
 import { localInventory, KNOWN_RUNTIMES, bestLocalModel, runtimeProvider } from '../../src/local-inventory.mjs';
 import { createMemoryProbe } from '../../src/local-memory.mjs';
 import { isLocalProvider, discoverLocalModels, describeLocalModel, localSetupHint } from '../../src/local-models.mjs';
+import { providerModels } from '../../src/model-catalog.mjs';
 import { loadCommands, expandCommand } from '../../src/commands.mjs';
 import { savePlan, latestPlan, plansDir } from '../../src/plans.mjs';
 import { isReadOnlyCommand, normalizeCommand } from '../../src/permissions.mjs';
@@ -92,7 +93,7 @@ const matchesPolicy = (policy, argv) => !!argv && policy.commands.some(r =>
   r.argv ? r.argv.length === argv.length && r.argv.every((a, i) => a === argv[i]) : r.argvPrefix?.every((a, i) => a === argv[i]));
 
 export function createController({ home, appDir, agents = [], emit = () => {}, sandbox = { available: false }, spawnWorker,
-  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, githubFetch = fetch, transcribeFetch = fetch, rgbFetch, rgbMcpTools, rgbWdkAccount, secrets = { get: () => undefined }, now = Date.now } = {}) {
+  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, githubFetch = fetch, transcribeFetch = fetch, modelsFetch = fetch, rgbFetch, rgbMcpTools, rgbWdkAccount, secrets = { get: () => undefined }, now = Date.now } = {}) {
   const dir = path.join(home, 'desktop');
   const sats = loadSats(appDir && existsSync(path.join(appDir, 'sats')) ? { directory: path.join(appDir, 'sats') } : {});
   const files = { settings: path.join(dir, 'settings.json'), projects: path.join(dir, 'projects.json'), sessions: path.join(dir, 'sessions.json'), worktrees: path.join(dir, 'worktrees.json'), log: path.join(dir, 'approvals.jsonl'), usage: path.join(dir, 'usage.jsonl'), schedules: path.join(dir, 'schedules.json') };
@@ -189,6 +190,14 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   const defaultSpec = () => settings.model || config().model || process.env.BITCODE_MODEL || autoLocal || undefined;
   function pickAutoLocal(inv) { autoLocal = bestLocalModel(inv, config()); }
   const refreshAutoLocal = () => localInventory(config(), { timeoutMs: 1500, home: inventoryHome }).then(pickAutoLocal).catch(() => {});
+  const CLOUD_TTL = 10 * 60_000, cloudCache = new Map();
+  async function cloudModels(name, provider, apiKey, hasKey, refresh) {
+    const cacheKey = `${name}|${hasKey}`, hit = cloudCache.get(cacheKey);
+    if (hit && !refresh && now() - hit.at < CLOUD_TTL) return hit.listing;
+    const listing = await providerModels(name, provider, { apiKey: apiKey || undefined, timeoutMs: 5000, fetchImpl: modelsFetch });
+    if (listing.live) cloudCache.set(cacheKey, { at: now(), listing });
+    return listing;
+  }
   const describeModel = spec => { try { const t = resolveTarget(spec); return { spec: t.spec, locality: t.locality }; } catch (e) { return { spec: spec || null, locality: 'unknown', error: e.message }; } };
 
   async function modelRequest(r, { agent, system, messages, tools }) {
@@ -666,10 +675,15 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       hasKey: !!(secrets.get(name) || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey) || isLocalProvider(p) })),
     'model.describe': ({ spec }) => describeModel(spec),
     'commands.list': ({ projectId } = {}) => listCommands(projectId ? project(projectId).root : null),
-    'models.available': async () => {
+    'models.available': async ({ refresh = false } = {}) => {
       const cfg = config(), providers = allProviders(cfg);
-      const cloud = Object.entries(providers).filter(([, p]) => !isLocalProvider(p)).map(([name, p]) => ({ provider: name, spec: p.defaultModel ? `${name}/${p.defaultModel}` : null, model: p.defaultModel || null,
-        hasKey: !!(secrets.get(name) || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey) }));
+      // Each cloud provider lists the models it really serves (OpenRouter even without a key); the listing is cached.
+      const cloud = await Promise.all(Object.entries(providers).filter(([, p]) => !isLocalProvider(p)).map(async ([name, p]) => {
+        const key = secrets.get(name), hasKey = !!(key || (p.keyEnv && process.env[p.keyEnv]) || p.apiKey);
+        const listing = settings.localOnly ? { models: [] } : await cloudModels(name, p, key, hasKey, refresh);
+        return { provider: name, spec: p.defaultModel ? `${name}/${p.defaultModel}` : null, model: p.defaultModel || null, hasKey, error: listing.error || null,
+          models: listing.models.map(m => ({ spec: `${name}/${m.id}`, model: m.id, detail: m.hint || '' })) };
+      }));
       const inv = await localInventory(cfg, { timeoutMs: 1500, home: inventoryHome }); pickAutoLocal(inv);
       const local = inv.servers.map(sv => ({ provider: sv.name, label: sv.label, baseURL: sv.baseURL, configured: sv.configured, running: sv.running,
         hint: sv.models.length ? null : localSetupHint(sv.name, sv.running),

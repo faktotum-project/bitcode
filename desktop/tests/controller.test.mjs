@@ -285,3 +285,29 @@ test('unattended mode is refused up front, with a precise reason, until the proj
   await assert.rejects(() => c.invoke('git.init', { projectId: p.projectId }, 'ui:1'), /Already a Git repository/);
   await assert.rejects(() => c.invoke('git.init', { projectId: p.projectId }, 'worker:1'), e => e.code === 'FORBIDDEN_ORIGIN');
 });
+
+test('models.available lists every cloud model: public catalogs without a key, keyring keys, cached', async () => {
+  const calls = [];
+  const modelsFetch = async (url, { headers }) => {
+    calls.push(`${new URL(url).hostname}|${headers['x-api-key'] || headers.authorization || 'none'}`);
+    const data = url.includes('anthropic') ? [{ id: 'claude-x', display_name: 'Claude X' }] : url.includes('openrouter') ? [{ id: 'vendor/a' }, { id: 'vendor/b' }] : [{ id: 'big' }, { id: 'small' }];
+    return { ok: true, json: async () => ({ data }) };
+  };
+  const secrets = { get: name => (name === 'anthropic' ? 'sk-ring' : undefined) };
+  const { c } = setup({ modelsFetch, secrets, inventoryHome: path.join(process.cwd(), 'no-such-home') });
+  try {
+    const first = await c.invoke('models.available');
+    const byName = Object.fromEntries(first.cloud.map(p => [p.provider, p]));
+    assert.deepEqual(byName.openrouter.models.map(m => m.spec).filter(s => s.startsWith('openrouter/vendor')), ['openrouter/vendor/a', 'openrouter/vendor/b']);
+    assert.equal(byName.openrouter.hasKey, false);
+    assert.ok(byName.anthropic.models.some(m => m.spec === 'anthropic/claude-x' && m.detail === 'Claude X'));
+    assert.deepEqual(byName.cloud.models.map(m => m.model).sort(), ['big', 'small']);
+    assert.ok(!calls.some(x => x.startsWith('api.openai.com')), 'no listing call without a key');
+    assert.ok(calls.includes('api.anthropic.com|sk-ring') && calls.includes('openrouter.ai|none'));
+    const count = calls.length;
+    await c.invoke('models.available');
+    assert.equal(calls.length, count, 'listings are cached');
+    await c.invoke('models.available', { refresh: true });
+    assert.ok(calls.length > count, 'refresh asks again');
+  } finally { c.shutdown(); }
+});

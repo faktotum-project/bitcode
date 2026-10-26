@@ -338,7 +338,7 @@ table.list th { font-size: 12px; color: var(--muted); font-weight: 500; }
 .modelbtn .caret { color: var(--muted); font-size: 10px; }
 .loc { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--muted); }
 .loc.local { background: var(--up); } .loc.cloud { background: var(--info); } .loc.off { background: var(--down); }
-.modelpop { position: absolute; bottom: calc(100% + 8px); left: 0; width: 380px; max-width: 80vw; background: var(--card); border: 1px solid var(--hairlineStrong); border-radius: 12px; z-index: 30; box-shadow: 0 12px 32px rgba(0, 0, 0, .35); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: 440px; }
+.modelpop { position: absolute; bottom: calc(100% + 8px); left: 0; width: 460px; max-width: 80vw; background: var(--card); border: 1px solid var(--hairlineStrong); border-radius: 12px; z-index: 30; box-shadow: 0 12px 32px rgba(0, 0, 0, .35); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: 440px; }
 .modelpop > input { margin: 8px; height: 34px; border-radius: 8px; border: 1px solid var(--hairline); background: var(--canvas); color: var(--ink); padding: 0 10px; outline: none; }
 .mlist { overflow: auto; padding: 0 6px 6px; }
 .mgroup { display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
@@ -624,3 +624,11 @@ html.mini .topbar > .ibtn { display: none; }
 .setup .linkbtn { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-align: left; }
 .setup .linkbtn:hover { text-decoration: underline; }
 .topbar .kept { color: var(--accent); display: inline-flex; flex: none; }
+/* Cloud providers in the model picker: a clickable group header per provider */
+.mprovbtn { width: 100%; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.mprovbtn:hover { background: var(--hover); }
+.mprovbtn .caret { width: 12px; color: var(--muted); font-size: 10px; }
+.mprovbtn .chip { height: 20px; font-size: 11px; }
+/* Long cloud ids (vendor/model) keep their name visible; the description gives way */
+.mitem .mname { flex: 1 1 auto; }
+.mitem .mdetail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }

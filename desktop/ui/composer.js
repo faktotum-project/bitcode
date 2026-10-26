@@ -181,7 +181,7 @@ export const modelLocality = spec => {
   if (a.local.some(p => spec.startsWith(`${p.provider}/`))) return 'local';
   return a.cloud.some(c => spec.startsWith(`${c.provider}/`)) ? 'cloud' : 'unknown';
 };
-export async function loadModels() { S.picker.loading = true; try { S.picker.data = await api('models.available'); } finally { S.picker.loading = false; } }
+export async function loadModels(refresh = false) { S.picker.loading = true; try { S.picker.data = await api('models.available', { refresh }); } finally { S.picker.loading = false; } }
 export const openModelPicker = guard(async () => { S.picker.open = true; S.picker.filter = ''; renderComposer(); await loadModels(); if (S.picker.open) renderComposer(); setTimeout(() => $('modelfilter')?.focus(), 0); });
 export function closeModelPicker() { S.picker.open = false; renderComposer(); }
 document.addEventListener('mousedown', e => { if (S.picker.open && !e.target.closest('.modelpick')) closeModelPicker(); });
@@ -197,7 +197,8 @@ export function machineLine(m) {
   const gpu = m.gpus.map(g => `${g.name}${g.vram ? ` ${gb(g.vram)}` : ''}${g.unified ? ` · ${t('sharedMem')}` : ''}`).join(', ');
   return h('div', { class: 'machine num' }, h('span', {}, `RAM ${gb(m.ram.total)} · ${gb(m.ram.available)} ${t('free')}`), gpu ? h('span', {}, `GPU ${gpu}`) : null, h('span', {}, `${m.cpus} core`));
 }
-export function modelList({ current, filter = '', onPick, onRefresh, inherit = null, fitsOnly = false }) {
+const CLOUD_SHOWN = 60;
+export function modelList({ current, filter = '', onPick, onRefresh, redraw = () => {}, inherit = null, fitsOnly = false }) {
   const d = S.picker.data, q = filter.toLowerCase(), match = x => !q || x.toLowerCase().includes(q);
   const item = (spec, label, detail, extra = {}) => h('button', { class: `mitem${spec === current ? ' on' : ''}`, role: 'option', 'aria-selected': spec === current ? 'true' : 'false', onClick: () => onPick(spec) },
     h('span', { class: 'mname num' }, label), extra.fit ? fitBadge(extra.fit) : null, detail ? h('span', { class: 'mdetail num' }, detail) : null, spec === current ? h('span', { class: 'check' }, '✓') : null);
@@ -226,20 +227,36 @@ export function modelList({ current, filter = '', onPick, onRefresh, inherit = n
       x.hint ? h('code', { class: 'mhint', title: t('copy'), onClick: () => { navigator.clipboard?.writeText(x.hint); toast(t('copied')); } }, x.hint) : null));
   }
   if (!d.localOnly) {
-    const cloud = d.cloud.filter(c => c.spec && match(c.spec));
-    if (cloud.length) body.push(h('div', { class: 'mgroup' }, t('cloudModels')), ...cloud.map(c => item(c.spec, c.spec, c.hasKey ? t('hasKey') : t('noKey'))));
+    // Each cloud provider is a group that opens on click (the current model's provider starts open);
+    // typing filters across every provider's full catalog.
+    S.picker.expanded ??= new Set([String(current || '').split('/')[0]]);
+    const groups = d.cloud.map(c => ({ c, models: (c.models?.length ? c.models : c.spec ? [{ spec: c.spec, model: c.model, detail: '' }] : []).filter(m => match(m.spec)) }))
+      .filter(({ c, models }) => !q || models.length || match(c.provider));
+    if (groups.length) body.push(h('div', { class: 'mgroup' }, t('cloudModels')));
+    for (const { c, models } of groups) {
+      const open = !!q || S.picker.expanded.has(c.provider);
+      body.push(h('button', { class: 'mprov mprovbtn', 'aria-expanded': open ? 'true' : 'false', onClick: () => { S.picker.expanded.has(c.provider) ? S.picker.expanded.delete(c.provider) : S.picker.expanded.add(c.provider); redraw(); } },
+        h('span', { class: 'caret' }, open ? '▾' : '▸'), h('span', { class: `loc ${c.hasKey ? 'cloud' : 'off'}` }), c.provider,
+        h('span', { class: `chip ${c.hasKey ? 'ok' : 'warn'}` }, c.hasKey ? t('hasKey') : t('noKey')),
+        h('span', { class: 'mdetail' }, c.models?.length ? `${c.models.length} ${t(c.models.length === 1 ? 'modelN' : 'modelsN')}` : '')));
+      if (!open) continue;
+      body.push(...models.slice(0, q ? 200 : CLOUD_SHOWN).map(m => item(m.spec, m.model, m.detail)));
+      if (!q && models.length > CLOUD_SHOWN) body.push(h('div', { class: 'mnote' }, `${models.length - CLOUD_SHOWN} ${t('moreModelsHint')}`));
+      if (c.error && !c.hasKey) body.push(h('div', { class: 'mnote' }, t('cloudKeyHint')));
+      else if (c.error) body.push(h('div', { class: 'mnote mono' }, c.error));
+    }
   }
-  if (q.includes('/') && ![...d.local.flatMap(p => p.models.map(m => m.spec)), ...d.cloud.map(c => c.spec)].includes(filter.trim()))
+  if (q.includes('/') && ![...d.local.flatMap(p => p.models.map(m => m.spec)), ...d.cloud.flatMap(c => [c.spec, ...(c.models || []).map(m => m.spec)])].includes(filter.trim()))
     body.push(h('div', { class: 'mgroup' }, t('customModel')), item(filter.trim(), filter.trim(), t('typed')));
   return body;
 }
 export function modelPopover() {
   const current = S.session?.model || S.newModel || S.status?.defaultModel?.spec;
-  const refresh = guard(async () => { await loadModels(); renderComposer(); });
+  const refresh = guard(async () => { await loadModels(true); renderComposer(); });
   const custom = h('input', { id: 'modelfilter', type: 'text', class: 'mono', placeholder: t('modelFilter'), value: S.picker.filter,
     onInput: e => { S.picker.filter = e.target.value; const pos = e.target.selectionStart; renderComposer(); const i = $('modelfilter'); i?.focus(); i?.setSelectionRange(pos, pos); },
     onKeydown: e => { if (e.key === 'Enter' && e.target.value.includes('/')) chooseModel(e.target.value.trim()); if (e.key === 'Escape') closeModelPicker(); } });
-  return h('div', { class: 'modelpop', role: 'listbox' }, custom, h('div', { class: 'mlist' }, modelList({ current, filter: S.picker.filter, onPick: chooseModel, onRefresh: refresh })),
+  return h('div', { class: 'modelpop', role: 'listbox' }, custom, h('div', { class: 'mlist' }, modelList({ current, filter: S.picker.filter, onPick: chooseModel, onRefresh: refresh, redraw: renderComposer })),
     h('div', { class: 'mfoot' }, h('span', { class: 'status' }, t('modelFoot')),
       h('button', { class: 'btn sm ghost', disabled: !current, onClick: guard(async () => { S.settings = await api('settings.set', { key: 'model', value: current }); await refreshStatus(); toast(`${t('defaultModel')}: ${current}`); closeModelPicker(); }) }, t('setDefault'))));
 }
@@ -260,7 +277,7 @@ export function openModelDialog({ title, current, inherit = null, onPick }) {
       h('div', { class: 'dsearch' }, icon('search'), search),
       h('div', { class: 'dbar' }, machineLine(S.picker.data?.machine),
         h('label', { class: 'dtoggle' }, h('input', { type: 'checkbox', checked: state.fitsOnly, onChange: e => { state.fitsOnly = e.target.checked; draw(); } }), t('fitsOnly'))),
-      h('div', { class: 'mlist dlist' }, modelList({ current, filter: state.filter, fitsOnly: state.fitsOnly, inherit, onPick: pick, onRefresh: guard(async () => { S.picker.data = null; draw(); await loadModels(); draw(); }) }))));
+      h('div', { class: 'mlist dlist' }, modelList({ current, filter: state.filter, fitsOnly: state.fitsOnly, inherit, onPick: pick, redraw: () => draw(), onRefresh: guard(async () => { S.picker.data = null; draw(); await loadModels(true); draw(); }) }))));
     if (!state.filter) setTimeout(() => overlay.querySelector('input')?.focus(), 0);
   };
   document.body.append(overlay); draw();
