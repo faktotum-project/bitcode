@@ -17,6 +17,7 @@ import { createFinanceView } from './finance.js';
 import { createWorkbench, promptHistory } from './workbench.js';
 import { renderMarkdown, commandOf, isRisky } from './markdown.js';
 import { satStateLabel, satStateTable, satEthics } from '../../src/sat-states.mjs';
+import { satForTool, toolLabel } from '../../src/sats/roles.mjs';
 import { workText, closingText, actionText, word } from '../../src/work-meter.mjs';
 
 const SATS = ['node', 'script', 'hash', 'merkle'];
@@ -200,7 +201,6 @@ const pickAttachments = guard(async kind => {
   if (!S.projectId) return toast(t('noProject'), true);
   const r = await api('attach.pick', { projectId: S.projectId, kind }); addAttachments(r.items, r.skipped);
 });
-const attachMenu = button => { const r = button.getBoundingClientRect(); openMenu(r.left, r.top - 96, [{ label: t('attachFiles'), hint: `${modKey}+U`, run: () => pickAttachments('files') }, { label: t('attachFolder'), run: () => pickAttachments('folder') }]); };
 // Folder drops are walked in the UI (webkitGetAsEntry) and sent file by file, so the main process never trusts a path from the page.
 const readEntries = dir => new Promise((resolve, reject) => { const all = [], r = dir.createReader(); (function next() { r.readEntries(batch => { if (!batch.length) resolve(all); else { all.push(...batch); next(); } }, reject); })(); });
 const fileOf = entry => new Promise((resolve, reject) => entry.file(resolve, reject));
@@ -580,8 +580,12 @@ function burnDialog({ projectId = null } = {}) {
   dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal(); input.focus();
 }
 
+const MORE_VIEWS = ['stats', 'archive', 'issues', 'remote', 'schedules', 'integrations'];
+const MORE_KEY = 'bitcode.sideMore';
+function toggleMore() { try { localStorage.setItem(MORE_KEY, localStorage.getItem(MORE_KEY) === '1' ? '' : '1'); } catch {} renderSidebar(); }
 function renderSidebar() {
   const el = $('sidebar'); if (!el) return;
+  let moreOpen = false; try { moreOpen = localStorage.getItem(MORE_KEY) === '1'; } catch {}
   const q = S.search.trim().toLowerCase();
   const action = (ic, label, onClick, { on = false, badge = null, kbd = null } = {}) => h('button', { class: `sact${on ? ' on' : ''}`, onClick },
     icon(ic), h('span', { class: 'label' }, label), badge ? h('span', { class: 'badge num' }, badge) : kbd ? h('kbd', {}, kbd) : null);
@@ -648,12 +652,15 @@ function renderSidebar() {
       searchBox || action('search', t('search'), openSearch, { kbd: 'Ctrl K' }),
       action('bitcoin', t('bitcoin'), () => { S.view = 'bitcoin'; renderShell(); }, { on: S.view === 'bitcoin' }),
       action('activity', t('activity'), () => { S.view = 'activity'; renderShell(); }, { on: S.view === 'activity', badge: S.pending.length || null }),
-      action('chart', t('wb_stats'), () => { wb.invalidateStats(); S.view = 'stats'; renderShell(); }, { on: S.view === 'stats' }),
-      action('archive', t('wb_archive'), () => { S.view = 'archive'; renderShell(); }, { on: S.view === 'archive', badge: S.sessions.filter(x => x.archived).length || null }),
-      action('issue', t('wb_issues'), () => { S.view = 'issues'; renderShell(); }, { on: S.view === 'issues' }),
-      action('remote', t('wb_remote'), () => { S.remote = undefined; S.view = 'remote'; renderShell(); }, { on: S.view === 'remote' }),
-      action('clock', t('wb_schedules'), () => { S.view = 'schedules'; renderShell(); }, { on: S.view === 'schedules' }),
-      action('plug', t('wb_integrations'), () => { S.view = 'integrations'; renderShell(); }, { on: S.view === 'integrations' })),
+      // Less frequent pages stay one click away under "More" (and in the Ctrl+P palette), so the sidebar leads with chats.
+      action(moreOpen ? 'chevronDown' : 'chevronRight', t('moreL'), toggleMore, { on: !moreOpen && MORE_VIEWS.includes(S.view) }),
+      moreOpen ? h('div', { class: 'smore' },
+        action('chart', t('wb_stats'), () => { wb.invalidateStats(); S.view = 'stats'; renderShell(); }, { on: S.view === 'stats' }),
+        action('archive', t('wb_archive'), () => { S.view = 'archive'; renderShell(); }, { on: S.view === 'archive', badge: S.sessions.filter(x => x.archived).length || null }),
+        action('issue', t('wb_issues'), () => { S.view = 'issues'; renderShell(); }, { on: S.view === 'issues' }),
+        action('remote', t('wb_remote'), () => { S.remote = undefined; S.view = 'remote'; renderShell(); }, { on: S.view === 'remote' }),
+        action('clock', t('wb_schedules'), () => { S.view = 'schedules'; renderShell(); }, { on: S.view === 'schedules' }),
+        action('plug', t('wb_integrations'), () => { S.view = 'integrations'; renderShell(); }, { on: S.view === 'integrations' })) : null),
     h('div', { class: 'sscroll' },
       h('div', { class: 'ssec' }, h('span', {}, t('projects')), h('button', { class: 'ibtn sm', title: t('openFolder'), 'aria-label': t('openFolder'), onClick: openFolder }, icon('folderPlus', { size: 15 }))),
       S.projects.length ? groups : h('button', { class: 'sact', onClick: openFolder }, icon('folderPlus'), h('span', { class: 'label' }, t('openFolder')))),
@@ -714,22 +721,35 @@ function showSatInfo(info) {
 function renderTopbar() {
   const el = $('topbar'); if (!el) return;
   const s = S.session, p = project();
-  const toggle = (key, label) => h('button', { class: `iconbtn${S.panel === key ? ' on' : ''}`, title: panelLabel(key), 'aria-label': panelLabel(key), onClick: () => { S.panel = S.panel === key ? null : key; renderShell(); } }, label);
+  const satMenu = (x, e) => {
+    const b = e.currentTarget.getBoundingClientRect(), name = satName(x);
+    openMenu(b.left, b.bottom + 4, [
+      { label: fmt('useSat', { sat: name }), disabled: S.agent === x || !!activeRun(s.sessionId), run: () => chooseAgent(x) },
+      ...(S.agent ? [{ label: t('useBitcode'), disabled: !!activeRun(s.sessionId), run: () => chooseAgent('') }] : []),
+      '-', { label: fmt('aboutSat', { sat: name }), run: guard(async () => showSatInfo((await api('chat.submit', { sessionId: s.sessionId, text: `/sat info ${x}` })).result)) }]);
+  };
   fill(el,
     S.sideHidden ? h('button', { class: 'ibtn', title: `${t('showSidebar')} (Ctrl+B)`, 'aria-label': t('showSidebar'), onClick: toggleSidebar }, icon('sidebar')) : null,
     h('span', { class: 'title', title: s?.name || '' }, s ? s.name : p ? p.name : 'bitcode'),
     p ? h('span', { class: 'chip opt' }, p.name) : null,
     S.git?.repo ? h('span', { class: 'chip opt mono' }, `⎇ ${S.git.branch || 'HEAD'}${S.git.files.length ? ` · ${S.git.files.length}` : ''}`) : null,
-    s ? h('button', { class: 'chip', style: 'cursor:pointer', title: t('wb_timeline'), onClick: () => wb.openTimeline(s).catch(e => toast(e.message, true)) }, `↶ ${t('wb_timeline')}`) : null,
-    s ? h('button', { class: 'chip', style: 'cursor:pointer', title: s.keep ? t('kept') : `${t('expiresIn')} ${fmtTime(s.expiresAt)}`,
-      onClick: guard(async () => { const r = await api('session.update', { sessionId: s.sessionId, keep: !s.keep }); Object.assign(S.session, { keep: r.keep, expiresAt: r.expiresAt }); renderTopbar(); }) }, s.keep ? `★ ${t('kept')}` : `☆ ${t('keep')}`) : null,
+    s?.keep ? h('span', { class: 'kept', title: t('kept') }, icon('star', { size: 13 })) : null,
+    // Chat actions live in one menu, so the bar keeps room for the title and the Sats.
+    s ? h('button', { class: 'ibtn', title: t('wb_more'), 'aria-label': t('wb_more'), onClick: e => {
+      const b = e.currentTarget.getBoundingClientRect();
+      openMenu(b.left, b.bottom + 4, [
+        { label: `↶ ${t('wb_timeline')}`, run: () => wb.openTimeline(s).catch(err => toast(err.message, true)) },
+        { label: s.keep ? `★ ${t('kept')}` : `☆ ${t('keep')} · ${t('expiresIn')} ${fmtTime(s.expiresAt)}`,
+          run: guard(async () => { const r = await api('session.update', { sessionId: s.sessionId, keep: !s.keep }); Object.assign(S.session, { keep: r.keep, expiresAt: r.expiresAt }); renderTopbar(); renderSidebar(); }) },
+        { label: t('export'), run: guard(async () => openDiff(`export · ${s.name}`, await api('session.export', { sessionId: s.sessionId }))) }]);
+    } }, icon('more')) : null,
     h('span', { class: 'spacer' }),
-    s ? h('div', { class: 'satrow' }, SATS.map(x => h('button', { class: 'iconbtn', 'aria-label': `Sat info ${satName(x)}`, onClick: guard(async () => {
-      const res = await api('chat.submit', { sessionId: s.sessionId, text: `/sat info ${x}` }); showSatInfo(res.result);
-    }) }, sat(x, { size: 30, state: S.sats[x].st, title: `${satName(x)} · ${t(`role_${x}`)}${satLabel(x, S.sats[x].st).text ? ` — ${satLabel(x, S.sats[x].st).text}` : ''}` })))) : null,
+    s ? h('div', { class: 'satrow' }, SATS.map(x => h('button', { class: `iconbtn satbtn${S.agent === x ? ' on' : ''}`, 'aria-label': `${satName(x)} · ${t(`role_${x}`)}`, onClick: e => satMenu(x, e) },
+      sat(x, { size: 26, state: S.sats[x].st, title: `${satName(x)} · ${t(`role_${x}`)}${satLabel(x, S.sats[x].st).text ? ` — ${satLabel(x, S.sats[x].st).text}` : ''}` })))) : null,
     S.mini ? h('button', { class: `iconbtn${S.pinned ? ' on' : ''}`, title: t('wb_pin'), 'aria-label': t('wb_pin'), onClick: guard(async () => { S.pinned = await api('window.pin', { pinned: !S.pinned }); renderTopbar(); }) }, '📌')
       : h('button', { class: 'iconbtn', title: t('wb_miniChat'), 'aria-label': t('wb_miniChat'), onClick: guard(() => api('window.miniChat', { projectId: S.projectId || undefined, sessionId: S.sessionId || undefined })) }, '◳'),
-    p && !S.mini ? h('div', { class: 'tools' }, toggle('files', '▤'), toggle('git', '⎇'), toggle('changes', '±'), toggle('knowledge', '✎'), toggle('preview', '◫'), toggle('terminal', '>_'), toggle('agent', '◉')) : null);
+    p && !S.mini ? h('button', { class: `btn sm panelbtn${S.panel ? ' on' : ''}`, title: `${t('panelL')} (Ctrl+1…7)`, 'aria-expanded': S.panel ? 'true' : 'false',
+      onClick: () => { S.panel = S.panel ? null : (S.lastPanel || 'changes'); renderShell(); } }, icon('panel', { size: 15 }), S.panel ? panelLabel(S.panel) : t('panelL')) : null);
 }
 
 function renderThread() {
@@ -772,8 +792,10 @@ function toolsBlock({ names, outputs }) {
     const last = rows.at(-1);
     if (last?.name === name) last.count++; else rows.push({ name, count: 1 });
   }
+  // Each call carries the dot of the Sat whose role it serves, as in the terminal.
+  const owner = name => satForTool(name, { activeSatId: S.session?.satId });
   return h('div', { class: 'm-tools mono' },
-    h('div', { class: 'toolnames' }, rows.map(r => h('span', { class: 'toolname' }, r.name, r.count > 1 ? h('span', { class: 'num' }, ` ×${r.count}`) : null))),
+    h('div', { class: 'toolnames' }, rows.map(r => h('span', { class: 'toolname', style: `--dot: var(--sat-${owner(r.name)})`, title: `${satName(owner(r.name))} · ${r.name}` }, toolLabel(r.name), r.count > 1 ? h('span', { class: 'num' }, ` ×${r.count}`) : null))),
     outputs.length ? h('button', { class: 'toolout', type: 'button', onClick: () => showToolOutputs(names, outputs) }, `${t('wb_toolOutput')} (${outputs.length})`) : null);
 }
 function showToolOutputs(names, outputs) {
@@ -782,14 +804,32 @@ function showToolOutputs(names, outputs) {
     h('div', { class: 'planbody' }, outputs.map((o, i) => h('details', { open: outputs.length === 1 }, h('summary', { class: 'mono' }, o.name || names[i] || `#${i + 1}`), h('pre', { class: 'toolpre' }, o.content)))));
   dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal();
 }
+// First steps until a model, a project and the sandbox are ready; each row is the action itself.
+function modelReady() {
+  const m = S.status?.defaultModel; if (!m?.spec || m.error) return false;
+  const provider = S.models.find(x => m.spec.startsWith(`${x.name}/`));
+  return m.locality === 'local' || !!provider?.hasKey;
+}
+function setupSteps() {
+  const sandboxOk = !!S.status?.sandbox.available, model = modelReady(), folder = S.projects.length > 0;
+  if (model && folder && sandboxOk) return null;
+  const step = (done, label, action) => h('li', { class: done ? 'done' : '' }, h('span', { class: 'mark' }, done ? '✓' : '○'),
+    done || !action ? h('span', {}, label) : h('button', { class: 'linkbtn', onClick: action }, label));
+  const chooseModel = () => openModelDialog({ title: t('defaultModel'), current: S.settings?.model,
+    onPick: async spec => { S.settings = await api('settings.set', { key: 'model', value: spec }); await refreshStatus(); S.models = await api('models.list').catch(() => S.models); renderShell(); } });
+  return h('ol', { class: 'setup', 'aria-label': t('setupTitle') },
+    step(model, model ? fmt('setupModelDone', { m: S.status.defaultModel.spec }) : t('setupModel'), chooseModel),
+    step(folder, t('setupFolder'), openFolder),
+    step(sandboxOk, sandboxOk ? t('setupSandbox') : t('setupSandboxMissing')));
+}
 function home(p) {
   return h('div', { class: 'home' }, h('div', { class: 'inner' },
     h('div', { class: 'lockup' }, logo({ size: 60, build: true }), h('span', { class: 'word' }, 'bitcode')),
     h('div', { class: 'sats4' }, SATS.map(x => sat(x, { size: 52, state: 'idle', title: `${satName(x)} · ${t(`role_${x}`)}` }))),
     p ? h('h1', {}, t('homeTitle'), ' ', h('em', {}, p.name), '?') : h('h1', {}, t('welcome')),
     h('p', {}, p ? t('homeSub') : t('homeNoProject')),
-    !S.status?.sandbox.available ? h('p', { class: 'chip err' }, t('sandboxMissing')) : null,
-    p ? wb.starters() : h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary pill', onClick: openFolder }, t('openFolder')), h('button', { class: 'btn pill', onClick: () => { S.view = 'settings'; renderShell(); } }, t('settings')))));
+    setupSteps(),
+    p ? wb.starters() : h('div', { class: 'row', style: 'justify-content:center' }, S.projects.length ? h('button', { class: 'btn primary pill', onClick: openFolder }, t('openFolder')) : null, h('button', { class: 'btn pill', onClick: () => { S.view = 'settings'; renderShell(); } }, t('settings')))));
 }
 
 // ---------- composer: slash menu, model picker, command results ----------
@@ -827,7 +867,7 @@ function renderComposer() {
   if (!project()) return fill(el);
   const s = S.session, run = s && activeRun(s.sessionId);
   const menuEl = h('div', { class: 'cmdmenu', role: 'listbox', hidden: true });
-  const input = h('textarea', { id: 'prompt', rows: 2, placeholder: s ? t('placeholder') : t('placeholderNew'), 'aria-label': t('placeholder'), 'aria-autocomplete': 'list',
+  const input = h('textarea', { id: 'prompt', rows: 2, placeholder: S.planMode ? t('modeHintPlan') : s ? t('placeholder') : t('placeholderNew'), 'aria-label': t('placeholder'), 'aria-autocomplete': 'list',
     onPaste: e => { const files = [...(e.clipboardData?.files || [])]; if (!files.length || !S.projectId) return; e.preventDefault(); const dt = new DataTransfer(); for (const f of files) dt.items.add(f.name === 'image.png' ? new File([f], `immagine-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.png`, { type: f.type }) : f); importDropped(dt); },
     onInput: e => { S.draft = e.target.value; e.target.style.height = 'auto'; e.target.style.height = `${Math.min(240, e.target.scrollHeight)}px`; updateMenu(); },
     onKeydown: e => {
@@ -837,6 +877,7 @@ function renderComposer() {
         if (e.key === 'Escape') { e.preventDefault(); S.menu.items = []; drawMenu(); return; }
       }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.altKey && recallPrompt(input, e.key === 'ArrowUp' ? 1 : -1)) { e.preventDefault(); return; }
+      if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); S.planMode = !S.planMode; renderComposer(); $('prompt')?.focus(); return; }
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
     } });
   input.value = S.draft;
@@ -878,6 +919,7 @@ function renderComposer() {
     const [cmdName] = text.slice(1).split(/\s+/);
     if (text.startsWith('/') && UI_COMMANDS[cmdName]) { S.draft = ''; input.value = ''; S.menu.items = []; drawMenu(); return UI_COMMANDS[cmdName](); }
     if (!text.startsWith('/')) text = await wb.expandSkills(text);
+    if (S.planMode && !text.startsWith('/')) text = `/plan ${text}`;
     if (S.session && activeRun(S.session.sessionId) && !text.startsWith('/')) {
       const q = S.queue.get(S.session.sessionId) || []; q.push({ id: crypto.randomUUID(), text: S.attachments.length ? `${text}\n\n${attachmentLines()}` : text }); S.queue.set(S.session.sessionId, q);
       S.attachments = []; S.draft = ''; historyAt = -1; input.value = ''; renderComposer(); setTimeout(() => $('prompt')?.focus(), 0); return;
@@ -894,11 +936,26 @@ function renderComposer() {
     if (res.command) showResult(res);
     else { S.notes = []; S.session = await api('session.open', { sessionId: session.sessionId }); renderThread(); renderComposer(); renderSidebar(); }
   });
-  const modeSelect = h('select', { 'aria-label': t('mode'), onChange: guard(async e => {
-    if (!s) { S.newMode = e.target.value; return; }
-    const r = await api('mode.set', { sessionId: s.sessionId, mode: e.target.value }); S.session.mode = r.mode; await loadSessions();
-  }) }, MODES.map(m => h('option', { value: m, selected: (s?.mode || S.newMode || 'assisted') === m, disabled: m === 'unattended' && !!unattendedBlocked() && (s?.mode || S.newMode) !== m }, t(m))));
-  if (unattendedBlocked()) modeSelect.title = unattendedBlocked();
+  const mode = s?.mode || S.newMode || 'assisted';
+  const setMode = guard(async m => {
+    if (!s) { S.newMode = m; return renderComposer(); }
+    const r = await api('mode.set', { sessionId: s.sessionId, mode: m }); S.session.mode = r.mode; await loadSessions(); renderComposer();
+  });
+  const menuAt = (e, items) => { const r = e.currentTarget.getBoundingClientRect(); openMenu(r.left, r.top - 8 - items.length * 34, items); };
+  const modeChip = h('button', { type: 'button', class: 'cchip', title: unattendedBlocked() || t('permissionsL'), disabled: !!run,
+    onClick: e => menuAt(e, MODES.map(m => ({ label: `${m === mode ? '✓ ' : ''}${t(m)}`, disabled: m === 'unattended' && !!unattendedBlocked() && mode !== m, run: () => setMode(m) }))) },
+    h('span', { class: 'clabel' }, t(mode)), h('span', { class: 'caret' }, '▾'));
+  const agentChip = s?.profile === 'rgb' ? null : h('button', { type: 'button', class: 'cchip agent', title: t('agentL'), disabled: !!run,
+    onClick: e => menuAt(e, [{ label: `${!S.agent ? '✓ ' : ''}bitcode`, run: () => chooseAgent('') }, ...SATS.map(x => ({ label: `${S.agent === x ? '✓ ' : ''}${satName(x)} · ${t(`role_${x}`)}`, run: () => chooseAgent(x) }))]) },
+    S.agent ? sat(S.agent, { size: 18, state: S.sats[S.agent]?.st || 'idle' }) : logo({ size: 14 }), h('span', { class: 'clabel' }, S.agent ? satName(S.agent) : 'bitcode'), h('span', { class: 'caret' }, '▾'));
+  const planToggle = h('div', { class: `seg modeseg${S.planMode ? ' plan' : ''}`, role: 'group', 'aria-label': t('mode') },
+    h('button', { type: 'button', class: S.planMode ? '' : 'on', title: t('modeHintBuild'), onClick: () => { S.planMode = false; renderComposer(); $('prompt')?.focus(); } }, t('buildModeL')),
+    h('button', { type: 'button', class: S.planMode ? 'on' : '', title: t('modeHintPlan'), onClick: () => { S.planMode = true; renderComposer(); $('prompt')?.focus(); } }, t('planModeL')));
+  const plusMenu = e => menuAt(e, [
+    { label: t('attachFiles'), hint: `${modKey}+U`, run: () => pickAttachments('files') }, { label: t('attachFolder'), run: () => pickAttachments('folder') }, '-',
+    ...(s ? [{ label: `◎ ${t('wb_goal')}${s.goal ? ' ✓' : ''}`, run: () => wb.editGoal(s, meta => { S.session.goal = meta.goal; renderComposer(); renderThread(); }) }] : []),
+    { label: `🎙 ${t('wb_dictate')}`, run: () => toggleDictation(input) },
+    { label: `⚖ ${t('wb_multirun')}`, run: () => wb.openMultirun().catch(err => toast(err.message, true)) }]);
   const currentModel = s?.model || S.newModel || S.status?.defaultModel?.spec || '—';
   const queued = s ? S.queue.get(s.sessionId) || [] : [];
   const queueStrip = queued.length ? h('div', { class: 'qstrip' }, h('span', { class: 'qlabel' }, `${t('wb_queued')} · ${queued.length}`),
@@ -911,27 +968,26 @@ function renderComposer() {
   }) }, `≈ ${ctxTokens.toLocaleString()} ${t('tokens')}`) : null;
   fill(el, h('div', { class: 'composer' }, menuEl, queueStrip, attachmentChips(), input,
     h('div', { class: 'bar' },
-      h('button', { type: 'button', class: 'attachbtn', title: `${t('attachL')} (${modKey}+U)`, 'aria-label': t('attachL'), disabled: !!run, onClick: e => attachMenu(e.currentTarget) }, icon('paperclip', { size: 16 })),
-      s?.profile === 'rgb' ? null : h('select', { 'aria-label': t('agentL'), disabled: !!run, onChange: guard(async e => {
-        const id = e.target.value;
-        if (s) await api('session.update', { sessionId: s.sessionId, satId: id });
-        S.agent = id;
-      }) }, h('option', { value: '', selected: !S.agent }, 'bitcode'), SATS.map(a => h('option', { value: a, selected: S.agent === a }, satName(a)))),
-      modeSelect,
+      h('button', { type: 'button', class: 'attachbtn', title: `${t('attachL')} · ${t('wb_goal')} · ${t('wb_multirun')}`, 'aria-label': t('attachL'), disabled: !!run, onClick: plusMenu }, icon('plus', { size: 16 })),
+      planToggle, agentChip, modeChip,
       s?.profile === 'rgb' ? h('span', { class: 'chip rgb', title: t('rgbProfileHint') }, `RGB · ${s.rgbNetwork || t('testNet')}`) : null,
       h('div', { class: 'modelpick' },
         h('button', { class: 'modelbtn num', title: t('chooseModel'), 'aria-haspopup': 'listbox', 'aria-expanded': S.picker.open ? 'true' : 'false', disabled: !!run, onClick: () => S.picker.open ? closeModelPicker() : openModelPicker() },
           h('span', { class: `loc ${modelLocality(currentModel)}` }), currentModel, h('span', { class: 'caret' }, '▾')),
         S.picker.open ? modelPopover() : null),
-      s ? h('button', { type: 'button', class: `attachbtn${s.goal ? ' on' : ''}`, title: s.goal ? `${t('wb_goal')}: ${s.goal}` : t('wb_goal'), 'aria-label': t('wb_goal'), onClick: () => wb.editGoal(s, meta => { S.session.goal = meta.goal; renderComposer(); renderThread(); }) }, '◎') : null,
-      h('button', { type: 'button', class: `attachbtn${S.recording ? ' rec' : ''}`, title: S.settings?.transcriptionModel ? `${t('wb_dictate')} · ${S.settings.transcriptionModel}` : t('wb_dictateOff'), 'aria-label': t('wb_dictate'), disabled: !!run && !S.recording, onClick: () => toggleDictation(input) }, S.recording ? '■' : '🎙'),
-      h('button', { type: 'button', class: 'attachbtn', title: t('wb_multirun'), 'aria-label': t('wb_multirun'), disabled: !!run, onClick: () => wb.openMultirun().catch(e => toast(e.message, true)) }, '⚖'),
+      s?.goal ? h('button', { type: 'button', class: 'cchip on', title: `${t('wb_goal')}: ${s.goal}`, onClick: () => wb.editGoal(s, meta => { S.session.goal = meta.goal; renderComposer(); renderThread(); }) }, `◎ ${t('wb_goal')}`) : null,
+      S.recording ? h('button', { type: 'button', class: 'attachbtn rec', title: t('wb_dictate'), 'aria-label': t('wb_dictate'), onClick: () => toggleDictation(input) }, '■') : null,
       h('span', { style: 'flex:1' }), ctxChip,
       run ? h('button', { class: 'send stop', title: t('stop'), 'aria-label': t('stop'), onClick: guard(() => api('run.cancel', { runId: run.runId })) }, '■')
         : h('button', { class: 'send', title: t('send'), 'aria-label': t('send'), onClick: submit }, '↑'))),
     h('div', { class: 'hint' }, t('hint')));
   if (S.draft) updateMenu();
 }
+
+const chooseAgent = guard(async id => {
+  if (S.session) { await api('session.update', { sessionId: S.session.sessionId, satId: id }); S.session.satId = id; }
+  S.agent = id; renderComposer(); renderTopbar();
+});
 
 // Model picker: everything runnable on this machine first (any runtime, probed
 // live, with a memory-fit badge), downloaded-but-not-served models with the
@@ -1055,6 +1111,7 @@ function renderPanel() {
   const el = $('panel'); if (!el) return;
   $('app').classList.toggle('panel-open', !!S.panel && S.view === 'chat' && !!S.projectId);
   if (!S.panel || !S.projectId) return fill(el);
+  S.lastPanel = S.panel;
   const tabs = h('div', { class: 'ptabs', role: 'tablist' }, PANELS.map(k => h('button', { class: `ptab${S.panel === k ? ' on' : ''}`, onClick: () => { S.panel = k; renderPanel(); renderTopbar(); } }, panelLabel(k))),
     h('span', { class: 'spacer' }), h('button', { class: 'ptab', 'aria-label': 'close', onClick: () => { S.panel = null; renderShell(); } }, '×'));
   let body;
