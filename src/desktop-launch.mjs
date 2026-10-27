@@ -6,7 +6,7 @@ const LEGACY_INSTALL = "/opt/Bitcode/bitcode-desktop";
 
 // The installed desktop app, preferring an explicit override for custom installs.
 export function desktopExecutable(env = process.env) {
-  return [env.BITCODE_DESKTOP_BIN, "/opt/bitcode/bitcode-desktop", LEGACY_INSTALL, "bitcode-desktop"].filter(Boolean).map(executable).find(Boolean) || null;
+  return [env.BITCODE_DESKTOP_BIN, "/usr/bin/bitcode-desktop", "/opt/bitcode/bitcode-desktop", LEGACY_INSTALL, "bitcode-desktop"].filter(Boolean).map(executable).find(Boolean) || null;
 }
 
 // The packaged CLI runs on Electron with ELECTRON_RUN_AS_NODE; a child that
