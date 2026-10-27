@@ -32,3 +32,16 @@ test("providerModels uses a key from elsewhere and lists public catalogs without
   assert.equal((await providerModels("y", open, { fetchImpl })).live, true);
   assert.deepEqual(seen, ["Bearer ring", "none"]);
 });
+
+test("providerModels keeps chat models whose vendor prefix looks like a non-chat word", async () => {
+  const provider = { api: "openai", baseURL: "https://example.test/v1", publicModels: true };
+  const data = [
+    { id: "nousresearch/hermes-4-405b", architecture: { output_modalities: ["text"] } },
+    { id: "google/gemini-3-pro-image", architecture: { output_modalities: ["image", "text"] } },
+    { id: "vendor/embedder", architecture: { output_modalities: ["embeddings"] } },
+    { id: "nousresearch/plain" },
+    { id: "text-embedding-3" },
+  ];
+  const { models } = await providerModels("openrouter", provider, { fetchImpl: json({ data }) });
+  assert.deepEqual(models.map((m) => m.id), ["google/gemini-3-pro-image", "nousresearch/hermes-4-405b", "nousresearch/plain"]);
+});
