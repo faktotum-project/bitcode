@@ -91,10 +91,11 @@
   demo videos.
 - The name is always lowercase: **bitcode**. The desktop product name follows,
   so new `.deb` installs go to `/opt/bitcode` instead of `/opt/Bitcode`;
-  `bitcode desktop` still finds an existing 0.2 install. Upgrading from 0.2
-  moves the app there; until GNOME reloads its application list (a minute or
-  a new login), the menu entry can still point to `/opt/Bitcode` and fail to
-  launch. `bitcode-desktop` or `gtk-launch bitcode-desktop` works meanwhile.
+  `bitcode desktop` still finds an existing 0.2 install. Launchers no longer
+  name the install directory: the menu entry, autostart and `bitcode desktop`
+  start `/usr/bin/bitcode-desktop`, the `/usr/bin/bitcode` wrapper resolves
+  its own path, and `/opt/Bitcode` links to the new directory so menus and
+  pinned launchers cached from 0.2 still start the app.
 - Site: `favicon.ico`, touch icon, 192/512 px icons and a web manifest.
 
 ### Repository
