@@ -26,6 +26,11 @@
 
 ### Desktop
 
+- Bitcoin → RGB tells a locked, wallet-less, unlocking or stopped node apart
+  from a connection error, explains it and offers the next step (unlock,
+  create the wallet, start the Docker node) in an app terminal where you type
+  the password yourself. It lists every kaleido node in `~/.kaleido` and
+  checks again by itself until the node is ready.
 - English is the default language for new installs; Italian stays available
   in Settings. Tray, dialogs and notifications follow the app language; the
   fix prompt, the phone (LAN) page and the `/sats` observer are in English.
