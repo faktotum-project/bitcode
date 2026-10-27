@@ -1,6 +1,7 @@
 // Linux/macOS development smoke for the actual npm archive from a foreign cwd.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdtemp, symlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -28,6 +29,8 @@ try {
   assert.equal([...files].some(f => f.includes("assets/sats/sources/") || f.includes("/masters/") || f.endsWith("/working.gif") || f.startsWith("bitcode sats/")), false);
   run("tar", ["-xzf", path.join(temp, archive.filename), "-C", temp]);
   const pkg = path.join(temp, "package");
+  const { scripts = {} } = JSON.parse(readFileSync(path.join(pkg, "package.json"), "utf8"));
+  for (const hook of ["preinstall", "install", "postinstall"]) assert.equal(scripts[hook], undefined, `Installing the archive must not run ${hook}`);
   // Reuse the installed production dependencies; no install scripts or network.
   await symlink(path.join(root, "node_modules"), path.join(pkg, "node_modules"), "dir");
   const module = f => import(pathToFileURL(path.join(pkg, f)).href);
