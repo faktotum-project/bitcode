@@ -28,7 +28,6 @@ Names differ per surface for historical reasons; values come from one place. Sec
 | `mascots/` | Sats: framework, profiles. See `mascots/framework.md`. |
 | `logo/masters/` | Original 2000 px raster masters of the mark (orange and ink variants). |
 | `mockups/` | Static desktop app mockups. |
-| `video/` | Product video pipeline (stage built from the desktop renderer). |
 
 ## Identity
 - Name: **bitcode**, always lowercase, one word. The org is FAKTOTUM.
