@@ -12,8 +12,8 @@ Everything derived is generated (`npm run build:brand`, `npm run check:brand`, t
 | /sats web UI | `ui/sats/styles.css` | camelCase, light only |
 | CLI and Node code | `src/design-tokens.mjs` (`TOKEN`, `STAGE`, `SAT`, `BRAND`, `THEME`) | `bitcoinOrange`, `ink`, `body`; `THEME.light/dark` mirror `tokens.json` |
 | Desktop (no CSS) | via `THEME`/`BRAND`: window background, xterm theme, LAN phone page, app icon (`desktop/build.mjs`) | |
-| Site icons | `site/public/`: `favicon.ico`, `apple-touch-icon.png`, `icon-192/512.png` (`social/build.mjs icons`), `site.webmanifest` (`build.mjs`) | |
-| Images and video | site OG (`site/scripts/render-og.mjs`) and the platform kit share `social/design.mjs`; demo and release videos (`site/scripts/demos/`) read `logo/` and the tokens | |
+| Site icons | `site/public/`: `favicon.ico`, `apple-touch-icon.png`, `icon-192/512.png` (`site/scripts/render-icons.mjs`), `site.webmanifest` (`build.mjs`) | |
+| Images and video | site OG (`site/scripts/render-og.mjs`, composition in `site/scripts/share-card.mjs`); demo videos (`site/scripts/demos/`) read `logo/` and the tokens | |
 
 Names differ per surface for historical reasons; values come from one place. Secondary text on dark is `#929aa5`.
 
