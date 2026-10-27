@@ -32,11 +32,23 @@ try {
   }
   assert.ok(fs.existsSync(path.join(app, 'dist/skills/bitcoin-fullnode/SKILL.md')));
   assert.ok(fs.existsSync(path.join(cli, 'content/skills/bitcoin-fullnode/references/workflow.md')));
-  assert.ok(fs.existsSync(path.join(temp, 'usr/share/applications/bitcode-desktop.desktop')));
+  // Launchers must not name the install directory: a renamed one broke cached 0.2 menu entries.
+  // postinst rewrites the packaged Exec to the /usr/bin link; check the rewrite on the real entry.
+  const entryFile = path.join(temp, 'usr/share/applications/bitcode-desktop.desktop');
+  const control = path.join(temp, 'DEBIAN'); execFileSync('dpkg-deb', ['--control', archive, control]);
+  const postinst = fs.readFileSync(path.join(control, 'postinst'), 'utf8');
+  const rewrite = /^sed -i '([^']+)' /m.exec(postinst)?.[1];
+  assert.ok(rewrite, 'postinst rewrites the desktop entry');
+  const rewritten = execFileSync('sed', [rewrite, entryFile], { encoding: 'utf8' });
+  assert.match(rewritten, /^Exec=\/usr\/bin\/bitcode-desktop %U$/m);
+  assert.doesNotMatch(rewritten, /^Exec=.*\/opt\//m);
+  assert.match(postinst, /ln -s "\$APP_DIR" "\$LEGACY_DIR"/);
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', BITCODE_HOME: path.join(temp, 'state') };
   const executable = path.join(temp, 'opt/bitcode/bitcode-desktop');
   const run = args => execFileSync(executable, [path.join(cli, 'bitcode.mjs'), ...args], { cwd: temp, env, encoding: 'utf8', timeout: 30_000 });
   assert.match(run(['--version']), new RegExp(cliVersion.replaceAll('.', '\\.')));
+  // The /usr/bin/bitcode wrapper runs from an extracted (relocated) tree, so it does not depend on /opt/bitcode.
+  assert.match(execFileSync(path.join(app, 'dist/bin/bitcode'), ['--version'], { cwd: temp, env, encoding: 'utf8', timeout: 30_000 }), new RegExp(cliVersion.replaceAll('.', '\\.')));
   const plan = JSON.parse(run(['node', 'plan', '--network', 'mainnet', '--profile', 'pruned', '--rpc-port', '58332', '--p2p-port', '58333', '--json']));
   assert.equal(plan.instance.ports.rpc, 58332); assert.equal(plan.instance.ports.p2p, 58333);
   const commands = JSON.parse(run(['node', 'commands', '--explorer', '--json']));
@@ -46,5 +58,5 @@ try {
     execFileSync(process.execPath, [path.join(root, 'desktop/tests/node-ui-smoke.mjs')], { cwd: temp, env: { ...env, BITCODE_DESKTOP_EXECUTABLE: executable }, stdio: ['ignore', 'pipe', 'inherit'], timeout: 60_000 });
     wizard = true;
   }
-  console.log(JSON.stringify({ passed: true, archive, desktopVersion, cliVersion, fields: fields.trim().split('\n'), sha256: hash(archive), packagedWizard: wizard, checks: ['Debian identity', 'bundled CLI version and runtime', 'node helper, keys, web service and fonts', 'bundled skill', 'desktop entry', 'Mainnet installation preview from a foreign cwd', ...(wizard ? ['native wizard from the extracted Debian package'] : [])] }, null, 2));
+  console.log(JSON.stringify({ passed: true, archive, desktopVersion, cliVersion, fields: fields.trim().split('\n'), sha256: hash(archive), packagedWizard: wizard, checks: ['Debian identity', 'bundled CLI version and runtime', 'node helper, keys, web service and fonts', 'bundled skill', 'desktop entry and stable launch paths', 'Mainnet installation preview from a foreign cwd', ...(wizard ? ['native wizard from the extracted Debian package'] : [])] }, null, 2));
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }
