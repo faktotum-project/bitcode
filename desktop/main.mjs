@@ -126,6 +126,23 @@ async function openSsh({ host, command = 'bitcode' }) {
   term.onExit(({ exitCode }) => { ptys.delete(ptyId); send('pty', { ptyId, exit: exitCode }); });
   return { ptyId, host };
 }
+// RGB node fixes (unlock, init, start) run in the user's shell in the home folder,
+// typed visibly so the user enters the password and sees every line.
+async function openRgbFix({ action, nodeUrl }) {
+  const { command } = await controller.invoke('rgb.fix', { action, nodeUrl });
+  ptyModule ??= await import('node-pty').catch(e => { throw fail('PTY_UNAVAILABLE', e.message); });
+  if (ptys.size >= 8) throw fail('BUSY', 'Too many terminals');
+  const term = ptyModule.spawn(process.env.SHELL || '/bin/bash', [], { name: 'xterm-256color', cols: 100, rows: 30, cwd: os.homedir(), env: { ...process.env, TERM: 'xterm-256color' } });
+  const ptyId = crypto.randomUUID(); ptys.set(ptyId, term);
+  // Typed once the shell has drawn its prompt: earlier input is echoed twice by the tty.
+  let typed = false;
+  term.onData(data => {
+    send('pty', { ptyId, data });
+    if (!typed) { typed = true; setTimeout(() => ptys.has(ptyId) && term.write(`${command}\r`), 150); }
+  });
+  term.onExit(({ exitCode }) => { ptys.delete(ptyId); send('pty', { ptyId, exit: exitCode }); });
+  return { ptyId, command };
+}
 const ptyOf = id => ptys.get(id) || (() => { throw fail('NOT_FOUND', 'Unknown terminal'); })();
 
 // ---- project watchers: external edits reach open buffers as file.changed ----
@@ -310,6 +327,7 @@ const mainMethods = {
   'remote.status': () => remoteAccess(),
   'remote.save': ({ hosts }) => { if (!Array.isArray(hosts) || hosts.length > 50 || !hosts.every(h => typeof h === 'string' && SSH_HOST.test(h))) throw fail('INVALID_PARAMS'); atomicJSON(sshHostsFile, [...new Set(hosts)]); return remoteAccess(); },
   'pty.openSsh': openSsh,
+  'pty.openRgbFix': openRgbFix,
   'lan.status': () => lanStatus(),
   'lan.configure': params => configureLan(params),
   'pty.write': ({ ptyId, data }) => { if (typeof data !== 'string' || data.length > 65536) throw fail('INVALID_PARAMS'); ptyOf(ptyId).write(data); return true; },

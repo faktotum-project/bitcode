@@ -15,7 +15,7 @@ import { md, showShortcuts, copyText, runInTerminal } from './reading.js';
 import { goHome, openFolder, renderCenter, renderShell } from './shell.js';
 import { renderSidebar } from './sidebar.js';
 import { S } from './state.js';
-import { term, termTheme } from './terminal.js';
+import { openRgbFixTerminal, term, termTheme } from './terminal.js';
 import './events.js';
 
 export const wb = createWorkbench({ S, h, fill, api, toast, guard, t, icon, md, diffPre, ago, fmtTime, actions: {
@@ -33,7 +33,7 @@ export const wb = createWorkbench({ S, h, fill, api, toast, guard, t, icon, md, 
   showText: (title, text) => openDiff(title, text),
   reloadSessions: async () => { await loadSessions(); renderSidebar(); }
 } });
-export const finView = createFinanceView({ h, fill, api, toast, guard, t, icon, rerender: () => { if (S.view === 'bitcoin') renderCenter(); } });
+export const finView = createFinanceView({ h, fill, api, toast, guard, t, icon, openFixTerminal: openRgbFixTerminal, rerender: () => { if (S.view === 'bitcoin') renderCenter(); } });
 export const bitcoinPage = () => finView.page();
 export const nodeView = createNodesView({ h, api, guard, toast, copyText, runInTerminal, assist: async text => { S.agent = 'merkle'; if (S.sessionId) await api('session.update', { sessionId: S.sessionId, satId: 'merkle' }); S.view = 'chat'; S.draft = text; renderShell(); } });
 // ---------- boot ----------
