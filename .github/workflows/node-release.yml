@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: node-release-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   native-node:
     strategy:
@@ -35,6 +39,8 @@ jobs:
           export BITCODE_CORE_BINARY="$(node -p 'JSON.parse(require("fs").readFileSync("artifacts/fullnode/verified-core.json", "utf8")).binary')"
           node scripts/node/core-smoke.mjs > artifacts/fullnode/core-smoke.json
       - run: npm --prefix desktop ci
+      - name: Download the pinned Electron runtime
+        run: node desktop/node_modules/electron/install.js
       - run: npm run test:desktop
       - run: npm run dist:desktop
       - name: Verify the distributed Debian package
