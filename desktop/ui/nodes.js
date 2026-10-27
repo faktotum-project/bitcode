@@ -40,7 +40,7 @@ export function createNodesView({ h, api, guard, toast, copyText, runInTerminal,
       root.append(card);
     }
     if (state.selected) root.append(h('section', {}, button(label('Chiudi explorer', 'Close explorer'), () => { state.selected = null; redraw(); }),
-      h('iframe', { class: 'node-explorer', title: 'bitcode Bitcoin explorer', src: `http://127.0.0.1:${state.selected.ports.web}/`, sandbox: 'allow-scripts allow-same-origin allow-forms', referrerpolicy: 'no-referrer' })));
+      h('iframe', { class: 'node-explorer', title: 'bitcode Bitcoin explorer', src: `http://127.0.0.1:${state.selected.ports.web}/${english() ? '' : 'it/'}`, sandbox: 'allow-scripts allow-same-origin allow-forms', referrerpolicy: 'no-referrer' })));
     const form = h('section', { class: 'node-card' }, h('h2', {}, label('Nuovo nodo o nodo esistente', 'New or existing node')));
     function field(title, key, items) {
       const control = items ? h('select', { 'aria-label': title, onChange: e => { if (key === 'network' && state.input.id === state.input.network) state.input.id = e.target.value; state.input[key] = e.target.value; if (key === 'profile' && e.target.value === 'pruned') state.input.explorer = false; updateCommands(redraw); redraw(); } }, items.map(value => h('option', { value, selected: value === state.input[key] }, key === 'network' && value === 'testnet' ? label('Testnet3 · solo collegamento', 'Testnet3 · connection only') : value)))
