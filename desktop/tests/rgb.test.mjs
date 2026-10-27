@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { setup, sessionIn, until, config } from './helpers.mjs';
+import { fixCommand, probeNode, sameNode } from '../core/rgb-nodes.mjs';
 
 const USDT = 'rgb:lX~ToKsO-Iup7dJ5-UM794sA-9WD21ge-VHYzBGb-E9PA_h0';
 const INVOICE = 'rgb:~/~/~/sbc:utxob:_pnvbOef-ljmgfSr-i0bQvnR-qyC1g6i-IU1Lr9O-DKfmoTF-Cm5ty?expiry=1791664659&endpoints=rpcs://proxy.iriswallet.com/0.2/json-rpc';
@@ -114,4 +118,59 @@ test('rgb.overview reads the node through a WDK account and converts balances ex
 test('rgb.overview reports a missing node configuration instead of failing', async () => {
   const { c } = setup({ config: { ...config, mcp: {} } });
   try { assert.equal((await c.invoke('rgb.overview', {})).env.status, 'not_configured'); } finally { c.shutdown(); }
+});
+
+// Two kaleido-cli nodes: the app's (3001) and a demo receiver (3002).
+function kaleidoHome() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'bitcode-kaleido-'));
+  for (const [name, port] of [['default', 3001], ['receiver', 3002]]) {
+    mkdirSync(path.join(dir, name));
+    writeFileSync(path.join(dir, name, 'docker-compose.yml'), `services:\n  rgb_node:\n    image: kaleidoswap/rgb-lightning-node:0.10.0\n    ports:\n    - 127.0.0.1:${port}:3001\n    - 9735:9735\n`);
+  }
+  return dir;
+}
+const answer = (status, body) => ({ ok: status < 400, status, json: async () => body });
+const LOCKED = answer(403, { error: 'Node is locked (hint: call unlock)', code: 403, name: 'LockedNode' });
+
+test('a locked node explains itself and offers the unlock command for every node found', async () => {
+  const rgbHome = kaleidoHome();
+  const rgbFetch = async url => new URL(url).port === '3001' ? LOCKED : answer(200, { network: 'SignetCustom', height: 7 });
+  const { c, root } = setup({ config: rgbConfig, rgbFetch, rgbHome, rgbKaleido: () => '/home/u/.local/local/bin/kaleido' });
+  try {
+    const o = await c.invoke('rgb.overview', {});
+    assert.equal(o.env.status, 'locked'); assert.equal(o.env.fix, 'unlock'); assert.equal(o.env.nodeUrl, 'http://127.0.0.1:3001');
+    assert.match(o.env.error, /locked: it needs its password/);
+    assert.deepEqual(o.nodes.map(n => [n.name, n.configured, n.status, n.fix, n.network]),
+      [['default', true, 'locked', 'unlock', null], ['receiver', false, 'connected', null, 'signet']]);
+    assert.deepEqual(await c.invoke('rgb.fix', { action: 'unlock', nodeUrl: 'http://localhost:3002' }),
+      { command: '/home/u/.local/local/bin/kaleido --node-url http://localhost:3002 node unlock' });
+    await assert.rejects(c.invoke('rgb.fix', { action: 'unlock', nodeUrl: 'http://localhost:9999' }), { code: 'INVALID_PARAMS' });
+    await assert.rejects(c.invoke('rgb.fix', { action: 'rm -rf', nodeUrl: 'http://localhost:3001' }), { code: 'INVALID_PARAMS' });
+    const { s } = await sessionIn(c, root);
+    await assert.rejects(c.invoke('chat.submit', { sessionId: s.sessionId, text: '/profile rgb' }, 'ui:1'), { code: 'RGB_LOCKED' });
+  } finally { c.shutdown(); }
+});
+
+test('a stopped node offers docker compose for its own compose file; no kaleido means no unlock button', async () => {
+  const rgbHome = kaleidoHome();
+  const rgbFetch = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); };
+  const { c } = setup({ config: rgbConfig, rgbFetch, rgbHome, rgbKaleido: () => null });
+  try {
+    const o = await c.invoke('rgb.overview', {});
+    assert.equal(o.env.status, 'stopped'); assert.equal(o.env.fix, 'start');
+    assert.deepEqual(await c.invoke('rgb.fix', { action: 'start', nodeUrl: 'http://localhost:3002' }),
+      { command: `docker compose -f ${path.join(rgbHome, 'receiver', 'docker-compose.yml')} up -d` });
+    await assert.rejects(c.invoke('rgb.fix', { action: 'unlock', nodeUrl: 'http://localhost:3001' }), { code: 'RGB_NO_FIX' });
+  } finally { c.shutdown(); }
+});
+
+test('node states come from the error name first and the message second', async () => {
+  const probe = body => probeNode('http://localhost:3001', async () => answer(403, body));
+  assert.equal((await probe({ name: 'LockedNode', error: 'x' })).status, 'locked');
+  assert.equal((await probe({ error: 'Node has not been initialized (hint: call init)' })).status, 'uninitialized');
+  assert.equal((await probe({ name: 'ChangingState', error: 'Cannot call other APIs while node is changing state' })).status, 'busy');
+  assert.equal((await probe({ error: 'Node has already been unlocked' })).status, 'error');
+  assert.ok(sameNode('http://127.0.0.1:3001', 'http://localhost:3001/'));
+  assert.ok(!sameNode('http://localhost:3001', 'http://localhost:3002'));
+  assert.equal(fixCommand('unlock', { nodeUrl: 'http://localhost:3001' }, "/home/o'neil/kaleido"), `'/home/o'\\''neil/kaleido' --node-url http://localhost:3001 node unlock`);
 });

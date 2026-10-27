@@ -7,6 +7,9 @@ import { mcpTools } from '../../src/mcp.mjs';
 import { rgbTools, rgbServer } from '../../src/rgb/tools.mjs';
 import { formatUnits } from '../../src/rgb/format.mjs';
 import { fail } from './primitives.mjs';
+import { FIX, discoverNodes, fixCommand, kaleidoBinary, probeNode, sameNode } from './rgb-nodes.mjs';
+import os from 'node:os';
+import path from 'node:path';
 
 // The read-only node panel goes through Tether's WDK: the RGB Lightning Node is
 // registered as a WDK wallet (@kaleidorg/wdk-wallet-rln). The node owns its
@@ -26,7 +29,16 @@ const num = v => typeof v === 'bigint' ? Number(v) : v;
 const NETWORKS = { Bitcoin: 'mainnet', Testnet: 'testnet', Testnet4: 'testnet4', Signet: 'signet', SignetCustom: 'signet', Regtest: 'regtest' };
 const TEST = new Set(['testnet', 'testnet4', 'signet', 'regtest']);
 
-export function createRgb({ config, fetchImpl = fetch, mcpToolsImpl = mcpTools, wdkAccountImpl = wdkAccount } = {}) {
+// What the user reads when the configured node cannot serve the app yet.
+const NOT_READY = {
+  locked: url => `The RGB wallet at ${url} is locked: it needs its password after every node restart. Unlock it from Bitcoin → RGB, or run: kaleido --node-url ${url} node unlock`,
+  uninitialized: url => `The RGB node at ${url} has no wallet yet. Create one from Bitcoin → RGB, or run: kaleido --node-url ${url} node init`,
+  busy: url => `The RGB node at ${url} is unlocking and syncing; try again in a few minutes`,
+  stopped: url => `The RGB node at ${url} is not running. Start it from Bitcoin → RGB (Docker)`,
+};
+
+export function createRgb({ config, fetchImpl = fetch, mcpToolsImpl = mcpTools, wdkAccountImpl = wdkAccount,
+  kaleidoHome = path.join(os.homedir(), '.kaleido'), kaleidoBin = () => kaleidoBinary() } = {}) {
   let connection = null; // { tools, close } shared by all runs, opened on first use
 
   const spec = () => {
@@ -39,12 +51,12 @@ export function createRgb({ config, fetchImpl = fetch, mcpToolsImpl = mcpTools, 
     const { server } = spec();
     const nodeUrl = server.env?.RLN_NODE_URL;
     if (!nodeUrl) throw fail('RGB_UNAVAILABLE', 'RLN_NODE_URL is not set for the RGB MCP server');
-    let info;
-    try {
-      const res = await fetchImpl(new URL('/networkinfo', nodeUrl), { signal: AbortSignal.timeout(10_000) });
-      info = await res.json();
-      if (!res.ok) throw new Error(info?.error || `HTTP ${res.status}`);
-    } catch (e) { throw fail('RGB_UNAVAILABLE', `RGB node not reachable at ${nodeUrl}: ${e.message}`); }
+    const probe = await probeNode(nodeUrl, fetchImpl);
+    if (probe.status !== 'connected') {
+      const message = NOT_READY[probe.status]?.(nodeUrl) || `RGB node at ${nodeUrl} answered: ${probe.error}`;
+      throw Object.assign(fail(probe.status === 'error' ? 'RGB_UNAVAILABLE' : `RGB_${probe.status.toUpperCase()}`, message), { nodeUrl, status: probe.status, detail: probe.error });
+    }
+    const info = probe.info;
     const network = NETWORKS[info.network] || 'unknown';
     const environment = TEST.has(network) ? 'test' : network === 'mainnet' ? 'production' : 'unknown';
     return { nodeUrl, reported: info.network, network, environment, height: info.height };
@@ -80,7 +92,11 @@ export function createRgb({ config, fetchImpl = fetch, mcpToolsImpl = mcpTools, 
   async function overview() {
     let env;
     try { env = await verify(); }
-    catch (e) { return { env: { status: e.code === 'RGB_UNAVAILABLE' && /No MCP server|RLN_NODE_URL/.test(e.message) ? 'not_configured' : 'error', error: e.message } }; }
+    catch (e) {
+      if (!e.nodeUrl) return { env: { status: 'not_configured', error: e.message } };
+      const list = await nodes();
+      return { env: { status: e.status, nodeUrl: e.nodeUrl, fix: list.find(n => n.configured)?.fix || null, error: e.message, detail: e.detail }, nodes: list };
+    }
     const { account, dispose } = await wdkAccountImpl(env.nodeUrl);
     try {
       await account.refreshTransfers({ skipSync: false }).catch(() => {});
@@ -98,9 +114,35 @@ export function createRgb({ config, fetchImpl = fetch, mcpToolsImpl = mcpTools, 
         via: { core: '@tetherto/wdk', wallet: '@kaleidorg/wdk-wallet-rln', account: account.constructor?.name || 'account' },
         node: { pubkey: node.pubkey, channels: node.num_channels, usableChannels: node.num_usable_channels, peers: node.num_peers },
         btc: { vanillaSats: num(btc.vanilla?.spendable ?? 0), coloredSats: num(btc.colored?.spendable ?? 0), pendingSats: num((btc.vanilla?.future ?? 0) - (btc.vanilla?.settled ?? 0)) },
-        assets, transfers };
+        assets, transfers, nodes: await nodes() };
     } finally { dispose(); }
   }
 
-  return { verify, prepare, tool, overview };
+  const configuredUrl = () => { try { return spec().server.env?.RLN_NODE_URL || null; } catch { return null; } };
+  function known() {
+    const url = configuredUrl(), found = discoverNodes(kaleidoHome);
+    const list = found.map(n => ({ ...n, configured: !!url && sameNode(n.nodeUrl, url) }));
+    return url && !list.some(n => n.configured) ? [{ name: 'config', nodeUrl: url, composeFile: null, configured: true }, ...list] : list;
+  }
+
+  // Every node on this computer, so a second one (a demo receiver) is visible too.
+  async function nodes() {
+    return Promise.all(known().map(async n => {
+      const probe = await probeNode(n.nodeUrl, fetchImpl, 3000);
+      const fix = FIX[probe.status] && fixCommand(FIX[probe.status], n, kaleidoBin()) ? FIX[probe.status] : null;
+      return { name: n.name, nodeUrl: n.nodeUrl, configured: n.configured, status: probe.status, fix,
+        network: probe.info ? NETWORKS[probe.info.network] || 'unknown' : null, height: probe.info?.height ?? null, error: probe.error || null };
+    }));
+  }
+
+  // The shell command for one fix; main.mjs types it into a terminal the user watches.
+  function fix({ action, nodeUrl }) {
+    const node = known().find(n => n.nodeUrl === nodeUrl);
+    if (!node || !Object.values(FIX).includes(action)) throw fail('INVALID_PARAMS', 'Unknown RGB node or action');
+    const command = fixCommand(action, node, kaleidoBin());
+    if (!command) throw fail('RGB_NO_FIX', action === 'start' ? 'This node has no Docker Compose file under ~/.kaleido' : 'kaleido-cli is not installed; see integrations/kaleido/README.md');
+    return { command };
+  }
+
+  return { verify, prepare, tool, overview, nodes, fix };
 }

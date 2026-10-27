@@ -18,7 +18,8 @@ export function setup({ sandbox = { available: true }, callModelImpl, ...extra }
       request(method, params) { const id = Math.random().toString(36).slice(2); return new Promise(res => { this.pending.set(id, res); onMessage({ type: 'request', id, method, params }); }); } };
     workers.push(w); return w;
   };
-  const c = createController({ home, appDir: '/nonexistent', sandbox, spawnWorker, config, emit: (ch, p) => events.push([ch, p]), callModelImpl, ...extra });
+  // rgbHome stays inside the temp home so no test reads the developer's ~/.kaleido.
+  const c = createController({ home, appDir: '/nonexistent', sandbox, spawnWorker, config, emit: (ch, p) => events.push([ch, p]), callModelImpl, rgbHome: path.join(home, 'kaleido'), ...extra });
   return { c, home, root, events, workers };
 }
 export async function sessionIn(c, root, mode = 'assisted') {

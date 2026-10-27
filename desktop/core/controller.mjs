@@ -95,7 +95,7 @@ const matchesPolicy = (policy, argv) => !!argv && policy.commands.some(r =>
   r.argv ? r.argv.length === argv.length && r.argv.every((a, i) => a === argv[i]) : r.argvPrefix?.every((a, i) => a === argv[i]));
 
 export function createController({ home, appDir, agents = [], emit = () => {}, sandbox = { available: false }, spawnWorker,
-  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, githubFetch = fetch, transcribeFetch = fetch, modelsFetch = fetch, rgbFetch, rgbMcpTools, rgbWdkAccount, secrets = { get: () => undefined }, now = Date.now } = {}) {
+  callModelImpl = callModel, config: configOverride, inventoryHome, financeFetch, githubFetch = fetch, transcribeFetch = fetch, modelsFetch = fetch, rgbFetch, rgbMcpTools, rgbWdkAccount, rgbHome, rgbKaleido, secrets = { get: () => undefined }, now = Date.now } = {}) {
   const nodes = createNodes({ home, emit });
   const dir = path.join(home, 'desktop');
   const sats = loadSats(appDir && existsSync(path.join(appDir, 'sats')) ? { directory: path.join(appDir, 'sats') } : {});
@@ -548,7 +548,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
 
   // ---- public API (§3) ----
-  const rgb = createRgb({ config, fetchImpl: rgbFetch, mcpToolsImpl: rgbMcpTools, wdkAccountImpl: rgbWdkAccount });
+  const rgb = createRgb({ config, fetchImpl: rgbFetch, mcpToolsImpl: rgbMcpTools, wdkAccountImpl: rgbWdkAccount, kaleidoHome: rgbHome, kaleidoBin: rgbKaleido });
   const finance = createFinance({ home, emit, configImpl: configOverride ? () => configOverride : undefined, saveConfigImpl: configOverride ? () => {} : undefined, fetchImpl: financeFetch });
   // ---- scheduled tasks: the scheduler starts a chat in manual mode, so every change still waits for a human approval ----
   const schedules = new Map(loadJSON(files.schedules, []).map(x => [x.id, x]));
@@ -581,6 +581,8 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
     ...nodes.methods,
     ...finance.methods,
     'rgb.overview': () => rgb.overview(),
+    'rgb.nodes': () => rgb.nodes(),
+    'rgb.fix': params => rgb.fix(params),
     'app.status': () => ({ sandbox, settings, defaultModel: describeModel(defaultSpec()), runs: [...runs.values()].map(publicRun), pending: approvals.list(), projects: [...projects.values()] }),
     'project.open': ({ path: p }) => {
       const root = realpathSync(p); if (!statSync(root).isDirectory()) throw fail('INVALID_PARAMS', 'Not a directory');
