@@ -116,8 +116,8 @@ test("only mcp-exposed, side-effect-free methods are considered safe to register
 });
 
 test("wavelength is best-effort: an unvendored/unreachable daemon yields no tools, not a crash", async () => {
-  // In this checkout deps/wavelength/bin is empty (postinstall skipped, same
-  // as CDK in CI) so wavecli resolves to a bare name that ENOENTs.
+  // In this checkout deps/wavelength/bin is empty (build:wavelength not run,
+  // same as CDK in CI) so wavecli resolves to a bare name that ENOENTs.
   const tools = await wavelengthTools({ wavelength: {} });
   assert.deepEqual(tools, []);
 });
