@@ -78,7 +78,7 @@ export async function installExplorer(i, { dir, run, fetchImpl = fetch, progress
   // sync-assets would fetch unpinned promo media and pool logos from mempool.space and GitHub at build time.
   await run('npm', ['run', 'build'], { cwd: frontend, timeout: 7_200_000, env: { SKIP_SYNC: '1' } });
   const publicRoot = path.join(frontend, 'dist/mempool/browser');
-  if (!fs.existsSync(path.join(publicRoot, 'it/index.html'))) throw nodeError('FRONTEND_BUILD_MISSING');
+  if (!['en-US', 'it'].every(locale => fs.existsSync(path.join(publicRoot, locale, 'index.html')))) throw nodeError('FRONTEND_BUILD_MISSING');
   applyBrand(publicRoot, i.network);
   const config = path.join(dir, 'mempool.json');
   const secretFile = path.join(dir, 'database-password');

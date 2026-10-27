@@ -18,13 +18,33 @@ test('loopback explorer serves SPA/assets, proxies API and denies symlink escape
   const server = createExplorerServer({ publicRoot: root, port: 8080, backendPort: backend.address().port });
   server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
-  assert.equal((await fetch(base + '/', { redirect: 'manual' })).status, 302);
+  assert.equal((await fetch(base + '/', { redirect: 'manual', headers: { 'Accept-Language': 'it-IT,it;q=0.9' } })).headers.get('location'), '/it/');
   assert.match(await (await fetch(base + '/it/blocks')).text(), /bitcode explorer/);
   assert.equal((await fetch(base + '/it/main.js')).headers.get('content-type'), 'application/javascript');
   assert.equal((await fetch(base + '/it/escape')).status, 404);
   assert.deepEqual(await (await fetch(base + '/api/v1/blocks/tip/height')).json(), { path: '/api/v1/blocks/tip/height' });
   assert.deepEqual(await (await fetch(base + '/api/block/example')).json(), { path: '/api/v1/block/example' });
   assert.equal((await fetch(base + '/it/', { method: 'POST' })).status, 405);
+});
+
+test('explorer serves the en-US build at the root and negotiates other locales', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bitcode-locale-explorer-test-')); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const [locale, text] of [['en-US', 'english'], ['it', 'italiano'], ['pt', 'português']]) { fs.mkdirSync(path.join(root, locale)); fs.writeFileSync(path.join(root, locale, 'index.html'), text); }
+  fs.writeFileSync(path.join(root, 'en-US/main.js'), 'english asset');
+  fs.mkdirSync(path.join(root, 'resources')); fs.writeFileSync(path.join(root, 'resources/logo.svg'), '<svg/>');
+  const server = createExplorerServer({ publicRoot: root, port: 8081, backendPort: 9000 });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const get = (route, language) => fetch(base + route, { redirect: 'manual', headers: language ? { 'Accept-Language': language } : {} });
+  assert.equal(await (await get('/')).text(), 'english');
+  assert.equal(await (await get('/', 'en-GB,it;q=0.8')).text(), 'english');
+  assert.equal((await get('/', 'fr-FR,pt-BR;q=0.7')).headers.get('location'), '/pt/');
+  assert.equal(await (await get('/main.js')).text(), 'english asset');
+  assert.equal(await (await get('/blocks')).text(), 'english');
+  assert.equal(await (await get('/en-US/')).text(), 'english');
+  assert.equal(await (await get('/it/blocks')).text(), 'italiano');
+  assert.equal(await (await get('/resources/logo.svg')).text(), '<svg/>');
+  assert.equal((await get('/missing.js')).status, 404);
 });
 
 test('experimental explorer splits native Esplora routes from versioned mempool API', async t => {

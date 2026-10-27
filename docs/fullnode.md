@@ -22,7 +22,7 @@ New instances default to `~/.bitcode/nodes/<id>/data`; each has separate state, 
 
 For a second Core-only instance on the same network, choose unused `--rpc-port` and `--p2p-port` values. Desktop exposes both fields. The preview rejects duplicate or occupied ports, and resuming an installation cannot change those ports. Explorer services retain the network's fixed port set.
 
-The local explorer comprises electrs, a MariaDB-backed mempool backend, and a loopback frontend/API/WebSocket service. The user-owned web service avoids editing an existing shared nginx deployment. Its route adapter maps legacy `/api/...` requests to the backend's `/api/v1/...` routes. The frontend sets `ROOT_NETWORK` for non-mainnet instances. The bitcode theme includes bundled fonts and their licenses; mempool attribution remains visible.
+The local explorer comprises electrs, a MariaDB-backed mempool backend, and a loopback frontend/API/WebSocket service. The user-owned web service avoids editing an existing shared nginx deployment. Its route adapter maps legacy `/api/...` requests to the backend's `/api/v1/...` routes. The frontend sets `ROOT_NETWORK` for non-mainnet instances. The English build is served at `/`; other browser languages are redirected to their locale (for example `/it/`), and Desktop opens the explorer in its own language. The bitcode theme includes bundled fonts and their licenses; mempool attribution remains visible.
 
 `node use` explicitly changes bitcode's Bitcoin network and RPC connection. If this instance includes an explorer, it also selects its local route adapter. Otherwise explorer-based lookups retain the network's normal default service. It never creates or migrates a wallet.
 

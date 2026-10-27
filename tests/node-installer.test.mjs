@@ -218,7 +218,7 @@ test('a resumed Mutinynet install reuses the verified indexer binary', async t =
 });
 test('the explorer frontend build skips unpinned asset downloads', async t => {
   const root = temp(t); const dir = path.join(root, 'signet'); const calls = [];
-  const browser = path.join(dir, 'mempool-source/frontend/dist/mempool/browser/it'); fs.mkdirSync(browser, { recursive: true }); fs.writeFileSync(path.join(browser, 'index.html'), '<head></head><body>');
+  for (const locale of ['en-US', 'it']) { const browser = path.join(dir, 'mempool-source/frontend/dist/mempool/browser', locale); fs.mkdirSync(browser, { recursive: true }); fs.writeFileSync(path.join(browser, 'index.html'), '<head></head><body>'); }
   fs.mkdirSync(path.join(dir, 'mempool-source/backend/src'), { recursive: true }); fs.writeFileSync(path.join(dir, 'mempool-source/backend/src/index.ts'), "this.server.listen(config.MEMPOOL.HTTP_PORT, () => {");
   const run = async (file, args, opts = {}) => { calls.push({ file, args, opts }); if (file === 'rustc') return { stdout: 'rustc 1.90.0' }; return { stdout: args.includes('get-url') ? 'https://github.com/' + (args.includes(path.join(dir, 'electrs-source')) ? 'romanz/electrs.git' : 'mempool/mempool.git') : args.includes('rev-parse') ? (args.includes(path.join(dir, 'electrs-source')) ? RELEASE.electrs : RELEASE.mempool) : '' }; };
   await installExplorer(options({ network: 'signet', explorer: true }, root), { dir, run });
