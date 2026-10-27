@@ -71,7 +71,8 @@ function copyCli(out) {
   // Electron's binary runs the CLI as plain Node; the main process never loads it.
   mkdirSync(path.join(dist, 'bin'));
   const launcher = path.join(dist, 'bin', 'bitcode');
-  writeFileSync(launcher, '#!/bin/sh\n# bitcode CLI on the Node.js runtime bundled with the desktop app.\nELECTRON_RUN_AS_NODE=1 exec /opt/bitcode/bitcode-desktop /opt/bitcode/resources/app/dist/cli/bitcode.mjs "$@"\n');
+  // Paths are resolved from the script itself, so a renamed install directory still works.
+  writeFileSync(launcher, '#!/bin/sh\n# bitcode CLI on the Node.js runtime bundled with the desktop app.\ndist=$(dirname "$(dirname "$(readlink -f "$0")")")\nELECTRON_RUN_AS_NODE=1 exec "$dist/../../../bitcode-desktop" "$dist/cli/bitcode.mjs" "$@"\n');
   chmodSync(launcher, 0o755);
 }
 
