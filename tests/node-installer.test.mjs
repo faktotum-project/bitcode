@@ -25,6 +25,19 @@ test('profiles and isolated networks; explorer cannot use pruned data', t => {
   }
   assert.match(coreConfig(options({ profile: 'pruned' }, home)), /prune=10000/);
 });
+test('a second mainnet node can use separate RPC and P2P ports without colliding with the existing node', async t => {
+  const home = temp(t);
+  const { input } = parseNodeArgs(['plan', '--network', 'mainnet', '--profile', 'pruned', '--rpc-port', '58332', '--p2p-port', '58333']);
+  const i = options(input, home);
+  assert.match(coreConfig(i), /rpcport=58332\nport=58333/);
+  assert.equal(i.ports.p2p, 58333);
+  for (const p2pPort of [0, 1023, 65536, 'invalid']) assert.throws(() => options({ p2pPort }, home), /INVALID_PORT/);
+  assert.throws(() => options({ rpcPort: 58333, p2pPort: 58333 }, home), /DUPLICATE_PORT/);
+  assert.throws(() => options({ explorer: true, rpcPort: NETWORKS.mainnet.web }, home), /DUPLICATE_PORT/);
+  const store = createStore(home);
+  store.write({ ...i, mode: 'installing', steps: {} });
+  await assert.rejects(createNodeService({ home }).install({ ...input, p2pPort: 58334 }, { confirmed: true }), /RESUME_OPTIONS_CHANGED/);
+});
 test('signature threshold counts primary identities and rejects tampering', () => {
   const fingerprints = ['A'.repeat(40), 'B'.repeat(40), 'C'.repeat(40)];
   assert.equal(signatures(fingerprints.map(f => signature(f)).join('\n'), fingerprints).length, 3);

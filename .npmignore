@@ -20,3 +20,11 @@ site/
 docs/archive/
 *.tgz
 desktop/
+.claude/
+allegati/
+design/
+deps/cdk/target/
+deps/cdk/bin/
+deps/wavelength/
+**/node_modules/
+**/__pycache__/

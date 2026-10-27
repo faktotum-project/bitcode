@@ -131,6 +131,9 @@ e [financial proposals](docs/reference.md#financial-proposals-phase-1-testnet-pa
 
 ## App desktop (Linux)
 
+La release **v0.3.0** comprende **Desktop 0.3.0** e **CLI 0.4.0**. I due
+pacchetti hanno versioni indipendenti. Vedi il [registro dei collaudi](docs/releases/0.3.0.md).
+
 Lo stesso agente in un ambiente Electron: progetti, editor, Git, terminale, un
 worker dell'agente isolato con Bubblewrap, un wallet Bitcoin di test e sessioni
 del wallet RGB con approvazione dei pagamenti.
@@ -206,6 +209,6 @@ e [development](docs/reference.md#development). Modifiche per versione:
 
 [MIT](LICENSE)
 
-### Full node personale (versione da collaudare)
+### Full node personale
 
-`bitcode node install` apre il wizard Bitcoin Core anche senza un modello AI. La pagina **Nodo** del Desktop usa lo stesso installatore, con explorer mempool locale opzionale, collegamento/adozione di nodi esistenti e diagnosi assistita da Merkle. Vedi [installazione e limiti attuali](docs/fullnode.md): restano i collaudi completi sul sistema host e su ARM64; inclusa la procedura sperimentale di compilazione Mutinynet.
+`bitcode node install` apre il wizard Bitcoin Core anche senza un modello AI. La pagina **Nodo** del Desktop usa lo stesso installatore, con explorer mempool locale opzionale, collegamento/adozione di nodi esistenti e diagnosi assistita da Merkle. I collaudi Ubuntu x64 coprono provisioning Signet, adozione e lifecycle Mainnet, build sperimentali Mutinynet e avvio automatico dopo il riavvio del sistema. Vedi [installazione](docs/fullnode.md) e [registro dei collaudi](docs/releases/0.3.0.md) per lo stato di sincronizzazione e verifica delle piattaforme.

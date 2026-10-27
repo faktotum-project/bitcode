@@ -66,8 +66,12 @@ export function options(input = {}, home = bitcodeHome()) {
   if (profile === 'pruned' && explorer) throw nodeError('EXPLORER_REQUIRES_FULL_ARCHIVE');
   const datadir = safePath(input.datadir ?? path.join(home, 'nodes', id, 'data'));
   const rpcPort = Number(input.rpcPort ?? net.rpc);
-  if (!Number.isInteger(rpcPort) || rpcPort < 1024 || rpcPort > 65535) throw nodeError('INVALID_PORT');
-  return { id, network, profile, explorer, datadir, rpcPort, ports: { ...Object.fromEntries(['p2p', 'electrum', 'api', 'web', 'monitoring', 'esplora'].filter(k => net[k] != null).map(k => [k, net[k]])), rpc: rpcPort } };
+  const p2pPort = Number(input.p2pPort ?? net.p2p);
+  if ([rpcPort, p2pPort].some(port => !Number.isInteger(port) || port < 1024 || port > 65535)) throw nodeError('INVALID_PORT');
+  const ports = { ...Object.fromEntries(['electrum', 'api', 'web', 'monitoring', 'esplora'].filter(k => net[k] != null).map(k => [k, net[k]])), p2p: p2pPort, rpc: rpcPort };
+  const activePorts = Object.entries(ports).filter(([name]) => explorer || ['rpc', 'p2p'].includes(name)).map(([, port]) => port);
+  if (new Set(activePorts).size !== activePorts.length) throw nodeError('DUPLICATE_PORT');
+  return { id, network, profile, explorer, datadir, rpcPort, p2pPort, ports };
 }
 export function coreConfig(instance) {
   const n = NETWORKS[instance.network];

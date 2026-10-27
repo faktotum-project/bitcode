@@ -47,6 +47,32 @@ export function serviceRuntime(directory, execPath = process.execPath) {
   const pending = `${target}.pending`; fs.copyFileSync(execPath, pending); fs.chmodSync(pending, 0o755); fs.renameSync(pending, target);
   return target;
 }
+export async function installCoreRelease(i, { directory, run = execute, fetchImpl = fetch } = {}) {
+  if (process.platform !== 'linux' || !['x64', 'arm64'].includes(process.arch)) throw nodeError('UNSUPPORTED_SYSTEM');
+  directory = safePath(directory);
+  if (i.network === 'mutinynet') return buildMutinynet(i, { directory: directory, run, fetchImpl });
+  const triplet = process.arch === 'arm64' ? 'aarch64-linux-gnu' : 'x86_64-linux-gnu';
+  const version = RELEASE.version; const filename = `bitcoin-${version}-${triplet}.tar.gz`;
+  const dir = path.join(directory, 'downloads'); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const name of ['SHA256SUMS', 'SHA256SUMS.asc', filename]) {
+    const target = path.join(dir, name); if (!fs.existsSync(target)) await download(`https://bitcoincore.org/bin/bitcoin-core-${version}/${name}`, target, fetchImpl);
+  }
+  i.verification = await verifyRelease({ archive: path.join(dir, filename), sums: path.join(dir, 'SHA256SUMS'), signature: path.join(dir, 'SHA256SUMS.asc'), keys: path.join(resources, 'builder-keys'), keyHome: path.join(dir, 'gnupg') });
+  archiveEntries((await run('tar', ['-tvzf', path.join(dir, filename)], { timeout: 120_000 })).stdout, version);
+  const temp = path.join(directory, `extract-${Date.now()}`); fs.mkdirSync(temp, { mode: 0o700 });
+  try {
+    await run('tar', ['--extract', '--gzip', '--file', path.join(dir, filename), '--directory', temp, '--no-same-owner', '--no-same-permissions']);
+    const target = path.join(directory, `bitcoin-${version}`);
+    if (fs.existsSync(target)) {
+      for (const name of ['bin/bitcoind', 'bin/bitcoin-cli', 'libexec/bitcoin-node']) {
+        if (fs.existsSync(path.join(temp, `bitcoin-${version}`, name)) && await hashFile(path.join(temp, `bitcoin-${version}`, name)) !== await hashFile(path.join(target, name))) throw nodeError('INSTALLED_BINARY_CHANGED');
+      }
+    } else fs.renameSync(path.join(temp, `bitcoin-${version}`), target);
+    i.binary = path.join(target, 'bin', 'bitcoind'); i.version = version;
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+  return i;
+}
+
 export function createNodeService({ home, run = execute, fetchImpl = fetch, admin, emit = () => {} } = {}) {
   const store = createStore(home);
   const save = instance => store.write({ ...instance, updatedAt: new Date().toISOString() });
@@ -90,29 +116,6 @@ export function createNodeService({ home, run = execute, fetchImpl = fetch, admi
     try { const result = await action(); i.steps[name] = { status: 'complete', at: new Date().toISOString() }; save(i); return result; }
     catch (e) { i.steps[name] = { status: 'error', code: e.code || 'INSTALL_FAILED' }; i.phase = 'error'; save(i); throw e; }
   }
-  async function installCore(i) {
-    if (i.network === 'mutinynet') return buildMutinynet(i, { directory: store.directory(i.id), run, fetchImpl });
-    const triplet = process.arch === 'arm64' ? 'aarch64-linux-gnu' : 'x86_64-linux-gnu';
-    const version = RELEASE.version; const filename = `bitcoin-${version}-${triplet}.tar.gz`;
-    const dir = path.join(store.directory(i.id), 'downloads'); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    for (const name of ['SHA256SUMS', 'SHA256SUMS.asc', filename]) {
-      const target = path.join(dir, name); if (!fs.existsSync(target)) await download(`https://bitcoincore.org/bin/bitcoin-core-${version}/${name}`, target, fetchImpl);
-    }
-    i.verification = await verifyRelease({ archive: path.join(dir, filename), sums: path.join(dir, 'SHA256SUMS'), signature: path.join(dir, 'SHA256SUMS.asc'), keys: path.join(resources, 'builder-keys'), keyHome: path.join(dir, 'gnupg') });
-    archiveEntries((await run('tar', ['-tvzf', path.join(dir, filename)], { timeout: 120_000 })).stdout, version);
-    const temp = path.join(store.directory(i.id), `extract-${Date.now()}`); fs.mkdirSync(temp, { mode: 0o700 });
-    try {
-      await run('tar', ['--extract', '--gzip', '--file', path.join(dir, filename), '--directory', temp, '--no-same-owner', '--no-same-permissions']);
-      const target = path.join(store.directory(i.id), `bitcoin-${version}`);
-      if (fs.existsSync(target)) {
-        for (const name of ['bin/bitcoind', 'bin/bitcoin-cli', 'libexec/bitcoin-node']) {
-          if (fs.existsSync(path.join(temp, `bitcoin-${version}`, name)) && await hashFile(path.join(temp, `bitcoin-${version}`, name)) !== await hashFile(path.join(target, name))) throw nodeError('INSTALLED_BINARY_CHANGED');
-        }
-      } else fs.renameSync(path.join(temp, `bitcoin-${version}`), target);
-      i.binary = path.join(target, 'bin', 'bitcoind'); i.version = version;
-    } finally { fs.rmSync(temp, { recursive: true, force: true }); }
-    return i;
-  }
   async function configure(i) {
     fs.mkdirSync(i.datadir, { recursive: true, mode: 0o700 });
     const conf = path.join(i.datadir, 'bitcoin.conf');
@@ -130,14 +133,14 @@ export function createNodeService({ home, run = execute, fetchImpl = fetch, admi
     return store.lock(spec.id, async () => {
       let i;
       try { i = store.read(spec.id); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-      if (i && ['network', 'datadir', 'profile', 'explorer', 'rpcPort'].some(k => i[k] !== spec[k])) throw nodeError('RESUME_OPTIONS_CHANGED');
+      if (i && (['network', 'datadir', 'profile', 'explorer', 'rpcPort'].some(k => i[k] !== spec[k]) || i.ports.p2p !== spec.ports.p2p)) throw nodeError('RESUME_OPTIONS_CHANGED');
       if (i?.mode === 'connected' || i?.mode === 'adopted') throw nodeError('EXISTING_INSTANCE');
       if (!i) {
         const preview = await plan(spec);
         if (preview.errors.length) throw nodeError(preview.errors[0], preview.errors.join(', '));
         i = { ...spec, mode: 'installing', steps: {}, phase: 'planned', createdAt: new Date().toISOString() }; save(i);
       }
-      if (!i.binary) await step(i, 'verified-core', () => installCore(i));
+      if (!i.binary) await step(i, 'verified-core', () => installCoreRelease(i, { directory: store.directory(i.id), run, fetchImpl }));
       if (i.explorer && !i.explorerPaths) await step(i, 'explorer-build', () => installExplorer(i, { dir: store.directory(i.id), run, fetchImpl, progress: detail => emit('node', { id: i.id, phase: 'explorer-build', detail }) }));
       await step(i, 'services', () => configure(i));
       i.phase = 'syncing'; save(i); return publicInstance(i);
@@ -194,7 +197,7 @@ export function createNodeService({ home, run = execute, fetchImpl = fetch, admi
       if (i.version === RELEASE.version) return { changed: false, version: i.version };
       if (!RELEASE.compatibleFrom.includes(i.version)) throw nodeError('UPDATE_COMPATIBILITY_REVIEW_REQUIRED', 'No reviewed upgrade path. The running node was not stopped.');
       const candidate = structuredClone(i);
-      await step(i, 'update-verify', () => installCore(candidate));
+      await step(i, 'update-verify', () => installCoreRelease(candidate, { directory: store.directory(i.id), run, fetchImpl }));
       if (fs.readFileSync(path.join(i.datadir, 'bitcoin.conf'), 'utf8') !== coreConfig(candidate)) throw nodeError('CONFIG_CHANGED_REVIEW_REQUIRED');
       await step(i, 'update-services', async () => {
         await elevated({ action: 'stop', id });

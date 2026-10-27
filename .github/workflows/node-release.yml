@@ -1,0 +1,49 @@
+name: Node release verification
+
+on:
+  push:
+    branches: [main, feat/bitcoin-fullnode]
+    paths: ['src/**', 'content/**', 'desktop/**', 'scripts/node/**', 'tests/**', 'package*.json', '.github/workflows/node-release.yml']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-node:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-26.04, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm run test:package
+      - name: Install and verify the pinned native Core release
+        run: |
+          mkdir -p artifacts/fullnode
+          node scripts/node/verified-core.mjs --directory "$RUNNER_TEMP/bitcode-core" > artifacts/fullnode/verified-core.json
+      - name: Exercise real Core, cookie authentication, indexes and network identity
+        run: |
+          export BITCODE_CORE_BINARY="$(node -p 'JSON.parse(require("fs").readFileSync("artifacts/fullnode/verified-core.json", "utf8")).binary')"
+          node scripts/node/core-smoke.mjs > artifacts/fullnode/core-smoke.json
+      - run: npm --prefix desktop ci
+      - run: npm run test:desktop
+      - run: npm run dist:desktop
+      - name: Verify the distributed Debian package
+        run: |
+          node scripts/node/package-check.mjs desktop/release/*.deb > artifacts/fullnode/package-check.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: node-release-${{ matrix.runner }}
+          path: |
+            artifacts/fullnode/*.json
+            desktop/release/*.deb

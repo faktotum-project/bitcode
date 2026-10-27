@@ -127,6 +127,9 @@ and [financial proposals](docs/reference.md#financial-proposals-phase-1-testnet-
 
 ## Desktop app (Linux)
 
+Release **v0.3.0** pairs **Desktop 0.3.0** with **CLI 0.4.0**. Their package
+versions are independent. See the [release verification record](docs/releases/0.3.0.md).
+
 The same agent in an Electron workspace: projects, editor, Git, terminal, an
 agent worker isolated with Bubblewrap, a Bitcoin test wallet and RGB wallet
 sessions with payment approvals.
@@ -202,6 +205,6 @@ and [development](docs/reference.md#development). Changes per version:
 
 [MIT](LICENSE)
 
-### Personal full node (review candidate)
+### Personal full node
 
-`bitcode node install` opens the Bitcoin Core wizard without requiring an AI provider. Desktop's **Node** page uses the same installer, with optional local mempool explorer, connection/adoption of existing nodes, and Merkle-assisted diagnosis. See [node setup and current limitations](docs/fullnode.md); privileged host provisioning and ARM64 still need end-to-end validation, including the experimental Mutinynet source-build recipe.
+`bitcode node install` opens the Bitcoin Core wizard without requiring an AI provider. Desktop's **Node** page uses the same installer, with optional local mempool explorer, connection/adoption of existing nodes, and Merkle-assisted diagnosis. Ubuntu x64 host checks cover Signet provisioning, Mainnet adoption and lifecycle, experimental Mutinynet builds, and service startup after reboot. See [node setup](docs/fullnode.md) and the [release verification record](docs/releases/0.3.0.md) for synchronization and platform gates.

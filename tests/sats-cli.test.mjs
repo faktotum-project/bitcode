@@ -47,7 +47,9 @@ test("Sats CLI: no flag adds no URL; auto delegation is silent and policies matc
   const f = await startCliFixture({ args: ["--no-session"] }); t.after(() => f.close());
   await f.ready(); f.send("delegate");
   await until(() => f.stdout().includes("approve subagent")); f.send("y");
-  await until(() => f.requests.length === 4 && f.stdout().includes("PRIVATE_FINAL_RESULT"));
+  // The tool result can reach stdout before the parent's final response. Wait
+  // for the next input prompt so the assertion observes the completed turn.
+  await until(() => f.requests.length === 4 && f.stdout().trimEnd().endsWith('›'));
   assert.doesNotMatch(f.stdout(), /#token=|Sats · open/);
   assert.deepEqual(f.requests[1].messages.filter(m => m.role === "user"), [{ role: "user", content: "read" }]);
   assert.deepEqual(f.requests[1].tools.map(t => t.function.name).sort(), ["list_dir", "list_skills", "node_discover", "node_plan", "node_status", "read_file", "read_skill"]);

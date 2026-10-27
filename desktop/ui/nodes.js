@@ -3,7 +3,7 @@ export function createNodesView({ h, api, guard, toast, copyText, runInTerminal,
   const label = (it, en) => english() ? en : it;
   const warningText = code => ({ EXPERIMENTAL_MUTINYNET: label('Mutinynet è una rete sperimentale.', 'Mutinynet is an experimental network.'), CURATED_SOURCE_HASH_NOT_GUIX_ATTESTED: label('Compilazione locale da sorgenti fissate; nessuna attestazione Guix multi-builder.', 'Local build from pinned source; no Guix multi-builder attestation.'), BUILD_HAS_NO_WALLET: label('Questo nodo Mutinynet non include funzioni wallet.', 'This Mutinynet node has no wallet functionality.') })[code] || code;
   const state = { instances: [], jobs: [], status: {}, loaded: false, preview: null, error: null, busy: false, selected: null,
-    input: { id: 'mainnet', network: 'mainnet', profile: 'full', explorer: false, datadir: '', rpcPort: '' } };
+    input: { id: 'mainnet', network: 'mainnet', profile: 'full', explorer: false, datadir: '', rpcPort: '', p2pPort: '' } };
   const button = (text, click) => h('button', { class: 'btn', type: 'button', onClick: guard(click) }, text);
   const values = () => Object.fromEntries(Object.entries(state.input).filter(([, v]) => v !== ''));
   async function refresh() {
@@ -48,7 +48,7 @@ export function createNodesView({ h, api, guard, toast, copyText, runInTerminal,
       form.append(h('label', {}, title, control));
     }
     field(label('Nome istanza', 'Instance name'), 'id'); field(label('Rete', 'Network'), 'network', ['mainnet', 'signet', 'testnet4', 'mutinynet', 'testnet']);
-    field(label('Archivio', 'Storage'), 'profile', ['full', 'pruned']); field(label('Porta RPC (vuota = predefinita)', 'RPC port (empty = default)'), 'rpcPort'); field(label('Cartella dati assoluta (vuota = predefinita)', 'Absolute data directory (empty = default)'), 'datadir');
+    field(label('Archivio', 'Storage'), 'profile', ['full', 'pruned']); field(label('Porta RPC (vuota = predefinita)', 'RPC port (empty = default)'), 'rpcPort'); field(label('Porta P2P (vuota = predefinita)', 'P2P port (empty = default)'), 'p2pPort'); field(label('Cartella dati assoluta (vuota = predefinita)', 'Absolute data directory (empty = default)'), 'datadir');
     form.append(h('label', {}, h('input', { type: 'checkbox', checked: state.input.explorer, disabled: state.input.profile === 'pruned', onChange: e => { state.input.explorer = e.target.checked; state.preview = null; updateCommands(redraw); } }), label('Explorer mempool con tema bitcode', 'mempool explorer with bitcode theme')));
     for (const action of ['install', 'connect', 'adopt']) form.append(button({ install: label('Prepara installazione', 'Prepare installation'), connect: label('Collega', 'Connect'), adopt: label('Adotta gestione', 'Adopt management') }[action], async () => {
       const input = values(); if (action === 'adopt' && input.explorer) input.services = ['bitcoind', 'electrs', 'mempool-backend']; const detail = action === 'install' ? await api('node.plan', input) : { action, ...input, dataPreserved: true, services: action === 'adopt' ? input.services || ['bitcoind'] : undefined };

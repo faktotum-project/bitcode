@@ -12,9 +12,9 @@ export function parseNodeArgs(args) {
     if (key === '--json') json = true;
     else if (key === '--yes') yes = true;
     else if (key === '--explorer') input.explorer = true;
-    else if (['--id', '--network', '--profile', '--datadir', '--rpc-port'].includes(key)) {
+    else if (['--id', '--network', '--profile', '--datadir', '--rpc-port', '--p2p-port'].includes(key)) {
       if (!args[n + 1] || args[n + 1].startsWith('--')) throw nodeError('MISSING_ARGUMENT', key);
-      input[{ '--rpc-port': 'rpcPort' }[key] || key.slice(2)] = args[++n];
+      input[{ '--rpc-port': 'rpcPort', '--p2p-port': 'p2pPort' }[key] || key.slice(2)] = args[++n];
     } else if (key === '--services') input.services = (args[++n] || '').split(',');
     else throw nodeError('INVALID_ARGUMENT', key);
   }
@@ -22,7 +22,7 @@ export function parseNodeArgs(args) {
 }
 export async function nodeCLI(args, { service, print = console.log, progress = event => process.stderr.write(JSON.stringify(event) + '\n') } = {}) {
   service ??= createNodeService({ emit: (_, event) => progress({ type: 'node.progress', ...event }) });
-  if (args.includes('--help') || args[0] === 'help') { print('bitcode node install|connect|adopt|status|doctor|list|discover|plan|commands|dependencies|start|stop|restart|update|uninstall|use|recover [--id NAME] [--network mainnet|signet|testnet4|mutinynet|testnet] [--datadir DIR] [--profile full|pruned] [--explorer] [--json] [--yes]'); return; }
+  if (args.includes('--help') || args[0] === 'help') { print('bitcode node install|connect|adopt|status|doctor|list|discover|plan|commands|dependencies|start|stop|restart|update|uninstall|use|recover [--id NAME] [--network mainnet|signet|testnet4|mutinynet|testnet] [--datadir DIR] [--profile full|pruned] [--rpc-port PORT] [--p2p-port PORT] [--explorer] [--json] [--yes]'); return; }
   let { action, input, json, yes } = parseNodeArgs(args);
   let rl;
   const ask = async (prompt, fallback = '') => {

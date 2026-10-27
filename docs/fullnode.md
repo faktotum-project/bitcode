@@ -20,6 +20,8 @@ bitcode node use --id signet
 
 New instances default to `~/.bitcode/nodes/<id>/data`; each has separate state, downloads, binaries and indexes. Mainnet, Signet, Testnet4 and experimental Mutinynet have separate ports. A full archive is required for the explorer. Core downloads are authenticated by bundled Guix builder keys (minimum three distinct valid primary signers) and archive hashes before extraction. GnuPG is used as the maintained verification implementation, in an isolated keyring, without agent autostart or runtime key discovery.
 
+For a second Core-only instance on the same network, choose unused `--rpc-port` and `--p2p-port` values. Desktop exposes both fields. The preview rejects duplicate or occupied ports, and resuming an installation cannot change those ports. Explorer services retain the network's fixed port set.
+
 The local explorer comprises electrs, a MariaDB-backed mempool backend, and a loopback frontend/API/WebSocket service. The user-owned web service avoids editing an existing shared nginx deployment. Its route adapter maps legacy `/api/...` requests to the backend's `/api/v1/...` routes. The frontend sets `ROOT_NETWORK` for non-mainnet instances. The bitcode theme includes bundled fonts and their licenses; mempool attribution remains visible.
 
 `node use` explicitly changes bitcode's Bitcoin network and RPC connection. If this instance includes an explorer, it also selects its local route adapter. Otherwise explorer-based lookups retain the network's normal default service. It never creates or migrates a wallet.
@@ -42,13 +44,15 @@ Core synchronization, Core indexes, Electrum indexed height and explorer API hei
 
 ## Current release boundaries
 
-This implementation is a review candidate, not a certified production release.
+Release v0.3.0 contains Desktop 0.3.0 and CLI 0.4.0. Publication is gated by the [release verification record](releases/0.3.0.md); platform and synchronization checks below describe the evidence currently available.
 
 - Ubuntu/Debian x64 and ARM64 code paths are provided. Native builds require Node >=22 and Rust >=1.85; older distribution toolchains fail explicitly and are not replaced by downloaded shell installers.
 - Core is pinned to 31.1. Only the 31.0 → 31.1 upgrade path is listed. Other upgrade paths stop before stopping the running node. No automatic database downgrade is offered.
 - Experimental Mutinynet builds Bitcoin Inquisition from the curated commit `2fda7bfc027e3c2586bb4684401524165c164e65` and mempool-electrs 3.3.0 from `141215c349d5cfbabf8f2b925f3dcea59fed0510`. Both source archives have hashes distributed with bitcode. These are **not** official Core binaries or Guix multi-builder attestations. The fork is compiled without wallet support; its explorer requires Rust >=1.87. Installation is host-tested; full synchronization is not yet. `node use` remains unavailable for Mutinynet until the financial adapters distinguish that network.
 - Host-tested on Ubuntu 26.04 x64 (GCC 15, Node 24): administrative helper and explorer dependency profile; a full Signet install with explorer (verified Core 31.1, electrs, mempool backend/frontend, web service under systemd); stop, start and restart with data preserved; adoption of an existing Mainnet node with its `bitcoind`, `electrs` and `mempool-backend` services, reported ready at the live tip; refusal to adopt when the live Core process uses a different data directory. Experimental Mutinynet with explorer: pinned Bitcoin Inquisition and mempool-electrs source builds, services started, live custom challenge accepted and blocks downloading from the Mutinynet peer.
-- Still untested on a host: readiness after a complete Signet synchronization, service persistence across a reboot, lifecycle actions on an adopted node, a fully synchronized Mutinynet explorer and ARM64 execution.
+- Further host checks on 2026-10-27: Signet and Mutinynet Core, electrs, mempool and web services were enabled and started automatically at 21:53:24 CET after the 2026-10-26 21:53:10 CET reboot. Mainnet adoption stop/start/restart returned Core, both indexes and the explorer to readiness at height 973387; detaching a temporary adoption left the original services and adoption intact and the original `bitcoin.conf` hash unchanged.
+- A fresh managed Mainnet pruned instance was installed beside the existing node on RPC 58332/P2P 58333 using verified Core 31.1. It downloaded real blocks from the explicitly selected local Mainnet peer, worked through bitcode's Bitcoin RPC adapter, and passed stop/start/restart and managed uninstall with blocks retained. This checks installation and initial sync, not completion of Mainnet IBD. The first attempt using Internet peers timed out during header presynchronization and was cleaned up before the successful local-peer check.
+- Still pending: readiness after complete Signet synchronization, a fully synchronized Mutinynet explorer, and native ARM64 release verification. The release record tracks new Mainnet installation checks separately from existing-node adoption.
 - The native Electron wizard smoke passed on Linux x64, including profile/network selection and preview without starting an install job. It does not certify privileged provisioning.
 
 ## Verification
@@ -59,6 +63,7 @@ npm run build:desktop
 npm run test:desktop
 python3 /path/to/skill-creator/scripts/quick_validate.py content/skills/bitcoin-fullnode
 BITCODE_PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node desktop/tests/node-ui-smoke.mjs
+node scripts/node/package-check.mjs desktop/release/bitcode-desktop_0.3.0_amd64.deb
 ```
 
 The tests include altered signatures/checksums, duplicate signer identities, expiry, archive traversal, instance locks, wrong networks/challenges, human-origin restrictions, upgrade refusal, local RPC authentication and the explorer route adapter. Public signed metadata fixtures are from the same official Core 31.1 verification snapshot; they contain no credentials.
@@ -87,3 +92,5 @@ BITCODE_CORE_BINARY=/absolute/path/to/bitcoind node scripts/node/core-smoke.mjs
 ```
 
 This launches only a temporary child with peers and its P2P listener disabled. It verifies real cookie authentication, live standard Signet identity, both indexes, and that an unsynchronized node remains unready. It stops its child and removes its own directory. This check passed with Core 31.1 on Linux x64; it does not test full synchronization or systemd provisioning.
+
+Explicit host acceptance scripts are also available. `mainnet-smoke.mjs --yes --home /absolute/test/home` installs a separate pruned Mainnet node on RPC/P2P ports 58332/58333, checks real blocks and lifecycle, then removes its services while retaining data. It requires at least the installer's advertised free space; `--peer 127.0.0.1:8333` explicitly selects an existing local Mainnet peer for bootstrap. `adoption-smoke.mjs --id EXISTING_ADOPTED_ID --yes` temporarily adopts and interrupts that instance's services, checks stop/start/restart, restores readiness and detaches its temporary record. Both use the root-owned helper and operating-system authentication; review their operations before running them.

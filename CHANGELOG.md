@@ -1,6 +1,28 @@
 # Changelog
 
-## Desktop 0.3.0 — 2026-10-26
+## Desktop 0.3.0 · CLI 0.4.0 — 2026-10-27
+
+### Personal Bitcoin node
+
+- Shared CLI and Desktop installer for Bitcoin Core 31.1: Mainnet full or
+  pruned, Signet and Testnet4; separately pinned experimental Mutinynet builds.
+- Core archives require matching hashes and at least three distinct valid
+  signatures from the bundled Guix builder keys before extraction.
+- Optional local explorer with electrs, mempool backend/frontend, a loopback
+  API/WebSocket proxy and the bitcode theme.
+- Discover, connect to and adopt existing installations; install, resume,
+  start, stop, restart, update along reviewed paths, diagnose and remove
+  managed services while retaining data. Adopted detach retains original units.
+- Separate Core, indexer and explorer readiness checks; live Signet challenge
+  verification and stale operation recovery.
+- Explicit node selection connects bitcode's Bitcoin tools to local RPC and,
+  when installed, the local explorer. RPC and P2P ports can be selected to run
+  an additional Core instance alongside an existing node.
+- Node agent tools and the bundled `bitcoin-fullnode` skill; privileged actions
+  require system authentication through a fixed-operation administrative helper.
+- Real-host checks cover Signet installation, Mainnet adoption and lifecycle,
+  experimental Mutinynet builds and service startup after reboot. Detailed
+  release gates and their current evidence: [release 0.3.0](docs/releases/0.3.0.md).
 
 ### Desktop
 
