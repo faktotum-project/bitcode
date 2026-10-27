@@ -23,6 +23,6 @@ brand/video/out/
 # Local attachments and scratch copies
 allegati/
 
-# Work in progress kept outside Git: Instagram review package and design sources
-brand/social/instagram/
+# Social and web content is produced locally and never committed
+brand/social/
 design/

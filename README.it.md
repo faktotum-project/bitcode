@@ -186,7 +186,7 @@ Vedi [docs/sats.md](docs/sats.md).
 | `ui/sats/`, `assets/sats/` | La vista web `/sats` e le immagini dei Sats che serve |
 | `desktop/` | App desktop Electron |
 | `integrations/`, `deps/` | Integrazioni QVAC e Kaleido; submodule Cashu `cdk` |
-| `brand/` | Design system: token, logo, profili dei Sats, kit social ([brand/README.md](brand/README.md)) |
+| `brand/` | Design system: token, logo, profili dei Sats ([brand/README.md](brand/README.md)) |
 | `site/` | Sito: `src/` template e i18n, `public/` ciò che pubblica Vercel, `scripts/` build e controlli |
 | `docs/` | Riferimento e documenti sui Sats; `docs/archive/` contiene i piani completati |
 | `scripts/`, `tests/` | Script di build (Cashu, Wavelength, lint, asset dei Sats) e test |

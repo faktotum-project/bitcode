@@ -1,6 +1,6 @@
 # bitcode brand
 
-One source of truth for the bitcode identity on every surface: website, desktop app, CLI, GitHub, npm, LinkedIn, X, Instagram, YouTube.
+One source of truth for the bitcode identity on every surface: website, desktop app, CLI, GitHub, npm.
 
 Everything derived is generated (`npm run build:brand`, `npm run check:brand`, the latter is part of `npm run check`). Edit `tokens/tokens.json`, then run `node brand/build.mjs` (CI: `--check`).
 
@@ -26,8 +26,6 @@ Names differ per surface for historical reasons; values come from one place. Sec
 | `logo/` | Mark (pixel "b"), wordmark (pixel b + "bitcode" in Inter 600, the original site lockup), terminal lockup, on-dark and mono variants, ASCII. Type is outlined in `glyphs.json`, so no SVG needs a font. |
 | `tools/` | `outline-glyphs.py` regenerates `logo/glyphs.json`; only needed if typeface or weight changes. |
 | `mascots/` | Sats: framework, profiles. See `mascots/framework.md`. |
-| `social/` | `build.mjs` renders every platform asset into `social/export/<platform>/`; `design.mjs` is the one card composition shared with the site OG. |
-| `social/releases/` | Release promo videos (rendered by `site/scripts/demos/render-upgrade.mjs`). |
 | `logo/masters/` | Original 2000 px raster masters of the mark (orange and ink variants). |
 | `mockups/` | Static desktop app mockups. |
 | `video/` | Product video pipeline (stage built from the desktop renderer). |
@@ -57,9 +55,6 @@ Inter for text, JetBrains Mono for code, numbers and labels. Both are bundled (O
 
 ## Voice
 Plain, concrete, short sentences. No hype, no price talk, no emoji in product UI. Italian and English are equal: never machine-translate, rewrite.
-
-## Platform kit
-`node brand/social/build.mjs` writes the site icons into `site/public/` (favicon.ico, touch icon, 192, 512) and, into `social/export/`: one avatar (`avatars/`, 400 and 800 for YouTube) used on every profile, LinkedIn (banner 1584x396, post 1200x627), X (header 1500x500, card 1200x675), Instagram (1080 square, 1080x1350, story 1080x1920), GitHub (preview 1280x640), YouTube (banner 2560x1440, thumbnail 1280x720). npm and other app stores use `site/public/icon-512.png`. Avatars show the mark only and are safe for circular crops. Link previews (site OG, LinkedIn post, X card, GitHub preview, YouTube thumbnail) share one composition in `social/design.mjs`: Script, the orange Sat, cheering beside the two-line tagline and the logo, with no other text since titles and descriptions travel with the link. Banners and Instagram use the same scene placed by hand per format (`posterHtml`): the banners show the same Script and keep their copy clear of the profile photo laid over the lower left (LinkedIn, X) or inside the 1546x423 area every device shows (YouTube); each Instagram format shows other Sats in other poses (square: Node `focus`; portrait: all four, Node `idle`, Merkle `ask`, Script `working`, Hash `concerned`; story: Merkle `happy`) so the grid introduces the whole team. Lockups are EN and IT. The site's OG image is rendered by `site/scripts/render-og.mjs` from that same composition.
 
 ## Sats
 Secondary to the logo. Follow `mascots/framework.md` (Yuru-chara rules, modules, guardrails).
