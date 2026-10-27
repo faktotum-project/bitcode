@@ -1,7 +1,7 @@
 // Electron main process: windows, tray, notifications, secret store, PTYs and
 // the trusted origin of every control message. The renderer has no Node.
 import { app, BrowserWindow, Menu, Notification, Tray, clipboard, dialog, globalShortcut, ipcMain, nativeImage, powerSaveBlocker, safeStorage, screen, shell, session as electronSession } from 'electron';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -297,7 +297,10 @@ async function localServers() {
 }
 
 // Autostart is offered only for packaged builds: a development Electron binary cannot start the app on its own.
-const launcher = () => (process.env.APPIMAGE && path.isAbsolute(process.env.APPIMAGE) ? process.env.APPIMAGE : process.execPath);
+// The package's /usr/bin link survives a change of install directory; the binary path does not.
+const STABLE_COMMAND = '/usr/bin/bitcode-desktop';
+const stableCommand = () => { try { return realpathSync(STABLE_COMMAND) === realpathSync(process.execPath) ? STABLE_COMMAND : null; } catch { return null; } };
+const launcher = () => (process.env.APPIMAGE && path.isAbsolute(process.env.APPIMAGE) ? process.env.APPIMAGE : stableCommand() || process.execPath);
 const autostart = {
   get: () => ({ supported: process.platform === 'linux' && app.isPackaged, enabled: existsSync(autostartFile({ home: app.getPath('home') })) }),
   set: enabled => {
@@ -305,6 +308,12 @@ const autostart = {
     const file = autostartFile({ home: app.getPath('home') });
     if (enabled) { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, autostartEntry({ executable: launcher() }), { mode: 0o644 }); } else rmSync(file, { force: true });
     return autostart.get();
+  },
+  // An entry written by an earlier install may name a path that no longer exists.
+  heal: () => {
+    if (!autostart.get().supported || !autostart.get().enabled) return;
+    const file = autostartFile({ home: app.getPath('home') }), entry = autostartEntry({ executable: launcher() });
+    try { if (readFileSync(file, 'utf8') !== entry) writeFileSync(file, entry, { mode: 0o644 }); } catch {}
   }
 };
 
@@ -430,6 +439,7 @@ app.whenReady().then(() => {
       if (channel === 'run' || channel === 'approval') updateTray();
     } });
   controller.invoke('project.list').then(list => list.forEach(watchProject));
+  autostart.heal();
   try { tray = new Tray(nativeImage.createFromPath(path.join(appDir, 'ui', 'icon.png')).resize({ width: 22, height: 22 })); tray.on('click', toggle); updateTray(); } catch { tray = null; }
   // --hidden (used by autostart) starts in the tray; without a tray the window must stay reachable.
   createWindow({ visible: !(startHidden && tray) && !process.argv.includes('--quake') });
