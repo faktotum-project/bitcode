@@ -29,6 +29,17 @@ else
     echo "bitcode: /usr/bin/bitcode belongs to another installation; the bundled CLI stays at $CLI_BIN"
 fi
 
+# The menu entry starts the app through the /usr/bin link, which follows the
+# install directory; electron-builder can only write the absolute binary path.
+sed -i 's|^Exec="\{0,1\}/opt/[^"]*/${executable}"\{0,1\}|Exec=/usr/bin/${executable}|' '/usr/share/applications/${executable}.desktop' || true
+
+# Desktop 0.2 lived in /opt/Bitcode. Menus, pinned launchers and autostart
+# entries cached from it keep working through this link to the current path.
+LEGACY_DIR=/opt/Bitcode
+if [ "$APP_DIR" != "$LEGACY_DIR" ] && [ ! -e "$LEGACY_DIR" ] && [ ! -L "$LEGACY_DIR" ]; then
+    ln -s "$APP_DIR" "$LEGACY_DIR" || true
+fi
+
 # chrome-sandbox needs SUID only where unprivileged user namespaces are unavailable.
 if ! { [[ -L /proc/self/ns/user ]] && unshare --user true; }; then
     chmod 4755 "$APP_DIR/chrome-sandbox" || true

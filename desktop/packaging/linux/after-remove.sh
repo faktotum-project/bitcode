@@ -12,6 +12,10 @@ case "$1" in
             [ "$(readlink /usr/bin/bitcode)" = '/opt/${sanitizedProductName}/resources/app/dist/bin/bitcode' ] && rm -f /usr/bin/bitcode
         fi
 
+        if [ -L /opt/Bitcode ] && [ "$(readlink /opt/Bitcode)" = '/opt/${sanitizedProductName}' ]; then
+            rm -f /opt/Bitcode
+        fi
+
         PROFILE='/etc/apparmor.d/${executable}'
         if [ -f "$PROFILE" ]; then
             if apparmor_status --enabled >/dev/null 2>&1 && ! { [ -x /usr/bin/ischroot ] && /usr/bin/ischroot; } && hash apparmor_parser 2>/dev/null; then
