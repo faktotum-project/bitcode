@@ -86,11 +86,18 @@
   demo videos.
 - The name is always lowercase: **bitcode**. The desktop product name follows,
   so new `.deb` installs go to `/opt/bitcode` instead of `/opt/Bitcode`;
-  `bitcode desktop` still finds an existing 0.2 install.
+  `bitcode desktop` still finds an existing 0.2 install. Upgrading from 0.2
+  moves the app there; until GNOME reloads its application list (a minute or
+  a new login), the menu entry can still point to `/opt/Bitcode` and fail to
+  launch. `bitcode-desktop` or `gtk-launch bitcode-desktop` works meanwhile.
 - Site: `favicon.ico`, touch icon, 192/512 px icons and a web manifest.
 
 ### Repository
 
+- The npm package has no `postinstall`: installing it no longer compiles the
+  Cashu binaries with Rust or downloads Wavelength. Run `npm run build:cdk`
+  and `npm run build:wavelength` when you need them; `bitcode doctor` reports
+  whether they are present.
 - Runtime Markdown moved to `content/` (agents, commands, Sats); the website
   lives in `site/` and Vercel serves `site/public/`; completed plans are in
   `docs/archive/`.
