@@ -13,7 +13,7 @@ import { createMemoryProbe } from '../../src/local-memory.mjs';
 import { isLocalProvider, discoverLocalModels, describeLocalModel, localSetupHint } from '../../src/local-models.mjs';
 import { providerModels } from '../../src/model-catalog.mjs';
 import { loadCommands, expandCommand } from '../../src/commands.mjs';
-import { savePlan, latestPlan, plansDir } from '../../src/plans.mjs';
+import { savePlan, latestPlan, listPlans } from '../../src/plans.mjs';
 import { isReadOnlyCommand, normalizeCommand } from '../../src/permissions.mjs';
 import { saveSession, loadSession, sessionsDir, newSessionId } from '../../src/session.mjs';
 import { Approvals, Redactor, Semaphore, atomicJSON, fail, hash, loadJSON, workspacePath } from './primitives.mjs';
@@ -244,6 +244,7 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
   }
 
   async function acquire(r, { tool, args = {}, baseVersion }) {
+    if (r.readOnly) throw fail('FORBIDDEN', 'Read-only run');
     const pol = policy(r.projectId), mode = r.config.mode, root = r.root;
     let needsApproval, kind, subject, needsLease = true;
     if (tool === 'write_file' || tool === 'edit_file') {
@@ -377,7 +378,8 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       try {
         release = await queue.acquire(r.aborter.signal);
         setState(r, 'starting');
-        if (config.mode === 'unattended') {
+        // Read-only runs (/plan) cannot change files, so they read the project folder itself, uncommitted work included.
+        if (config.mode === 'unattended' && !readOnly) {
           const wt = await G.addWorktree(p.root, path.join(dir, 'worktrees', r.runId));
           r.worktree = wt; r.root = wt.dir;
           worktrees.set(r.runId, { runId: r.runId, projectId: p.projectId, sessionId, dir: wt.dir, base: wt.base, createdAt: now() }); saveMeta();
@@ -858,10 +860,9 @@ export function createController({ home, appDir, agents = [], emit = () => {}, s
       const notes = { text, todos: cleanTodos(todos) }; atomicJSON(notesFile(projectId), notes); return notes;
     },
     'plans.list': ({ projectId }) => {
-      const d = plansDir(project(projectId).root); if (!existsSync(d)) return [];
-      return readdirSync(d).filter(f => f.endsWith('.md')).sort().reverse().slice(0, 50).map(f => {
-        const text = readFileSync(path.join(d, f), 'utf8').slice(0, 200_000);
-        return { id: f, title: (text.match(/^#\s+(.+)$/m)?.[1] || f).slice(0, 120), at: statSync(path.join(d, f)).mtimeMs, text: redactor.text(text) };
+      return listPlans(project(projectId).root).slice(0, 50).map(({ name, file }) => {
+        const text = readFileSync(file, 'utf8').slice(0, 200_000);
+        return { id: name, title: (text.match(/^#\s+(.+)$/m)?.[1] || name).slice(0, 120), at: statSync(file).mtimeMs, text: redactor.text(text) };
       });
     },
     'session.timeline': ({ sessionId }) => {

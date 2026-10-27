@@ -234,6 +234,20 @@ test('unattended runs work in a separate worktree, integrated only on request', 
   c.shutdown();
 });
 
+test('unattended /plan reads the project folder itself, uncommitted work included, and saves the plan there', async () => {
+  const { c, root, workers } = setup();
+  const g = (...a) => execFileSync('git', ['-C', root, ...a], { env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+  g('init', '-q'); writeFileSync(path.join(root, 'x.txt'), 'base\n'); g('add', '.'); g('commit', '-qm', 'init');
+  const { s } = await sessionIn(c, root, 'unattended');
+  await c.invoke('chat.submit', { sessionId: s.sessionId, text: '/plan add a fee test' }, 'ui:1');
+  await until(() => workers.length);
+  assert.equal(workers[0].root, root);
+  assert.deepEqual(await c.invoke('worktree.list'), []);
+  workers[0].onMessage({ type: 'done', answer: '1. edit fees.mjs' });
+  assert.ok(existsSync(path.join(root, '.bitcode', 'plans')));
+  c.shutdown();
+});
+
 test('slash commands: catalogue, /model, /plan read-only with saved plan, /build, CLI-only and unknown', async () => {
   const { c, home, root, workers } = setup();
   const previous = process.env.BITCODE_HOME; process.env.BITCODE_HOME = home;
