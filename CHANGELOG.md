@@ -1,6 +1,6 @@
 # Changelog
 
-## Desktop 0.3.0 · CLI 0.4.0 — 2026-10-27
+## Desktop 0.3.0 · CLI 0.4.0 — 2026-10-30
 
 ### Personal Bitcoin node
 
@@ -26,6 +26,10 @@
 
 ### Desktop
 
+- Read-only Plan mode works in the selected project directory; saved plans live
+  in that project's `.bitcode/plans` directory.
+- The cloud model picker displays the complete provider catalog and respects
+  vendor-prefix visibility settings.
 - Bitcoin → RGB tells a locked, wallet-less, unlocking or stopped node apart
   from a connection error, explains it and offers the next step (unlock,
   create the wallet, start the Docker node) in an app terminal where you type
