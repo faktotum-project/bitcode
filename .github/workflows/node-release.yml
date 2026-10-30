@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   native-node:
+    if: github.event_name != 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -54,3 +55,85 @@ jobs:
           path: |
             artifacts/fullnode/*.json
             desktop/release/*.deb
+
+  publish-verified-assets:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: faktotum-project/bitcode
+    steps:
+      - name: Download the verified main build
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 41041859763
+          pattern: node-release-*
+          path: native
+      - name: Verify source, draft identity and Debian checksums
+        run: |
+          mkdir release
+          gh api repos/$GH_REPO/actions/runs/41041859763 > run.json
+          gh api repos/$GH_REPO/releases/428916410 > draft.json
+          gh release download v0.3.0 --pattern SHA256SUMS --dir release
+          python3 - <<'PYTHON'
+          import hashlib, json, pathlib, shutil
+          source = "811423fee118fbb0107da0bbb208e92657bc30af"
+          run = json.loads(pathlib.Path("run.json").read_text())
+          assert run["head_sha"] == source and run["conclusion"] == "success"
+          draft = json.loads(pathlib.Path("draft.json").read_text())
+          assert draft["draft"] and draft["tag_name"] == "v0.3.0" and draft["target_commitish"] == source
+          expected = dict(line.split()[::-1] for line in pathlib.Path("release/SHA256SUMS").read_text().splitlines())
+          packages = list(pathlib.Path("native").glob("*/desktop/release/*.deb"))
+          assert {p.name for p in packages} == {"bitcode-desktop_0.3.0_amd64.deb", "bitcode-desktop_0.3.0_arm64.deb"}
+          for p in packages:
+              with p.open("rb") as f: digest = hashlib.file_digest(f, "sha256").hexdigest()
+              report = json.loads((p.parents[2] / "artifacts/fullnode/package-check.json").read_text())
+              assert report["passed"] and digest == report["sha256"] == expected[p.name]
+              shutil.copy2(p, pathlib.Path("release") / p.name)
+              print(p.name, digest)
+          PYTHON
+      - name: Upload the verified Debian packages
+        run: gh release upload v0.3.0 release/*.deb --clobber
+      - name: Verify every uploaded asset before publication
+        run: |
+          gh api repos/$GH_REPO/releases/428916410 > uploaded.json
+          python3 - <<'PYTHON'
+          import hashlib, json, pathlib
+          release = json.loads(pathlib.Path("uploaded.json").read_text())
+          expected = dict(line.split()[::-1] for line in pathlib.Path("release/SHA256SUMS").read_text().splitlines())
+          expected["SHA256SUMS"] = hashlib.sha256(pathlib.Path("release/SHA256SUMS").read_bytes()).hexdigest()
+          assert release["draft"] and release["target_commitish"] == "811423fee118fbb0107da0bbb208e92657bc30af"
+          assets = {a["name"]: a for a in release["assets"]}
+          assert set(assets) == set(expected)
+          for name, digest in expected.items():
+              assert assets[name]["state"] == "uploaded" and assets[name]["digest"] == "sha256:" + digest, name
+          print("All six release assets match the verified checksums.")
+          PYTHON
+      - name: Publish the complete release
+        run: gh release edit v0.3.0 --draft=false --latest
+      - name: Verify the public release and tag
+        run: |
+          gh api repos/$GH_REPO/releases/latest > publication.json
+          gh api repos/$GH_REPO/git/ref/tags/v0.3.0 > tag.json
+          python3 - <<'PYTHON'
+          import json, pathlib
+          release = json.loads(pathlib.Path("publication.json").read_text())
+          tag = json.loads(pathlib.Path("tag.json").read_text())
+          assert release["id"] == 428916410 and not release["draft"] and len(release["assets"]) == 6
+          assert tag["object"]["sha"] == "811423fee118fbb0107da0bbb208e92657bc30af"
+          print(release["html_url"])
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: publication-v0.3.0
+          path: |
+            run.json
+            uploaded.json
+            publication.json
+            tag.json
