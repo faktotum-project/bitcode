@@ -15,14 +15,10 @@ __pycache__/
 .opencode/
 .claude/
 
-# Product video: generated stage, stills and renders
-brand/video/stage/
-brand/video/preview/
-brand/video/out/
-
 # Local attachments and scratch copies
 allegati/
 
-# Work in progress kept outside Git: Instagram review package and design sources
-brand/social/instagram/
+# Social and web content is produced locally and never committed
+brand/social/
+brand/video/
 design/

@@ -1,10 +1,8 @@
 // Development-only screenshot renderer. No browser dependency is shipped to visitors.
-// The composition is shared with the platform kit, so the site's share card and the
-// social banners cannot drift apart: see brand/social/design.mjs.
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { shareHtml } from '../../brand/social/design.mjs';
+import { shareHtml } from './share-card.mjs';
 const require = createRequire(import.meta.url);
 const tokens = JSON.parse(readFileSync(new URL('../../brand/tokens/tokens.json', import.meta.url), 'utf8'));
 const logo = name => readFileSync(new URL(`../../brand/logo/${name}`, import.meta.url), 'utf8');
