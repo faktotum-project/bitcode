@@ -2,16 +2,18 @@
 // (environment proof, balances, proposals); disabled buttons are only a
 // reflection — the finance service enforces test-only, human-confirmed spends.
 import { testSendNote } from '../../src/sat-states.mjs';
-export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerender }) {
+export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerender, openFixTerminal }) {
   const PROTOS = [['bitcoin', 'Bitcoin'], ['rgb', 'RGB'], ['lightning', 'Lightning'], ['cashu', 'Cashu'], ['liquid', 'Liquid'], ['taproot', 'Taproot Assets']];
   const V = { tab: 'bitcoin', data: {}, conns: null, loading: {}, panel: null, proposal: null, showEvidence: false, sendForm: { to: '', amountSats: '', feeRate: '' }, editPolicy: false };
   const sats = n => (n == null ? '—' : Number(n).toLocaleString(document.documentElement.lang === 'en' ? 'en-US' : 'it-IT'));
   const btc = n => (n == null ? '—' : (Number(n) / 1e8).toFixed(8));
   const short = s => s ? `${s.slice(0, 10)}…${s.slice(-6)}` : '';
   const copy = (text, label) => { navigator.clipboard?.writeText(text); toast(`${label || t('copied')}`); };
+  const RGB_WAIT = new Set(['locked', 'uninitialized', 'busy', 'stopped']);
   const envDot = env => h('span', { class: `edot ${env?.status === 'connected' ? env.environment : env?.status || 'none'}` });
   const envChip = env => !env ? null : env.status === 'not_configured' ? h('span', { class: 'chip' }, t('fin_notConfigured'))
     : env.status === 'error' ? h('span', { class: 'chip err' }, t('fin_error'))
+    : RGB_WAIT.has(env.status) ? h('span', { class: 'chip warn' }, t(`fin_rgbState_${env.status}`))
     : env.environment === 'test' ? h('span', { class: 'chip ok' }, `${t('fin_test')} · ${env.network}`)
     : env.environment === 'production' ? h('span', { class: 'chip info' }, `${t('fin_production')} · ${env.network}`)
     : h('span', { class: 'chip warn' }, `${t('fin_unverified')} · ${env.network || '?'}`);
@@ -121,7 +123,39 @@ export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerende
   }
 
   // ---------- RGB (read-only panel, data through Tether WDK) ----------
+  // A node that is locked, has no wallet, is unlocking or is stopped gets an
+  // explanation and the one action that moves it forward, in a visible terminal.
+  const fixButton = (action, nodeUrl, primary) => h('button', { class: `btn ${primary ? 'primary' : 'sm'}`,
+    onClick: () => openFixTerminal(action, nodeUrl, () => load('rgb', { quiet: true })) }, t(`fin_rgbFix_${action}`));
+  function rgbWaitCard(env) {
+    const retry = h('button', { class: 'btn ghost', onClick: () => load('rgb') }, V.loading.rgb ? '…' : `↻ ${t('refresh')}`);
+    return h('div', { class: 'card warnc' }, h('div', { class: 'brow' }, h('h3', {}, t(`fin_rgb_${env.status}`)), envChip(env)),
+      h('p', {}, t(`fin_rgb_${env.status}P`).replace('{url}', env.nodeUrl)),
+      h('div', { class: 'row' }, env.fix ? fixButton(env.fix, env.nodeUrl, true) : null, retry),
+      !env.fix && env.status !== 'busy' ? h('p', { class: 'status' }, t('fin_rgbNoFix')) : null,
+      h('p', { class: 'status' }, t('fin_rgbAuto')),
+      h('details', {}, h('summary', {}, t('fin_rgbDetails')), h('p', { class: 'mono' }, env.detail || env.error)));
+  }
+  function rgbNodesCard(nodes = []) {
+    if (!nodes.length) return null;
+    return h('div', { class: 'card flush' }, h('h3', { class: 'pad' }, t('fin_rgbNodes')),
+      h('table', { class: 'list' }, nodes.map(n => h('tr', {},
+        h('td', {}, n.name, n.configured ? h('span', { class: 'status' }, ` · ${t('fin_rgbInUse')}`) : null),
+        h('td', { class: 'mono' }, n.nodeUrl),
+        h('td', {}, h('span', { class: `chip ${n.status === 'connected' ? 'ok' : n.status === 'error' ? 'err' : 'warn'}`, title: n.error || '' },
+          `${t(`fin_rgbState_${n.status}`)}${n.network ? ` · ${n.network}` : ''}`)),
+        h('td', {}, n.fix ? fixButton(n.fix, n.nodeUrl, false) : null)))),
+      h('p', { class: 'pad status' }, t('fin_rgbNodesHint')));
+  }
+  // Polls only while the RGB tab is rendered: a page that is not shown never re-arms it.
+  function recheckRgbSoon() {
+    if (V.rgbTimer) return;
+    V.rgbTimer = setTimeout(() => { V.rgbTimer = null; if (V.tab === 'rgb') load('rgb', { quiet: true }); }, 5000);
+  }
   function rgbTab(d) {
+    const waiting = RGB_WAIT.has(d.env?.status) || (d.env?.status === 'error' && d.env.nodeUrl);
+    if (waiting) recheckRgbSoon();
+    if (waiting) return [RGB_WAIT.has(d.env.status) ? rgbWaitCard(d.env) : statusCard(d, 'rgb'), rgbNodesCard(d.nodes)];
     if (d.env?.status !== 'connected') return [statusCard(d, 'rgb')];
     const top = h('div', { class: 'fgrid' },
       h('div', { class: 'card balance' },
@@ -145,7 +179,7 @@ export function createFinanceView({ h, fill, api, toast, guard, t, icon, rerende
           h('td', { class: 'num', title: x.txid || '', style: x.txid ? 'cursor:copy' : '', onClick: () => x.txid && copy(x.txid) }, x.txid ? short(x.txid) : '—'),
           h('td', { class: 'num' }, new Date(x.updatedAt).toLocaleString()))))
         : h('p', { class: 'pad status' }, t('fin_noTxs')));
-    return [top, assets, transfers, h('p', { class: 'status' }, t('fin_rgbHowTo'))];
+    return [top, assets, transfers, rgbNodesCard(d.nodes), h('p', { class: 'status' }, t('fin_rgbHowTo'))];
   }
 
   // ---------- other protocols ----------

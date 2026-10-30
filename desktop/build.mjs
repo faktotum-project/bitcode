@@ -38,7 +38,8 @@ writeFileSync(path.join(dist, 'ui/icon.png'), iconPng(256));
 // electron-builder installs a directory of NxN.png files as the hicolor icon theme sizes.
 mkdirSync(path.join(dist, 'icons'));
 for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) writeFileSync(path.join(dist, 'icons', `${size}x${size}.png`), iconPng(size));
-for (const dir of ['agents', 'commands', 'sats']) cpSync(path.join(repo, 'content', dir), path.join(dist, dir), { recursive: true });
+for (const dir of ['agents', 'commands', 'sats', 'skills']) cpSync(path.join(repo, 'content', dir), path.join(dist, dir), { recursive: true });
+cpSync(path.join(repo, 'src/node'), path.join(dist, 'node-resources'), { recursive: true });
 copyCli(path.join(dist, 'cli'));
 console.log('desktop build → dist/');
 
@@ -70,7 +71,8 @@ function copyCli(out) {
   // Electron's binary runs the CLI as plain Node; the main process never loads it.
   mkdirSync(path.join(dist, 'bin'));
   const launcher = path.join(dist, 'bin', 'bitcode');
-  writeFileSync(launcher, '#!/bin/sh\n# bitcode CLI on the Node.js runtime bundled with the desktop app.\nELECTRON_RUN_AS_NODE=1 exec /opt/bitcode/bitcode-desktop /opt/bitcode/resources/app/dist/cli/bitcode.mjs "$@"\n');
+  // Paths are resolved from the script itself, so a renamed install directory still works.
+  writeFileSync(launcher, '#!/bin/sh\n# bitcode CLI on the Node.js runtime bundled with the desktop app.\ndist=$(dirname "$(dirname "$(readlink -f "$0")")")\nELECTRON_RUN_AS_NODE=1 exec "$dist/../../../bitcode-desktop" "$dist/cli/bitcode.mjs" "$@"\n');
   chmodSync(launcher, 0o755);
 }
 

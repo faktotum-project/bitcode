@@ -1,0 +1,44 @@
+// Optional native smoke test. All state lives in a temporary home; no installation runs.
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const { _electron } = await import(process.env.BITCODE_PLAYWRIGHT_MODULE || 'playwright');
+const desktop = fileURLToPath(new URL('../', import.meta.url));
+const temp = mkdtempSync(path.join(os.tmpdir(), 'bitcode-node-ui-'));
+const env = { ...process.env, BITCODE_HOME: path.join(temp, 'state') }; delete env.ELECTRON_RUN_AS_NODE;
+mkdirSync(path.join(env.BITCODE_HOME, 'desktop'), { recursive: true });
+writeFileSync(path.join(env.BITCODE_HOME, 'desktop/settings.json'), JSON.stringify({ lang: 'it' }));
+const packaged = process.env.BITCODE_DESKTOP_EXECUTABLE;
+const app = await _electron.launch({ executablePath: packaged || path.join(desktop, 'node_modules/electron/dist/electron'), args: [...(packaged ? [] : [desktop]), `--user-data-dir=${path.join(temp, 'electron')}`], env });
+try {
+  const page = await app.firstWindow(); const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const info = await page.evaluate(async () => (await window.bitcode.invoke('app.info')).result);
+  assert.equal(info.version, JSON.parse(readFileSync(path.join(desktop, 'package.json'), 'utf8')).version);
+  const commands = await page.evaluate(async () => (await window.bitcode.invoke('node.commands', { network: 'mainnet' })).result);
+  assert.ok(commands.bootstrap.includes(packaged ? '/dist/node-resources/node-helper.py' : '/desktop/dist/node-resources/node-helper.py'));
+  await page.getByRole('button', { name: 'Nodo', exact: true }).click();
+  await page.getByRole('heading', { name: 'Nodo Bitcoin' }).waitFor();
+  await page.getByLabel('Rete', { exact: true }).selectOption('signet');
+  await page.getByLabel('Archivio', { exact: true }).selectOption('pruned');
+  assert.equal(await page.getByRole('checkbox', { name: 'Explorer mempool con tema bitcode' }).isDisabled(), true);
+  await page.getByRole('button', { name: 'Prepara installazione', exact: true }).click();
+  await page.getByRole('heading', { name: 'Riepilogo da approvare' }).waitFor();
+  const jobs = await page.evaluate(async () => (await window.bitcode.invoke('node.jobs')).result);
+  assert.equal(jobs.length, 0, 'Preview must not start installation');
+  await page.getByRole('button', { name: 'Annulla', exact: true }).click();
+  await page.getByLabel('Rete', { exact: true }).selectOption('mainnet');
+  await page.getByLabel('Porta RPC (vuota = predefinita)', { exact: true }).fill('58332');
+  await page.getByLabel('Porta P2P (vuota = predefinita)', { exact: true }).fill('58333');
+  await page.getByRole('button', { name: 'Prepara installazione', exact: true }).click();
+  const review = page.locator('.node-card').filter({ has: page.getByRole('heading', { name: 'Riepilogo da approvare' }) });
+  assert.match(await review.textContent(), /"p2p": 58333/);
+  assert.match(await review.textContent(), /"rpc": 58332/);
+  assert.equal((await page.evaluate(async () => (await window.bitcode.invoke('node.jobs')).result)).length, 0);
+  const output = path.resolve(desktop, `../artifacts/fullnode/node-wizard${packaged ? '-packaged' : ''}.png`); mkdirSync(path.dirname(output), { recursive: true });
+  await page.screenshot({ path: output, fullPage: true });
+  assert.deepEqual(errors, []);
+  console.log('PASS: node wizard, network/profile selection, explorer constraint, Mainnet ports and read-only preview. Screenshot:', output);
+} finally { await app.evaluate(({ app }) => app.exit(0)); }

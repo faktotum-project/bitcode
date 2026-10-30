@@ -1,16 +1,14 @@
 ---
-description: Guided, verified install of Bitcoin Core (never curl | bash)
+description: Guided, verified personal Bitcoin node installation with the shared bitcode installer
 ---
-Help me install and run Bitcoin Core, following these rules strictly:
+Help me install, connect or adopt a personal Bitcoin node using the bundled bitcoin-fullnode skill and controlled node tools.
 
-1. Detect OS/architecture with `bash` first (`uname -a`), and pick the matching release asset.
-2. Source of truth is ONLY the official Bitcoin Core release page (bitcoincore.org/en/download or the bitcoin/bitcoin GitHub releases) and its signed SHA256SUMS file — never a mirror, never a third-party download page.
-3. Download the binary tarball, `SHA256SUMS`, and `SHA256SUMS.asc` as three separate files. Do not pipe the download directly into an archive extractor or shell.
-4. Verify BEFORE extracting or running anything:
-   - `sha256sum --ignore-missing --check SHA256SUMS` must pass for the downloaded tarball.
-   - The PGP signature on `SHA256SUMS.asc` must verify against Bitcoin Core release-signing keys (the guix-attestation signers listed in `contrib/builder-keys/keys.txt` in the bitcoin/bitcoin repo). If `gpg` isn't available or the key isn't already trusted locally, say so explicitly and stop rather than skipping verification.
-   - If either check fails, STOP. Do not extract or run the binary. Report exactly what failed.
-5. Only after both checks pass: extract, and offer to start `bitcoind` with sane, low-footprint defaults for a first run — signet network, pruned mode (e.g. `-signet -prune=550 -daemon`) — unless I explicitly ask for mainnet.
-6. After it's running, help me add the matching `bitcoin.rpc` block to `~/.bitcode/config.json` (cookie auth is the default in bitcode — usually no `user`/`pass` needed, just make sure `bitcoin.network` matches) so bitcode's own `bitcoin_rpc` and chain tools can reach it.
+1. Read the skill and its workflow reference. Inspect node_status and node_plan before proposing changes.
+2. Explain network, full/pruned storage, optional bitcode explorer, data directory, resource requirements and administrative changes. Mainnet is the primary choice; never assume the user wants the test network merely because the active wallet uses it.
+3. Use the shared installer: `bitcode node install` in the terminal, the Desktop Nodo wizard, or SCRIPT's approved node_action operations coordinated by Merkle. NODE and HASH remain read-only. If the current Sat cannot delegate, explain how to open the wizard or select Merkle.
+4. For existing data, distinguish connection from adoption. Preserve the configuration and blockchain. Present the actual changes before requesting approval.
+5. Keep administrative authentication in the OS dialog or the user's Terminal panel. Never request passwords in chat, pipe downloads into a shell, skip signatures or invent a replacement privileged installer.
+6. Report Core sync, Core indexes and explorer indexing separately. Use node_status and actual API evidence to establish readiness.
+7. Selecting this node for bitcode RPC/network is a separate explicit `node use` action. Do not create wallets or move funds.
 
-Never use `curl ... | bash` or `curl ... | sh` at any point. Explain each command before running it.
+Mutinynet is experimental and uses the separately pinned source build and compatible indexer recipe. Explain that its verification is based on curated source identities, not Guix multi-builder release signatures. Its build has no wallet support, and node use for financial adapters remains unavailable. Explain unsupported upgrade paths instead of downgrading data formats.

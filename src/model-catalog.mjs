@@ -4,6 +4,11 @@ import { isLocalProvider, listLocalModels, describeLocalModel } from "./local-mo
 
 // OpenAI-style listings include embeddings, speech and image models that cannot chat.
 const NOT_CHAT = /embed|tts|whisper|dall-e|davinci|babbage|moderation|transcribe|audio|realtime|image|search|similarity|guard/i;
+// Catalogs that declare output modalities (OpenRouter) say it directly; otherwise only the model's own
+// name is judged, so a vendor prefix such as "nousresearch/" never hides a whole family.
+const isChatModel = (m) => Array.isArray(m.architecture?.output_modalities)
+  ? m.architecture.output_modalities.includes("text")
+  : !NOT_CHAT.test(m.id.split("/").pop());
 
 export const providerApiKey = (provider) => (provider.keyEnv ? process.env[provider.keyEnv] : undefined) || provider.apiKey;
 export const providerNeedsKey = (provider) => Boolean(provider.keyEnv) && !isLocalProvider(provider) && !providerApiKey(provider);
@@ -23,7 +28,7 @@ async function liveModels(provider, options) {
     return data.map((m) => ({ id: m.id, hint: m.display_name || "" }));
   }
   const { data = [] } = await getJSON(`${base}/models`, key ? { authorization: `Bearer ${key}` } : {}, options);
-  return data.filter((m) => m.id && !NOT_CHAT.test(m.id)).map((m) => ({ id: m.id, hint: m.name && m.name !== m.id ? m.name : "" }));
+  return data.filter((m) => m.id && isChatModel(m)).map((m) => ({ id: m.id, hint: m.name && m.name !== m.id ? m.name : "" }));
 }
 
 // -> { models: [{ id, hint }], live: boolean, error? }; the default and configured models always appear.

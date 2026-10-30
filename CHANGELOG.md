@@ -1,9 +1,40 @@
 # Changelog
 
-## Desktop 0.3.0 — 2026-10-26
+## Desktop 0.3.0 · CLI 0.4.0 — 2026-10-30
+
+### Personal Bitcoin node
+
+- Shared CLI and Desktop installer for Bitcoin Core 31.1: Mainnet full or
+  pruned, Signet and Testnet4; separately pinned experimental Mutinynet builds.
+- Core archives require matching hashes and at least three distinct valid
+  signatures from the bundled Guix builder keys before extraction.
+- Optional local explorer with electrs, mempool backend/frontend, a loopback
+  API/WebSocket proxy and the bitcode theme.
+- Discover, connect to and adopt existing installations; install, resume,
+  start, stop, restart, update along reviewed paths, diagnose and remove
+  managed services while retaining data. Adopted detach retains original units.
+- Separate Core, indexer and explorer readiness checks; live Signet challenge
+  verification and stale operation recovery.
+- Explicit node selection connects bitcode's Bitcoin tools to local RPC and,
+  when installed, the local explorer. RPC and P2P ports can be selected to run
+  an additional Core instance alongside an existing node.
+- Node agent tools and the bundled `bitcoin-fullnode` skill; privileged actions
+  require system authentication through a fixed-operation administrative helper.
+- Real-host checks cover Signet installation, Mainnet adoption and lifecycle,
+  experimental Mutinynet builds and service startup after reboot. Detailed
+  release gates and their current evidence: [release 0.3.0](docs/releases/0.3.0.md).
 
 ### Desktop
 
+- Read-only Plan mode works in the selected project directory; saved plans live
+  in that project's `.bitcode/plans` directory.
+- The cloud model picker displays the complete provider catalog and respects
+  vendor-prefix visibility settings.
+- Bitcoin → RGB tells a locked, wallet-less, unlocking or stopped node apart
+  from a connection error, explains it and offers the next step (unlock,
+  create the wallet, start the Docker node) in an app terminal where you type
+  the password yourself. It lists every kaleido node in `~/.kaleido` and
+  checks again by itself until the node is ready.
 - English is the default language for new installs; Italian stays available
   in Settings. Tray, dialogs and notifications follow the app language; the
   fix prompt, the phone (LAN) page and the `/sats` observer are in English.
@@ -64,11 +95,19 @@
   demo videos.
 - The name is always lowercase: **bitcode**. The desktop product name follows,
   so new `.deb` installs go to `/opt/bitcode` instead of `/opt/Bitcode`;
-  `bitcode desktop` still finds an existing 0.2 install.
+  `bitcode desktop` still finds an existing 0.2 install. Launchers no longer
+  name the install directory: the menu entry, autostart and `bitcode desktop`
+  start `/usr/bin/bitcode-desktop`, the `/usr/bin/bitcode` wrapper resolves
+  its own path, and `/opt/Bitcode` links to the new directory so menus and
+  pinned launchers cached from 0.2 still start the app.
 - Site: `favicon.ico`, touch icon, 192/512 px icons and a web manifest.
 
 ### Repository
 
+- The npm package has no `postinstall`: installing it no longer compiles the
+  Cashu binaries with Rust or downloads Wavelength. Run `npm run build:cdk`
+  and `npm run build:wavelength` when you need them; `bitcode doctor` reports
+  whether they are present.
 - Runtime Markdown moved to `content/` (agents, commands, Sats); the website
   lives in `site/` and Vercel serves `site/public/`; completed plans are in
   `docs/archive/`.

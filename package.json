@@ -22,7 +22,6 @@
     "lint": "node scripts/lint.mjs",
     "build:cdk": "bash scripts/build-cdk.sh",
     "build:wavelength": "bash scripts/build-wavelength.sh",
-    "postinstall": "bash scripts/build-cdk.sh && bash scripts/build-wavelength.sh",
     "check": "npm run lint && npm run check:brand && npm test",
     "build:brand": "node brand/build.mjs",
     "check:brand": "node brand/build.mjs --check",

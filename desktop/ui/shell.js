@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import { sat } from './marks.js';
 import { icon } from './icons.js';
-import { bitcoinPage, wb } from './app.js';
+import { bitcoinPage, wb, nodeView } from './app.js';
 import { chooseAgent, renderComposer } from './composer.js';
 import { selectProject } from './data.js';
 import { $, activeRun, api, applyTheme, fill, fmt, fmtTime, guard, h, project, satLabel, satName, toast } from './dom.js';
@@ -23,7 +23,7 @@ export function renderShell() {
     app.dataset.ready = '1'; app.className = 'shell';
     fill(app, h('aside', { class: 'sidebar', id: 'sidebar' }), h('main', { class: 'center', id: 'center' }), h('aside', { class: 'panel', id: 'panel' }));
   }
-  app.classList.toggle('panel-open', !!S.panel && S.view === 'chat' && !!S.projectId);
+  app.classList.toggle('panel-open', !!S.panel && ['chat', 'node'].includes(S.view) && !!S.projectId);
   app.classList.toggle('side-hidden', !!S.sideHidden);
   renderSidebar(); renderCenter(); renderPanel();
 }
@@ -44,7 +44,7 @@ export function renderCenter() {
   } else {
     el.style.display = 'block';
     const view = S.view, rerender = () => { if (S.view === view) renderCenter(); };
-    const pages = { activity: activityPage, bitcoin: bitcoinPage, stats: () => wb.statsPage(rerender), archive: () => wb.archivePage(rerender), multirun: () => wb.multirunPage(rerender),
+    const pages = { node: () => nodeView.page(rerender), activity: activityPage, bitcoin: bitcoinPage, stats: () => wb.statsPage(rerender), archive: () => wb.archivePage(rerender), multirun: () => wb.multirunPage(rerender),
       schedules: () => wb.schedulesPage(rerender), integrations: () => wb.integrationsPage(rerender), issues: () => wb.issuesPage(rerender), remote: remotePage };
     fill(el, (pages[S.view] || settingsPage)());
   }

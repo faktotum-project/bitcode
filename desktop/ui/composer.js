@@ -197,7 +197,6 @@ export function machineLine(m) {
   const gpu = m.gpus.map(g => `${g.name}${g.vram ? ` ${gb(g.vram)}` : ''}${g.unified ? ` · ${t('sharedMem')}` : ''}`).join(', ');
   return h('div', { class: 'machine num' }, h('span', {}, `RAM ${gb(m.ram.total)} · ${gb(m.ram.available)} ${t('free')}`), gpu ? h('span', {}, `GPU ${gpu}`) : null, h('span', {}, `${m.cpus} core`));
 }
-const CLOUD_SHOWN = 60;
 export function modelList({ current, filter = '', onPick, onRefresh, redraw = () => {}, inherit = null, fitsOnly = false }) {
   const d = S.picker.data, q = filter.toLowerCase(), match = x => !q || x.toLowerCase().includes(q);
   const item = (spec, label, detail, extra = {}) => h('button', { class: `mitem${spec === current ? ' on' : ''}`, role: 'option', 'aria-selected': spec === current ? 'true' : 'false', onClick: () => onPick(spec) },
@@ -240,8 +239,7 @@ export function modelList({ current, filter = '', onPick, onRefresh, redraw = ()
         h('span', { class: `chip ${c.hasKey ? 'ok' : 'warn'}` }, c.hasKey ? t('hasKey') : t('noKey')),
         h('span', { class: 'mdetail' }, c.models?.length ? `${c.models.length} ${t(c.models.length === 1 ? 'modelN' : 'modelsN')}` : '')));
       if (!open) continue;
-      body.push(...models.slice(0, q ? 200 : CLOUD_SHOWN).map(m => item(m.spec, m.model, m.detail)));
-      if (!q && models.length > CLOUD_SHOWN) body.push(h('div', { class: 'mnote' }, `${models.length - CLOUD_SHOWN} ${t('moreModelsHint')}`));
+      body.push(...models.map(m => item(m.spec, m.model, m.detail)));
       if (c.error && !c.hasKey) body.push(h('div', { class: 'mnote' }, t('cloudKeyHint')));
       else if (c.error) body.push(h('div', { class: 'mnote mono' }, c.error));
     }

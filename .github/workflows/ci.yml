@@ -16,8 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      # --ignore-scripts skips the postinstall Rust build of the Cashu binaries,
-      # which the test suite does not need (Cashu tools spawn them at runtime).
+      # The Cashu and Wavelength binaries are built only by explicit npm run
+      # scripts; the test suite does not need them (tools spawn them at runtime).
       - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npm test

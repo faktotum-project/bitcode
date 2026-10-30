@@ -1,4 +1,4 @@
-const read = ["read_file", "list_dir"];
+const read = ["read_file", "list_dir", "list_skills", "read_skill", "node_status", "node_plan", "node_discover"];
 export const SAT_IDS = Object.freeze(["node", "script", "hash", "merkle"]);
 export const POLICIES = Object.freeze({
   node: Object.freeze([
@@ -25,6 +25,7 @@ export const POLICIES = Object.freeze({
     "write_file",
     "edit_file",
     "bash",
+    "node_action",
     "ln_decode_invoice",
   ]),
   hash: Object.freeze([...read, "ln_decode_invoice"]),

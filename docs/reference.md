@@ -26,8 +26,9 @@ npm run build:cdk          # Rust toolchain + deps/cdk submodule required
 npm run build:wavelength   # downloads the pinned waved/wavecli release
 ```
 
-The existing `postinstall` still runs both scripts when installation scripts
-are enabled. `npm link --ignore-scripts` exposes the global `bitcode` command.
+Installing the package never runs them: it has no install-time build step,
+so `npm install -g` works without Rust or network access beyond the registry.
+`npm link --ignore-scripts` exposes the global `bitcode` command.
 
 Run `bitcode login` to choose a provider, or `bitcode login openai` (also
 `node bitcode.mjs login openai`) to configure one directly. Enter the API key

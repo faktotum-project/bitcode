@@ -632,3 +632,6 @@ html.mini .topbar > .ibtn { display: none; }
 /* Long cloud ids (vendor/model) keep their name visible; the description gives way */
 .mitem .mname { flex: 1 1 auto; }
 .mitem .mdetail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+
+/* Personal node wizard */
+.node-page{max-width:1100px;margin:auto;padding:28px;overflow:auto;height:100%}.node-card{border:1px solid var(--hairline,#373737);border-radius:12px;padding:20px;margin:18px 0}.node-card label{display:flex;align-items:center;gap:12px;margin:12px 0}.node-card input:not([type=checkbox]),.node-card select{flex:1;min-width:0;padding:8px;background:var(--canvas);color:var(--ink);border:1px solid var(--hairline);border-radius:6px}.node-card button{margin:6px}.node-card pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}.node-explorer{width:100%;height:70vh;border:1px solid #373737;border-radius:12px}
