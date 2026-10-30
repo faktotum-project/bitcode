@@ -41,6 +41,7 @@ jobs:
       - run: npm --prefix desktop ci
       - name: Download the pinned Electron runtime
         run: node desktop/node_modules/electron/install.js
+      - run: npm run build:desktop
       - run: npm run test:desktop
       - run: npm run dist:desktop
       - name: Verify the distributed Debian package
