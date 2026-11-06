@@ -80,3 +80,10 @@ Verified on 2026-10-05 with the installed CLI and its packaged native addons:
 
 This uses published packages and precompiled addons; the complete QVAC source
 monorepo and its C++ addons were not compiled from source.
+
+Re-verified on 2026-11-06 after upgrading to `@qvac/cli` 0.18.0: the same
+`qvac.config.json` serves all three aliases. On the RGB send flow (real
+kaleido-mcp tool schemas, `rgb` system prompt, simulated node replies),
+`bitcode-rgb-4b` picked the right tools and arguments in 16 of 16 runs, 8
+streaming and 8 not. All 34 chat completions answered HTTP 200 (the 16
+runs plus a two-step trial run).
