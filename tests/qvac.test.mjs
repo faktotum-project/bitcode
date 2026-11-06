@@ -96,3 +96,11 @@ test("stream:false sends a plain completion, retries QVAC's HTTP 500 and parses 
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0].stream, false);
 });
+
+test("the qvac provider streams by default with a stall guard that config can override", () => {
+  const builtin = resolveModel({ cliModel: "qvac", config: {} }).provider;
+  assert.equal(builtin.stream, undefined);
+  assert.equal(builtin.idleTimeoutMs, 120_000);
+  const tuned = resolveModel({ cliModel: "qvac", config: { providers: { qvac: { idleTimeoutMs: 300_000 } } } }).provider;
+  assert.equal(tuned.idleTimeoutMs, 300_000);
+});

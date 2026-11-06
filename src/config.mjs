@@ -62,6 +62,7 @@ export const BUILTIN_PROVIDERS = {
     keyEnv: "QVAC_API_KEY",
     local: true,
     defaultModel: "bitcode-local",
+    idleTimeoutMs: 120_000,
   },
 };
 
