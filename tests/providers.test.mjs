@@ -165,3 +165,65 @@ test("Chat reasoning deltas reach onReasoning and stay out of the answer text", 
   const r = await callModel({ provider: provider(), model: "m", system: "s", messages: [{ role: "user", content: "x" }], tools: [], onDelta: s => visible += s, onReasoning: s => thought += s });
   assert.equal(r.text, "answer"); assert.equal(visible, "answer"); assert.equal(thought, "think more");
 });
+
+test("Kimi streams usage, preserves reasoning for tools and never replays it across services", async () => {
+  const requests = [];
+  handler = (req, res) => {
+    let body = ""; req.on("data", c => body += c); req.on("end", () => {
+      requests.push(JSON.parse(body));
+      if (requests.length === 1) return stream(res, [
+        { choices: [{ delta: { reasoning_content: "think " } }] },
+        { choices: [{ delta: { reasoning_content: "carefully", tool_calls: [{ index: 0, id: "call_1", function: { name: "read_file", arguments: '{"path":"a.txt"}' } }] }, finish_reason: "tool_calls" }] },
+        { choices: [], usage: { prompt_tokens: 10, completion_tokens: 5 } },
+      ], true);
+      stream(res, [
+        { choices: [{ delta: { content: "done" }, finish_reason: "stop" }] },
+        { choices: [], usage: { prompt_tokens: 20, completion_tokens: 4 } },
+      ], true);
+    });
+  };
+  const p = { ...provider(), preserveReasoning: true, useMaxCompletionTokens: true, includeUsage: true, maxOutputTokens: 8192, reasoningEffort: "high" };
+  const tools = [{ name: "read_file", description: "Read a file", parameters: { type: "object" } }];
+  const first = await callModel({ provider: p, model: "kimi-k3.1-pro", system: "s", messages: [{ role: "user", content: "read" }], tools });
+  assert.equal(first.toolCalls[0].args.path, "a.txt");
+  assert.equal(first.providerState.reasoningContent, "think carefully");
+  assert.equal(first.usage.output_tokens, 5);
+  assert.equal(requests[0].max_completion_tokens, 8192);
+  assert.equal(requests[0].max_tokens, undefined);
+  assert.equal(requests[0].reasoning_effort, "high");
+  assert.deepEqual(requests[0].stream_options, { include_usage: true });
+
+  const messages = [
+    { role: "user", content: "read" },
+    { role: "assistant", content: "", toolCalls: first.toolCalls, providerState: first.providerState },
+    { role: "tool", toolCallId: "call_1", name: "read_file", content: "file text" },
+  ];
+  const second = await callModel({ provider: p, model: "kimi-k3.1-pro", system: "s", messages, tools: [] });
+  assert.equal(second.text, "done");
+  assert.equal(second.usage.input_tokens, 20);
+  const assistant = requests[1].messages.find(m => m.role === "assistant");
+  assert.equal(assistant.reasoning_content, "think carefully");
+  assert.equal(assistant.tool_calls[0].id, "call_1");
+
+  const crossServiceState = { ...first.providerState, baseURL: "https://api.kimi.ai/coding/v1" };
+  await callModel({ provider: p, model: "kimi-k3.1-pro", system: "s", messages: [{ role: "assistant", content: "", providerState: crossServiceState }], tools: [] });
+  assert.equal(requests[2].messages.find(m => m.role === "assistant").reasoning_content, undefined);
+});
+
+test("Kimi non-streaming responses retain reasoning without streaming options", async () => {
+  let request;
+  handler = (req, res) => {
+    let body = ""; req.on("data", c => body += c); req.on("end", () => {
+      request = JSON.parse(body);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "ok", reasoning_content: "thought" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2 } }));
+    });
+  };
+  const p = { ...provider(), preserveReasoning: true, includeUsage: true, stream: false };
+  const result = await callModel({ provider: p, model: "k3.1-pro", messages: [{ role: "user", content: "x" }], tools: [] });
+  assert.equal(request.stream, false);
+  assert.equal(request.stream_options, undefined);
+  assert.equal(result.text, "ok");
+  assert.equal(result.providerState.reasoningContent, "thought");
+  assert.equal(result.usage.output_tokens, 2);
+});

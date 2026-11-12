@@ -307,7 +307,8 @@ test('models.available lists every cloud model: public catalogs without a key, k
     const data = url.includes('anthropic') ? [{ id: 'claude-x', display_name: 'Claude X' }] : url.includes('openrouter') ? [{ id: 'vendor/a' }, { id: 'vendor/b' }] : [{ id: 'big' }, { id: 'small' }];
     return { ok: true, json: async () => ({ data }) };
   };
-  const secrets = { get: name => (name === 'anthropic' ? 'sk-ring' : undefined) };
+  const keys = { anthropic: 'sk-ring', kimi: 'sk-platform', 'kimi-code': 'sk-code' };
+  const secrets = { get: name => keys[name] };
   const { c } = setup({ modelsFetch, secrets, inventoryHome: path.join(process.cwd(), 'no-such-home') });
   try {
     const first = await c.invoke('models.available');
@@ -315,9 +316,16 @@ test('models.available lists every cloud model: public catalogs without a key, k
     assert.deepEqual(byName.openrouter.models.map(m => m.spec).filter(s => s.startsWith('openrouter/vendor')), ['openrouter/vendor/a', 'openrouter/vendor/b']);
     assert.equal(byName.openrouter.hasKey, false);
     assert.ok(byName.anthropic.models.some(m => m.spec === 'anthropic/claude-x' && m.detail === 'Claude X'));
+    assert.equal(byName.kimi.hasKey, true);
+    assert.equal(byName['kimi-code'].hasKey, true);
+    assert.ok(byName.kimi.models.some(m => m.spec === 'kimi/big'));
+    assert.ok(byName['kimi-code'].models.some(m => m.spec === 'kimi-code/big'));
     assert.deepEqual(byName.cloud.models.map(m => m.model).sort(), ['big', 'small']);
     assert.ok(!calls.some(x => x.startsWith('api.openai.com')), 'no listing call without a key');
     assert.ok(calls.includes('api.anthropic.com|sk-ring') && calls.includes('openrouter.ai|none'));
+    assert.ok(calls.includes('api.moonshot.ai|Bearer sk-platform'));
+    assert.ok(calls.includes('api.kimi.ai|Bearer sk-code'));
+    assert.ok(!calls.includes('api.moonshot.ai|Bearer sk-code') && !calls.includes('api.kimi.ai|Bearer sk-platform'));
     const count = calls.length;
     await c.invoke('models.available');
     assert.equal(calls.length, count, 'listings are cached');

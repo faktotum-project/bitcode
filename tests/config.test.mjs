@@ -8,6 +8,8 @@ import path from "node:path";
 process.env.BITCODE_HOME = mkdtempSync(path.join(os.tmpdir(), "bc-home-"));
 delete process.env.BITCODE_MODEL;
 delete process.env.ANTHROPIC_API_KEY;
+delete process.env.MOONSHOT_API_KEY;
+delete process.env.KIMI_API_KEY;
 
 const {
   allProviders,
@@ -25,6 +27,33 @@ test("allProviders deep-merges a saved apiKey without dropping built-in fields",
   assert.equal(ap.keyEnv, "ANTHROPIC_API_KEY");
   assert.equal(ap.api, "anthropic");
   assert.equal(ap.apiKey, "k");
+});
+
+test("Kimi Platform and Kimi Code keep endpoints, models and credentials separate", () => {
+  const providers = allProviders({});
+  assert.equal(providers.kimi.baseURL, "https://api.moonshot.ai/v1");
+  assert.equal(providers.kimi.keyEnv, "MOONSHOT_API_KEY");
+  assert.equal(providers.kimi.defaultModel, "kimi-k3.1-pro");
+  assert.ok(providers.kimi.models.includes("kimi-k3.1-pro-highspeed"));
+  assert.equal(providers["kimi-code"].baseURL, "https://api.kimi.ai/coding/v1");
+  assert.equal(providers["kimi-code"].keyEnv, "KIMI_API_KEY");
+  assert.equal(providers["kimi-code"].defaultModel, "k3.1-pro");
+  assert.ok(providers["kimi-code"].models.includes("k3.1-pro-highspeed"));
+
+  process.env.MOONSHOT_API_KEY = "platform-env";
+  process.env.KIMI_API_KEY = "code-env";
+  try {
+    const platform = resolveModel({ cliModel: "kimi", config: { providers: { kimi: { apiKey: "platform-config" } } } });
+    const code = resolveModel({ cliModel: "kimi-code", config: { providers: { "kimi-code": { apiKey: "code-config" } } } });
+    assert.equal(platform.apiKey, "platform-env");
+    assert.equal(code.apiKey, "code-env");
+    assert.equal(platform.spec, "kimi/kimi-k3.1-pro");
+    assert.equal(code.spec, "kimi-code/k3.1-pro");
+    assert.notEqual(platform.provider.baseURL, code.provider.baseURL);
+  } finally {
+    delete process.env.MOONSHOT_API_KEY;
+    delete process.env.KIMI_API_KEY;
+  }
 });
 
 test("resolveModel: env var wins over a config-stored key", () => {

@@ -185,7 +185,7 @@ function eventJSON(data) {
 
 // ---- OpenAI Chat Completions (and compatible servers: Ollama, Groq, ...) ----
 
-function toOpenAIMessages(system, messages) {
+function toOpenAIMessages(system, messages, provider, model) {
   const out = [];
   if (system) out.push({ role: "system", content: system });
   for (const m of messages) {
@@ -193,6 +193,10 @@ function toOpenAIMessages(system, messages) {
       out.push({ role: "user", content: m.content });
     } else if (m.role === "assistant") {
       const msg = { role: "assistant", content: m.content || "" };
+      const state = m.providerState;
+      if (provider.preserveReasoning && state?.api === "openai" && state.baseURL === provider.baseURL && state.model === model && typeof state.reasoningContent === "string") {
+        msg.reasoning_content = state.reasoningContent;
+      }
       if (m.toolCalls?.length) {
         msg.tool_calls = m.toolCalls.map((tc) => ({
           id: tc.id,
@@ -206,6 +210,11 @@ function toOpenAIMessages(system, messages) {
     }
   }
   return out;
+}
+
+function openAIProviderState(provider, model, reasoningContent) {
+  if (!provider.preserveReasoning || typeof reasoningContent !== "string" || !reasoningContent) return undefined;
+  return { api: "openai", baseURL: provider.baseURL, model, reasoningContent };
 }
 
 // Some local servers occasionally accept a request and never stream a byte.
@@ -241,12 +250,13 @@ async function callOpenAIOnce({ provider, model, apiKey, system, messages, tools
   const headers = {};
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
 
-  const body = { model, messages: toOpenAIMessages(system, messages) };
+  const body = { model, messages: toOpenAIMessages(system, messages, provider, model) };
   if (provider.maxOutputTokens !== undefined) {
     if (!Number.isSafeInteger(provider.maxOutputTokens) || provider.maxOutputTokens < 1) throw new Error('maxOutputTokens must be a positive integer');
-    body.max_tokens = provider.maxOutputTokens;
+    body[provider.useMaxCompletionTokens ? "max_completion_tokens" : "max_tokens"] = provider.maxOutputTokens;
   }
   if (provider.reasoningEffort !== undefined) body.reasoning_effort = provider.reasoningEffort;
+  if (provider.includeUsage && provider.stream !== false) body.stream_options = { include_usage: true };
   if (tools?.length) {
     body.tools = tools.map((t) => ({
       type: "function",
@@ -268,8 +278,8 @@ async function callOpenAIOnce({ provider, model, apiKey, system, messages, tools
     throw err;
   }
 
-  if (body.stream === false) return completionResult(res, provider, onDelta, onChunk);
-  let text = "";
+  if (body.stream === false) return completionResult(res, provider, model, onDelta, onChunk);
+  let text = "", reasoningContent = "";
   let complete = false, usage, incomplete;
   const calls = []; // accumulated by streamed tool_call index
   for await (const data of sseEvents(res)) {
@@ -289,7 +299,7 @@ async function callOpenAIOnce({ provider, model, apiKey, system, messages, tools
     }
     // Reasoning deltas (Ollama `reasoning`, vLLM/DeepSeek `reasoning_content`) are shown live, never added to the answer.
     const thought = delta.reasoning ?? delta.reasoning_content;
-    if (typeof thought === "string" && thought) onReasoning?.(thought);
+    if (typeof thought === "string" && thought) { reasoningContent += thought; onReasoning?.(thought); }
     for (const tcd of delta.tool_calls || []) {
       const i = tcd.index ?? 0;
       calls[i] ??= { id: tcd.id, name: "", args: "" };
@@ -300,18 +310,19 @@ async function callOpenAIOnce({ provider, model, apiKey, system, messages, tools
   }
 
   if (!complete) throw new Error("provider stream ended before completion");
+  const providerState = openAIProviderState(provider, model, reasoningContent);
   // Never parse or execute even apparently valid tool calls from a truncated turn.
-  if (incomplete) return { text, toolCalls: [], usage, incomplete,
+  if (incomplete) return { text, toolCalls: [], usage, incomplete, ...(providerState ? { providerState } : {}),
     completionHint: isOllama(undefined, provider)
       ? 'Ollama: check the loaded context with ollama ps; maxOutputTokens controls output, not context. Use /compact or /reset to shorten history, or configure num_ctx in an Ollama Modelfile.'
       : 'Check provider maxOutputTokens and the model context window; use /compact or /reset to shorten history.' };
   const toolCalls = calls
     .filter((c) => c && c.name)
     .map((c) => ({ id: c.id || randomUUID(), name: c.name, args: parseArgs(c.args) }));
-  return { text, toolCalls, usage };
+  return { text, toolCalls, usage, ...(providerState ? { providerState } : {}) };
 }
 
-async function completionResult(res, provider, onDelta, onChunk) {
+async function completionResult(res, provider, model, onDelta, onChunk) {
   let raw = "";
   for await (const part of res) { raw += part; onChunk?.(); }
   const json = eventJSON(raw);
@@ -319,13 +330,15 @@ async function completionResult(res, provider, onDelta, onChunk) {
   if (!choice?.message) throw new Error("provider returned no completion");
   const usage = json.usage ? { input_tokens: json.usage.prompt_tokens || 0, output_tokens: json.usage.completion_tokens || 0 } : undefined;
   const text = typeof choice.message.content === "string" ? choice.message.content : "";
+  const reasoningContent = choice.message.reasoning ?? choice.message.reasoning_content;
+  const providerState = openAIProviderState(provider, model, reasoningContent);
   if (choice.finish_reason === "content_filter") throw new Error("model response incomplete: content_filter");
-  if (choice.finish_reason === "length") return { text, toolCalls: [], usage, incomplete: "length",
+  if (choice.finish_reason === "length") return { text, toolCalls: [], usage, incomplete: "length", ...(providerState ? { providerState } : {}),
     completionHint: "Check provider maxOutputTokens and the model context window; use /compact or /reset to shorten history." };
   if (text) onDelta?.(text);
   const toolCalls = (choice.message.tool_calls || []).filter(c => c?.function?.name)
     .map(c => ({ id: c.id || randomUUID(), name: c.function.name, args: parseArgs(c.function.arguments) }));
-  return { text, toolCalls, usage };
+  return { text, toolCalls, usage, ...(providerState ? { providerState } : {}) };
 }
 
 function parseArgs(raw) {
