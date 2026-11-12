@@ -41,6 +41,26 @@ export const BUILTIN_PROVIDERS = {
     keyEnv: "GROQ_API_KEY",
     defaultModel: "llama-3.3-70b-versatile",
   },
+  kimi: {
+    api: "openai",
+    baseURL: "https://api.moonshot.ai/v1",
+    keyEnv: "MOONSHOT_API_KEY",
+    defaultModel: "kimi-k3.1-pro",
+    models: ["kimi-k3.1-pro-highspeed", "kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
+    preserveReasoning: true,
+    useMaxCompletionTokens: true,
+    includeUsage: true,
+  },
+  "kimi-code": {
+    api: "openai",
+    baseURL: "https://api.kimi.ai/coding/v1",
+    keyEnv: "KIMI_API_KEY",
+    defaultModel: "k3.1-pro",
+    models: ["k3.1-pro-highspeed", "k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"],
+    preserveReasoning: true,
+    useMaxCompletionTokens: true,
+    includeUsage: true,
+  },
   ollama: {
     api: "openai",
     baseURL: "http://127.0.0.1:11434/v1",
@@ -62,6 +82,7 @@ export const BUILTIN_PROVIDERS = {
     keyEnv: "QVAC_API_KEY",
     local: true,
     defaultModel: "bitcode-local",
+    idleTimeoutMs: 120_000,
   },
 };
 

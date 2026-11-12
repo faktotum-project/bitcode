@@ -288,8 +288,30 @@ Explicit model names and custom provider settings are preserved.
 | `openai` | Responses | `OPENAI_API_KEY` | `gpt-6-astra` |
 | `openrouter` | Chat Completions | `OPENROUTER_API_KEY` | `anthropic/claude-sonnet-4.6` |
 | `groq` | Chat Completions | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
+| `kimi` | Chat Completions | `MOONSHOT_API_KEY` | `kimi-k3.1-pro` |
+| `kimi-code` | Chat Completions | `KIMI_API_KEY` | `k3.1-pro` |
 | `ollama` | Chat Completions | none | `gpt-oss:20b` (or pick an installed one with `/models`) |
 | `lmstudio` | Chat Completions | none | models loaded in LM Studio |
+
+### Kimi Platform and Kimi Code
+
+`kimi` connects to Kimi Platform at `https://api.moonshot.ai/v1`. `kimi-code`
+connects to the Kimi Code membership service at `https://api.kimi.ai/coding/v1`.
+They are deliberately separate providers: API keys, environment variables, base
+URLs and model IDs are not interchanged. `/models` lists the family available to
+the corresponding account, including K3.1 Pro and its high-speed variant.
+
+```bash
+bitcode login kimi
+bitcode -m kimi/kimi-k3.1-pro
+
+bitcode login kimi-code
+bitcode -m kimi-code/k3.1-pro
+```
+
+For mainland China, set `providers.kimi.baseURL` to
+`https://api.moonshot.cn/v1` and `providers.kimi-code.baseURL` to
+`https://api.kimi.com/coding/v1` in `~/.bitcode/config.json`.
 
 ### Local models
 

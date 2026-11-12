@@ -62,6 +62,8 @@ Pick a model with `-m <provider>/<model>`, or switch inside a session with
 | `openai` | cloud (Responses API) | `OPENAI_API_KEY` |
 | `openrouter` | cloud | `OPENROUTER_API_KEY` |
 | `groq` | cloud | `GROQ_API_KEY` |
+| `kimi` | Kimi Platform (cloud) | `MOONSHOT_API_KEY` |
+| `kimi-code` | Kimi Code membership (cloud) | `KIMI_API_KEY` |
 | `ollama` | local | none |
 | `lmstudio` | local | none |
 | `qvac` | local | none |
